@@ -9,24 +9,32 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 
 import type { Command } from "commander"
+import type { ConfigProvider } from "../config/provider.js"
+import { LocalConfigProvider } from "../config/provider.js"
 import { CLI_VERSION, GITHUB_REPO } from "../constants.js"
 import { fetchFileContent, fetchRegistryIndex } from "../registry/fetcher.js"
 import type { ResolvedComponent } from "../registry/resolver.js"
 import { type ResolvedDependencies, resolveDependencies } from "../registry/resolver.js"
-import { type OcxLock, readOcxConfig, readOcxLock } from "../schemas/config.js"
+import { type OcxLock, readOcxLock } from "../schemas/config.js"
 import type { ComponentFileObject, RegistryIndex } from "../schemas/registry.js"
 import { updateOpencodeJsonConfig } from "../updaters/update-opencode-config.js"
 import { isContentIdentical } from "../utils/content.js"
 import { ConfigError, ConflictError, IntegrityError, ValidationError } from "../utils/errors.js"
 import {
+	assertPathInside,
 	collectCompatIssues,
 	createSpinner,
 	handleError,
 	logger,
 	warnCompatIssues,
 } from "../utils/index.js"
+import {
+	addCommonOptions,
+	addConfirmationOptions,
+	addVerboseOption,
+} from "../utils/shared-options.js"
 
-interface AddOptions {
+export interface AddOptions {
 	yes?: boolean
 	dryRun?: boolean
 	cwd?: string
@@ -37,35 +45,39 @@ interface AddOptions {
 }
 
 export function registerAddCommand(program: Command): void {
-	program
+	const cmd = program
 		.command("add")
 		.description("Add components to your project")
 		.argument("<components...>", "Components to install")
-		.option("-y, --yes", "Skip prompts")
 		.option("--dry-run", "Show what would be installed without making changes")
-		.option("--cwd <path>", "Working directory", process.cwd())
-		.option("-q, --quiet", "Suppress output")
-		.option("-v, --verbose", "Verbose output")
-		.option("--json", "Output as JSON")
 		.option("--skip-compat-check", "Skip version compatibility checks")
-		.action(async (components: string[], options: AddOptions) => {
-			try {
-				await runAdd(components, options)
-			} catch (error) {
-				handleError(error, { json: options.json })
-			}
-		})
+
+	addCommonOptions(cmd)
+	addConfirmationOptions(cmd)
+	addVerboseOption(cmd)
+
+	cmd.action(async (components: string[], options: AddOptions) => {
+		try {
+			const provider = await LocalConfigProvider.create(options.cwd ?? process.cwd())
+			await runAddCore(components, options, provider)
+		} catch (error) {
+			handleError(error, { json: options.json })
+		}
+	})
 }
 
-async function runAdd(componentNames: string[], options: AddOptions): Promise<void> {
-	const cwd = options.cwd ?? process.cwd()
+/**
+ * Core add logic that accepts a ConfigProvider.
+ * This enables reuse across both standard and ghost modes.
+ */
+export async function runAddCore(
+	componentNames: string[],
+	options: AddOptions,
+	provider: ConfigProvider,
+): Promise<void> {
+	const cwd = provider.cwd
 	const lockPath = join(cwd, "ocx.lock")
-
-	// Load config
-	const config = await readOcxConfig(cwd)
-	if (!config) {
-		throw new ConfigError("No ocx.jsonc found. Run 'ocx init' first.")
-	}
+	const registries = provider.getRegistries()
 
 	// Load or create lock
 	let lock: OcxLock = { lockVersion: 1, installed: {} }
@@ -79,7 +91,7 @@ async function runAdd(componentNames: string[], options: AddOptions): Promise<vo
 
 	try {
 		// Resolve all dependencies across all configured registries
-		const resolved = await resolveDependencies(config.registries, componentNames)
+		const resolved = await resolveDependencies(registries, componentNames)
 
 		if (options.verbose) {
 			logger.info("Install order:")
@@ -107,8 +119,8 @@ async function runAdd(componentNames: string[], options: AddOptions): Promise<vo
 			`Resolved ${resolved.components.length} components from ${registryIndexes.size} registries`,
 		)
 
-		// Version compatibility check (skip if disabled via flag or config)
-		const skipCompat = options.skipCompatCheck || config.skipCompatCheck
+		// Version compatibility check (skip if disabled via flag)
+		const skipCompat = options.skipCompatCheck
 		if (!skipCompat) {
 			for (const [namespace, index] of registryIndexes) {
 				const issues = collectCompatIssues({
@@ -146,6 +158,12 @@ async function runAdd(componentNames: string[], options: AddOptions): Promise<vo
 			}
 
 			const computedHash = await hashBundle(files)
+
+			// Layer 2 path safety: Verify all target paths are inside cwd (runtime containment)
+			for (const file of component.files) {
+				const targetPath = join(cwd, file.target)
+				assertPathInside(targetPath, cwd)
+			}
 
 			// Verify integrity if already in lock (use qualifiedName as key)
 			const existingEntry = lock.installed[component.qualifiedName]
@@ -265,9 +283,9 @@ async function runAdd(componentNames: string[], options: AddOptions): Promise<vo
 
 			if (!options.quiet && result.changed) {
 				if (result.created) {
-					logger.info("Created opencode.jsonc")
+					logger.info(`Created ${join(cwd, "opencode.jsonc")}`)
 				} else {
-					logger.info("Updated opencode.jsonc")
+					logger.info(`Updated ${join(cwd, "opencode.jsonc")}`)
 				}
 			}
 		}
@@ -289,7 +307,9 @@ async function runAdd(componentNames: string[], options: AddOptions): Promise<vo
 					resolved.npmDevDependencies,
 				)
 				const totalDeps = resolved.npmDependencies.length + resolved.npmDevDependencies.length
-				npmSpin?.succeed(`Added ${totalDeps} dependencies to .opencode/package.json`)
+				npmSpin?.succeed(
+					`Added ${totalDeps} dependencies to ${join(cwd, ".opencode/package.json")}`,
+				)
 			} catch (error) {
 				npmSpin?.fail("Failed to update .opencode/package.json")
 				throw error

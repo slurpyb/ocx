@@ -10,7 +10,7 @@ describe("ocx registry", () => {
 	beforeEach(async () => {
 		testDir = await createTempDir("registry-test")
 		registry = startMockRegistry()
-		await runCLI(["init", "--yes"], testDir)
+		await runCLI(["init", "--force"], testDir)
 	})
 
 	afterEach(async () => {

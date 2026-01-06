@@ -5,6 +5,5 @@
       "url": "file:///Users/kenny/workspace/kdcokenny/ocx/.opencode/worktrees/issue-20-worktree-race-conditions/workers/kdco-registry/dist"
     }
   },
-  "lockRegistries": false,
-  "skipCompatCheck": false
+  "lockRegistries": false
 }

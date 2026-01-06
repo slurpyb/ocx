@@ -1,0 +1,163 @@
+/**
+ * Ghost Mode Config Loader
+ *
+ * Handles loading, saving, and managing the global ghost configuration
+ * stored at ~/.config/ocx/ghost.jsonc (XDG-compliant path).
+ */
+
+import { existsSync } from "node:fs"
+import { mkdir } from "node:fs/promises"
+import { homedir } from "node:os"
+import path, { dirname, join } from "node:path"
+import { type ParseError, parse as parseJsonc } from "jsonc-parser"
+import type { GhostConfig } from "../schemas/ghost.js"
+import { ghostConfigSchema } from "../schemas/ghost.js"
+import { GhostConfigError, GhostNotInitializedError } from "../utils/errors.js"
+import { isAbsolutePath } from "../utils/path-helpers.js"
+
+// =============================================================================
+// CONSTANTS
+// =============================================================================
+
+const CONFIG_DIR_NAME = "ocx"
+const CONFIG_FILE_NAME = "ghost.jsonc"
+
+// =============================================================================
+// PATH HELPERS
+// =============================================================================
+
+/**
+ * Get the ghost config directory path (XDG-compliant).
+ *
+ * Per XDG Base Directory Specification, if XDG_CONFIG_HOME is set but invalid
+ * (e.g., relative path), it should be treated as unset and fall back to ~/.config.
+ * This matches behavior of directories-rs, xdg-base-dirs, and fish shell.
+ *
+ * @see https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
+ */
+export function getGhostConfigDir(): string {
+	const xdgConfigHome = process.env.XDG_CONFIG_HOME
+
+	// XDG spec: only use if set AND absolute path (relative paths are invalid per spec)
+	if (xdgConfigHome && isAbsolutePath(xdgConfigHome)) {
+		return path.join(xdgConfigHome, CONFIG_DIR_NAME)
+	}
+
+	// Fall back to ~/.config/ocx
+	return path.join(homedir(), ".config", CONFIG_DIR_NAME)
+}
+
+/**
+ * Get the full path to the ghost config file.
+ *
+ * Returns ~/.config/ocx/ghost.jsonc or $XDG_CONFIG_HOME/ocx/ghost.jsonc
+ */
+export function getGhostConfigPath(): string {
+	return join(getGhostConfigDir(), CONFIG_FILE_NAME)
+}
+
+// =============================================================================
+// CONFIG OPERATIONS
+// =============================================================================
+
+/**
+ * Check if ghost mode is initialized (config file exists).
+ */
+export async function ghostConfigExists(): Promise<boolean> {
+	const configPath = getGhostConfigPath()
+	const file = Bun.file(configPath)
+	return file.exists()
+}
+
+/**
+ * Load the ghost config from disk.
+ *
+ * @throws GhostNotInitializedError if config file doesn't exist
+ * @throws GhostConfigError if config file is invalid
+ */
+export async function loadGhostConfig(): Promise<GhostConfig> {
+	const configPath = getGhostConfigPath()
+	const file = Bun.file(configPath)
+
+	// Guard: Check if file exists (Law 1: Early Exit)
+	if (!(await file.exists())) {
+		throw new GhostNotInitializedError()
+	}
+
+	const content = await file.text()
+
+	// Parse JSONC content (supports comments)
+	const errors: ParseError[] = []
+	const json = parseJsonc(content, errors, { allowTrailingComma: true })
+
+	// Guard: Check for parse errors (Law 4: Fail Fast)
+	if (errors.length > 0) {
+		throw new GhostConfigError(
+			`Failed to parse ghost.jsonc: syntax error at offset ${errors[0]?.offset}`,
+		)
+	}
+
+	// Validate against schema (Law 2: Parse, Don't Validate)
+	const result = ghostConfigSchema.safeParse(json)
+	if (!result.success) {
+		const issues = result.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`)
+		throw new GhostConfigError(`Invalid ghost.jsonc:\n${issues.join("\n")}`)
+	}
+
+	return result.data
+}
+
+/**
+ * Save the ghost config to disk.
+ *
+ * Creates the config directory if it doesn't exist.
+ * Writes as plain JSON (not JSONC) since we're generating the file.
+ */
+export async function saveGhostConfig(config: GhostConfig): Promise<void> {
+	const configPath = getGhostConfigPath()
+	const configDir = dirname(configPath)
+
+	// Ensure config directory exists (recursive is idempotent)
+	await mkdir(configDir, { recursive: true })
+
+	// Validate before saving (Law 4: Fail Fast)
+	const result = ghostConfigSchema.safeParse(config)
+	if (!result.success) {
+		const issues = result.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`)
+		throw new GhostConfigError(`Invalid config:\n${issues.join("\n")}`)
+	}
+
+	const content = JSON.stringify(result.data, null, 2)
+	await Bun.write(configPath, content)
+}
+
+// =============================================================================
+// OPENCODE CONFIG (opencode.jsonc)
+// =============================================================================
+
+const OPENCODE_CONFIG_FILE_NAME = "opencode.jsonc"
+
+/**
+ * Get the path to the ghost opencode.jsonc file
+ */
+export function getGhostOpencodeConfigPath(): string {
+	return join(getGhostConfigDir(), OPENCODE_CONFIG_FILE_NAME)
+}
+
+/**
+ * Load the OpenCode config from the ghost config directory.
+ * This is the opencode.jsonc file generated by `ghost add`.
+ *
+ * @returns The parsed config object, or empty object if file doesn't exist
+ */
+export async function loadGhostOpencodeConfig(): Promise<Record<string, unknown>> {
+	const configPath = getGhostOpencodeConfigPath()
+
+	// Guard: Return empty object if file doesn't exist (Law 1: Early Exit)
+	if (!existsSync(configPath)) {
+		return {}
+	}
+
+	const content = await Bun.file(configPath).text()
+	return parseJsonc(content) as Record<string, unknown>
+}

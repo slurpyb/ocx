@@ -774,3 +774,22 @@ Lock file tracking installed components (managed automatically):
 
 - [Registry Protocol](./REGISTRY_PROTOCOL.md) - How registries work
 - [Contributing Guide](../CONTRIBUTING.md) - Development setup
+
+---
+
+## Ghost Mode Commands
+
+Ghost mode lets you work in repositories without modifying them.
+
+| Command | Description |
+|---------|-------------|
+| `ocx ghost init` | Initialize ghost mode (`~/.config/ocx/ghost.jsonc`) |
+| `ocx ghost config` | Open ghost config in `$EDITOR` |
+| `ocx ghost registry list` | List configured registries |
+| `ocx ghost registry add <url> [--name <n>]` | Add a registry |
+| `ocx ghost registry remove <name>` | Remove a registry |
+| `ocx ghost add <component...>` | Add components using ghost config |
+| `ocx ghost search [query]` | Search ghost registries |
+| `ocx ghost opencode [args...]` | Run OpenCode with ghost config (isolated from project) |
+
+**Alias:** All ghost commands support `ocx g` shorthand (e.g., `ocx g add`).

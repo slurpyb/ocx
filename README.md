@@ -72,6 +72,7 @@ See [examples/registry-starter](./examples/registry-starter) for the full templa
 - **Dependency Resolution** — Component A needs B? Both installed in correct order.
 - **Own Your Code** — Everything lives in `.opencode/`. Customize freely.
 - **Version Compatibility** — Registries declare minimum versions. Clear warnings, not blocking errors.
+- **Ghost Mode** — Work in any repo without modifying it. Your config, their code.
 
 ## Auditable by Default
 
@@ -104,6 +105,69 @@ Like **Cargo**, OCX resolves dependencies, pins versions, and verifies integrity
 | `ocx registry add <url>` | Add a registry |
 
 [Full CLI Reference →](./docs/CLI.md)
+
+### Ghost Mode
+
+Ghost mode lets you work in repositories without modifying them, using your own portable configuration. Perfect for drive-by contributions to open source projects.
+
+#### Quick Start
+
+```bash
+# One-time setup
+ocx ghost init              # Creates ~/.config/ocx/ghost.jsonc
+ocx ghost config            # Edit your ghost config
+
+# Add registries
+ocx ghost registry add https://registry.kdco.dev --name kdco
+ocx ghost registry list
+
+# Use in any repo (without touching it)
+cd ~/oss/some-project
+ocx ghost add button        # Uses YOUR registries
+ocx ghost search input      # Searches YOUR registries
+ocx ghost opencode          # Runs OpenCode with YOUR config
+```
+
+#### Commands
+
+| Command | Alias | Description |
+|---------|-------|-------------|
+| `ocx ghost init` | `ocx g init` | Initialize ghost mode |
+| `ocx ghost config` | `ocx g config` | Edit ghost config in $EDITOR |
+| `ocx ghost registry add <url> [--name <name>]` | `ocx g registry add` | Add a registry |
+| `ocx ghost registry remove <name>` | `ocx g registry remove` | Remove a registry |
+| `ocx ghost registry list` | `ocx g registry list` | List registries |
+| `ocx ghost add <component>` | `ocx g add` | Add component using ghost config |
+| `ocx ghost search <query>` | `ocx g search` | Search ghost registries |
+| `ocx ghost opencode [args...]` | `ocx g opencode` | Run OpenCode with ghost config |
+
+> **How it works:** Ghost mode uses symlink isolation to run OpenCode without seeing the project's config. Git, LSPs, and file editing all work normally—changes go directly to the real project files.
+
+#### Config Location
+
+Ghost config is stored at `~/.config/ocx/ghost.jsonc` (or `$XDG_CONFIG_HOME/ocx/ghost.jsonc`).
+
+```jsonc
+{
+  // Component registries
+  "registries": {
+    "default": { "url": "https://registry.opencode.ai" },
+    "kdco": { "url": "https://registry.kdco.dev" }
+  },
+  
+  // Where to install components (relative to ghost config dir)
+  "componentPath": ".opencode"
+}
+```
+
+#### Key Differences from Normal Mode
+
+| Aspect | Normal Mode | Ghost Mode |
+|--------|-------------|------------|
+| Config location | `./ocx.jsonc` in project | `~/.config/ocx/ghost.jsonc` |
+| Modifies repo | Yes | No |
+| Per-project settings | Yes | No (same config everywhere) |
+| Requires `ocx init` | Yes | No (uses ghost config) |
 
 **Looking for the KDCO registry?** See [workers/kdco-registry](./workers/kdco-registry) for components like `kdco/workspace`, `kdco/researcher`, and more.
 

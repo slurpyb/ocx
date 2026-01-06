@@ -216,6 +216,9 @@ describe("add command", () => {
 packages/cli/          # Main CLI tool (@ocx/cli)
   src/
     commands/          # CLI command implementations
+      ghost/           # Ghost mode commands (init, config, add, opencode, etc.)
+    config/            # Config providers (Local, Ghost)
+    ghost/             # Ghost mode configuration utilities
     registry/          # Registry fetching/resolution
     schemas/           # Zod schemas and config parsing
     utils/             # Shared utilities, errors, logging
@@ -228,6 +231,37 @@ workers/               # Cloudflare Workers
   ocx/                 # Main OCX worker
   registry/            # Registry API worker
 ```
+
+## Ghost Mode Architecture
+
+Ghost mode enables working in repositories without modifying them:
+
+### Key Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `GhostConfigProvider` | `src/config/provider.ts` | Provides config from `~/.config/ocx/` |
+| `opencode-discovery.ts` | `src/utils/` | Finds OpenCode config files to exclude |
+| `symlink-farm.ts` | `src/utils/` | Creates temp dir with symlinks |
+| Ghost commands | `src/commands/ghost/` | init, config, registry, add, search, opencode |
+
+### How `ghost opencode` Works
+
+1. Discovers all OpenCode project files (config, AGENTS.md, .opencode/)
+2. Creates temp directory with symlinks to project (excluding discovered files)
+3. Sets `GIT_WORK_TREE` and `GIT_DIR` so Git sees real project
+4. Spawns OpenCode from temp dir with ghost config via env vars
+5. Cleans up temp dir on exit
+
+### OpenCode Discovery Reference
+
+The discovery logic in `opencode-discovery.ts` mirrors OpenCode's scanning:
+
+- **Config files:** `opencode.jsonc`, `opencode.json`
+- **Rule files:** `AGENTS.md`, `CLAUDE.md`, `CONTEXT.md`
+- **Config dirs:** `.opencode/`
+
+Reference: https://github.com/sst/opencode (see source comments for exact file locations)
 
 ## Quick Reference
 

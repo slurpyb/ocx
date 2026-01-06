@@ -11,7 +11,7 @@ describe("ocx diff", () => {
 	beforeEach(async () => {
 		testDir = await createTempDir("diff-test")
 		registry = startMockRegistry()
-		await runCLI(["init", "--yes"], testDir)
+		await runCLI(["init", "--force"], testDir)
 		await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
 	})
 

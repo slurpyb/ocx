@@ -4,6 +4,9 @@
  * Exports all schemas and Bun-specific I/O helpers.
  */
 
+// Common schemas (reusable validation patterns)
+export { safeRelativePathSchema } from "./common.js"
+
 // Config & lockfile schemas + I/O helpers
 export {
 	type InstalledComponent,
@@ -22,6 +25,9 @@ export {
 	writeOcxConfig,
 	writeOcxLock,
 } from "./config.js"
+
+// Ghost mode schemas
+export { type GhostConfig, ghostConfigSchema } from "./ghost.js"
 
 // Registry & component schemas
 export {

@@ -9,7 +9,7 @@ describe("ocx search", () => {
 	beforeEach(async () => {
 		testDir = await createTempDir("search-test")
 		registry = startMockRegistry()
-		await runCLI(["init", "--yes"], testDir)
+		await runCLI(["init", "--force"], testDir)
 		const addResult = await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
 		if (addResult.exitCode !== 0) {
 			console.log("Failed to add registry in search test:", addResult.output)

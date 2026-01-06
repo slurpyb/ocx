@@ -16,7 +16,6 @@ const TEMPLATE_REPO = "kdcokenny/ocx"
 const TEMPLATE_PATH = "examples/registry-starter"
 
 interface InitOptions {
-	yes?: boolean
 	cwd?: string
 	quiet?: boolean
 	verbose?: boolean
@@ -26,13 +25,13 @@ interface InitOptions {
 	author?: string
 	canary?: boolean
 	local?: string
+	force?: boolean // Only used for --registry mode
 }
 
 export function registerInitCommand(program: Command): void {
 	program
 		.command("init [directory]")
 		.description("Initialize OCX configuration in your project")
-		.option("-y, --yes", "Skip prompts and use defaults")
 		.option("--cwd <path>", "Working directory", process.cwd())
 		.option("-q, --quiet", "Suppress output")
 		.option("-v, --verbose", "Verbose output")
@@ -42,6 +41,7 @@ export function registerInitCommand(program: Command): void {
 		.option("--author <name>", "Author name for the registry")
 		.option("--canary", "Use canary (main branch) instead of latest release")
 		.option("--local <path>", "Use local template directory instead of fetching")
+		.option("-f, --force", "Overwrite existing files (registry mode only)")
 		.action(async (directory: string | undefined, options: InitOptions) => {
 			try {
 				if (options.registry) {
@@ -59,14 +59,13 @@ async function runInit(options: InitOptions): Promise<void> {
 	const cwd = options.cwd ?? process.cwd()
 	const configPath = join(cwd, "ocx.jsonc")
 
-	// Check for existing config
+	// Check for existing config - error if exists (Law 1: Early Exit)
 	if (existsSync(configPath)) {
-		if (!options.yes) {
-			logger.warn("ocx.jsonc already exists")
-			logger.info("Use --yes to overwrite")
-			return
-		}
-		logger.info("Overwriting existing ocx.jsonc")
+		throw new ConflictError(
+			`ocx.jsonc already exists at ${configPath}\n\n` +
+				`To reset, delete the config and run init again:\n` +
+				`  rm ${configPath} && ocx init`,
+		)
 	}
 
 	const spin = options.quiet ? null : createSpinner({ text: "Initializing OCX..." })
@@ -123,8 +122,8 @@ async function runInitRegistry(directory: string | undefined, options: InitOptio
 	const existingFiles = await readdir(cwd).catch(() => [])
 	const hasVisibleFiles = existingFiles.some((f) => !f.startsWith("."))
 
-	if (hasVisibleFiles && !options.yes) {
-		throw new ConflictError("Directory is not empty. Use --yes to overwrite existing files.")
+	if (hasVisibleFiles && !options.force) {
+		throw new ConflictError("Directory is not empty. Use --force to overwrite existing files.")
 	}
 
 	const spin = options.quiet ? null : createSpinner({ text: "Scaffolding registry..." })

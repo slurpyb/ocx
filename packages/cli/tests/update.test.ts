@@ -28,7 +28,7 @@ describe("ocx update", () => {
 	 */
 	async function setupProject(name: string): Promise<string> {
 		const dir = await createTempDir(name)
-		await runCLI(["init", "--yes"], dir)
+		await runCLI(["init", "--force"], dir)
 
 		const configPath = join(dir, "ocx.jsonc")
 		const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>

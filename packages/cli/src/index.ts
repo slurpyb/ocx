@@ -10,6 +10,7 @@ import { Command } from "commander"
 import { registerAddCommand } from "./commands/add.js"
 import { registerBuildCommand } from "./commands/build.js"
 import { registerDiffCommand } from "./commands/diff.js"
+import { registerGhostCommand } from "./commands/ghost/index.js"
 import { registerInitCommand } from "./commands/init.js"
 import { registerRegistryCommand } from "./commands/registry.js"
 import { registerSearchCommand } from "./commands/search.js"
@@ -34,6 +35,7 @@ async function main() {
 	registerSearchCommand(program)
 	registerRegistryCommand(program)
 	registerBuildCommand(program)
+	registerGhostCommand(program)
 
 	// Parse and handle errors
 	await program.parseAsync(process.argv)

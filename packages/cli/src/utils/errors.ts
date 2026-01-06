@@ -79,3 +79,40 @@ export class IntegrityError extends OCXError {
 		this.name = "IntegrityError"
 	}
 }
+
+// =============================================================================
+// GHOST MODE ERRORS
+// =============================================================================
+
+export class GhostNotInitializedError extends OCXError {
+	constructor() {
+		super(
+			"Ghost mode not initialized. Run `ocx ghost init` first.",
+			"CONFIG_ERROR",
+			EXIT_CODES.CONFIG,
+		)
+		this.name = "GhostNotInitializedError"
+	}
+}
+
+export class GhostAlreadyInitializedError extends OCXError {
+	constructor(configPath?: string) {
+		const path = configPath ?? "~/.config/ocx/ghost.jsonc"
+		super(
+			`Ghost mode already initialized.\n` +
+				`Config: ${path}\n\n` +
+				`To reset, delete the config and run init again:\n` +
+				`  rm ${path} && ocx ghost init`,
+			"CONFLICT",
+			EXIT_CODES.GENERAL,
+		)
+		this.name = "GhostAlreadyInitializedError"
+	}
+}
+
+export class GhostConfigError extends OCXError {
+	constructor(message: string) {
+		super(message, "CONFIG_ERROR", EXIT_CODES.CONFIG)
+		this.name = "GhostConfigError"
+	}
+}
