@@ -6,8 +6,7 @@
  * config files, to prevent OpenCode from discovering project-level settings.
  */
 
-import { rmSync } from "node:fs"
-import { join } from "node:path"
+import { renameSync, rmSync } from "node:fs"
 import type { Command } from "commander"
 import {
 	getGhostConfigDir,
@@ -16,10 +15,17 @@ import {
 	loadGhostOpencodeConfig,
 } from "../../ghost/config.js"
 import { GhostNotInitializedError } from "../../utils/errors.js"
-import { handleError, logger } from "../../utils/index.js"
+import { detectGitRepo, handleError, logger } from "../../utils/index.js"
 import { discoverProjectFiles } from "../../utils/opencode-discovery.js"
 import { sharedOptions } from "../../utils/shared-options.js"
-import { cleanupSymlinkFarm, createSymlinkFarm } from "../../utils/symlink-farm.js"
+import {
+	cleanupOrphanedGhostDirs,
+	cleanupSymlinkFarm,
+	createSymlinkFarm,
+} from "../../utils/symlink-farm.js"
+
+/** Suffix for directories being removed (matches symlink-farm.ts) */
+const REMOVING_SUFFIX = "-removing"
 
 interface GhostOpenCodeOptions {
 	json?: boolean
@@ -45,32 +51,14 @@ export function registerGhostOpenCodeCommand(parent: Command): void {
 		})
 }
 
-/**
- * Get the git repository root directory.
- * Returns cwd if not in a git repository.
- *
- * @param cwd - Current working directory
- * @returns Git root directory or cwd if not a git repo
- */
-async function getGitRoot(cwd: string): Promise<string> {
-	const proc = Bun.spawn(["git", "rev-parse", "--show-toplevel"], {
-		cwd,
-		stdout: "pipe",
-		stderr: "pipe",
-	})
-
-	const exitCode = await proc.exited
-	if (exitCode !== 0) return cwd
-
-	const output = await new Response(proc.stdout).text()
-	return output.trim() || cwd
-}
-
 async function runGhostOpenCode(args: string[], options: GhostOpenCodeOptions): Promise<void> {
 	// Guard: Check ghost mode is initialized (Law 1: Early Exit)
 	if (!(await ghostConfigExists())) {
 		throw new GhostNotInitializedError()
 	}
+
+	// Clean up orphaned temp directories from interrupted sessions (SIGKILL resilience)
+	await cleanupOrphanedGhostDirs()
 
 	// Load opencode config from opencode.jsonc in ghost config directory
 	const openCodeConfig = await loadGhostOpencodeConfig()
@@ -84,9 +72,12 @@ async function runGhostOpenCode(args: string[], options: GhostOpenCodeOptions): 
 		)
 	}
 
-	// Discover project files to exclude and create symlink farm
+	// Detect git repository context (may be null if not in a git repo)
 	const cwd = process.cwd()
-	const gitRoot = await getGitRoot(cwd)
+	const gitContext = await detectGitRepo(cwd)
+
+	// Discover project files to exclude (use cwd as gitRoot fallback if not in repo)
+	const gitRoot = gitContext?.workTree ?? cwd
 	const excludePaths = await discoverProjectFiles(cwd, gitRoot)
 	const tempDir = await createSymlinkFarm(cwd, excludePaths)
 
@@ -98,11 +89,15 @@ async function runGhostOpenCode(args: string[], options: GhostOpenCodeOptions): 
 		await cleanupSymlinkFarm(tempDir)
 	}
 
-	// Safety net: sync cleanup on exit
+	// Safety net: sync cleanup on exit using rename-to-removing pattern
+	// This ensures SIGKILL resilience: if rename succeeds but rm is interrupted,
+	// the -removing directory will be cleaned up on next startup
 	const exitHandler = () => {
 		if (!cleanupDone && tempDir) {
 			try {
-				rmSync(tempDir, { recursive: true, force: true })
+				const removingPath = `${tempDir}${REMOVING_SUFFIX}`
+				renameSync(tempDir, removingPath)
+				rmSync(removingPath, { recursive: true, force: true })
 			} catch {
 				// Best effort cleanup
 			}
@@ -110,46 +105,45 @@ async function runGhostOpenCode(args: string[], options: GhostOpenCodeOptions): 
 	}
 	process.on("exit", exitHandler)
 
+	// Setup signal handlers BEFORE spawn to avoid race condition
+	// Use optional chaining since proc is null until spawn completes
+	let proc: ReturnType<typeof Bun.spawn> | null = null
+
+	const sigintHandler = () => proc?.kill("SIGINT")
+	const sigtermHandler = () => proc?.kill("SIGTERM")
+
+	process.on("SIGINT", sigintHandler)
+	process.on("SIGTERM", sigtermHandler)
+
 	// Spawn opencode from the temp directory with config passed via environment
-	const proc = Bun.spawn({
+	// Only set GIT_DIR/GIT_WORK_TREE when actually in a git repository
+	proc = Bun.spawn({
 		cmd: ["opencode", ...args],
 		cwd: tempDir,
 		env: {
 			...process.env,
 			OPENCODE_CONFIG_CONTENT: JSON.stringify(openCodeConfig),
 			OPENCODE_CONFIG_DIR: ghostConfigDir,
-			GIT_WORK_TREE: cwd,
-			GIT_DIR: join(gitRoot, ".git"),
+			...(gitContext && {
+				GIT_WORK_TREE: gitContext.workTree,
+				GIT_DIR: gitContext.gitDir,
+			}),
 		},
 		stdin: "inherit",
 		stdout: "inherit",
 		stderr: "inherit",
 	})
 
-	// Setup signal handlers to forward signals to child process
-	const sigintHandler = () => proc.kill("SIGINT")
-	const sigtermHandler = () => proc.kill("SIGTERM")
-
-	process.on("SIGINT", sigintHandler)
-	process.on("SIGTERM", sigtermHandler)
-
 	try {
 		// Wait for child to exit
 		const exitCode = await proc.exited
-
-		// Clean up signal handlers after subprocess exits to prevent memory leaks
+		process.exit(exitCode)
+	} finally {
+		// ALWAYS runs - success, error, or throw
+		// Cleanup signal handlers to prevent memory leaks
 		process.off("SIGINT", sigintHandler)
 		process.off("SIGTERM", sigtermHandler)
-
-		// Cleanup the symlink farm
-		await performCleanup()
 		process.off("exit", exitHandler)
-
-		process.exit(exitCode)
-	} catch (error) {
-		// Ensure cleanup happens even on error
 		await performCleanup()
-		process.off("exit", exitHandler)
-		throw error
 	}
 }

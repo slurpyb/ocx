@@ -5,6 +5,7 @@
 export * from "./content.js"
 export * from "./env.js"
 export * from "./errors.js"
+export * from "./git-context.js"
 export * from "./handle-error.js"
 export * from "./json-output.js"
 export * from "./logger.js"

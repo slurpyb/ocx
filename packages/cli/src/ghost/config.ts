@@ -5,11 +5,11 @@
  * stored at ~/.config/ocx/ghost.jsonc (XDG-compliant path).
  */
 
-import { existsSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
 import { homedir } from "node:os"
 import path, { dirname, join } from "node:path"
-import { type ParseError, parse as parseJsonc } from "jsonc-parser"
+import { type ParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser"
+import type { output, ZodError, ZodTypeAny } from "zod"
 import type { GhostConfig } from "../schemas/ghost.js"
 import { ghostConfigSchema } from "../schemas/ghost.js"
 import { GhostConfigError, GhostNotInitializedError } from "../utils/errors.js"
@@ -21,6 +21,76 @@ import { isAbsolutePath } from "../utils/path-helpers.js"
 
 const CONFIG_DIR_NAME = "ocx"
 const CONFIG_FILE_NAME = "ghost.jsonc"
+
+// =============================================================================
+// JSONC PARSING HELPERS
+// =============================================================================
+
+/**
+ * Format a Zod validation error into actionable, human-readable messages.
+ *
+ * @param error - The Zod error to format
+ * @returns Formatted error string with indented issues
+ */
+function formatZodError(error: ZodError): string {
+	return error.issues.map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`).join("\n")
+}
+
+/**
+ * Parse raw JSONC content with proper error handling.
+ *
+ * Use this when you need to parse JSONC without schema validation.
+ * For schema-validated parsing, use parseJsoncFile instead.
+ *
+ * @param filePath - Path to the file (for error messages)
+ * @param content - Raw file content to parse
+ * @returns Parsed JSON value
+ * @throws GhostConfigError on syntax errors
+ */
+function parseRawJsonc(filePath: string, content: string): unknown {
+	const errors: ParseError[] = []
+	const raw = parseJsonc(content, errors, { allowTrailingComma: true })
+
+	// Guard: Fail fast on JSONC syntax errors with precise location (Law 1 + 4)
+	const firstError = errors[0]
+	if (firstError) {
+		throw new GhostConfigError(
+			`Invalid JSON in ${filePath}:\n  Offset ${firstError.offset}: ${printParseErrorCode(firstError.error)}`,
+		)
+	}
+
+	return raw
+}
+
+/**
+ * Parse a JSONC file and validate against a Zod schema.
+ *
+ * Uses the 5 Laws of Elegant Defense:
+ * - Early Exit: Fails immediately on syntax errors
+ * - Parse Don't Validate: Returns trusted, typed data
+ * - Fail Fast: Provides actionable error messages with location info
+ *
+ * @param filePath - Path to the file (for error messages)
+ * @param content - Raw file content to parse
+ * @param schema - Zod schema to validate against
+ * @returns Parsed and validated data of type T
+ * @throws GhostConfigError on syntax errors or validation failures
+ */
+function parseJsoncFile<T extends ZodTypeAny>(
+	filePath: string,
+	content: string,
+	schema: T,
+): output<T> {
+	const raw = parseRawJsonc(filePath, content)
+
+	// Parse don't validate: schema transforms to trusted type (Law 2)
+	const result = schema.safeParse(raw)
+	if (!result.success) {
+		throw new GhostConfigError(`Invalid config in ${filePath}:\n${formatZodError(result.error)}`)
+	}
+
+	return result.data
+}
 
 // =============================================================================
 // PATH HELPERS
@@ -73,7 +143,7 @@ export async function ghostConfigExists(): Promise<boolean> {
  * Load the ghost config from disk.
  *
  * @throws GhostNotInitializedError if config file doesn't exist
- * @throws GhostConfigError if config file is invalid
+ * @throws GhostConfigError if config file is invalid (syntax or schema)
  */
 export async function loadGhostConfig(): Promise<GhostConfig> {
 	const configPath = getGhostConfigPath()
@@ -86,25 +156,8 @@ export async function loadGhostConfig(): Promise<GhostConfig> {
 
 	const content = await file.text()
 
-	// Parse JSONC content (supports comments)
-	const errors: ParseError[] = []
-	const json = parseJsonc(content, errors, { allowTrailingComma: true })
-
-	// Guard: Check for parse errors (Law 4: Fail Fast)
-	if (errors.length > 0) {
-		throw new GhostConfigError(
-			`Failed to parse ghost.jsonc: syntax error at offset ${errors[0]?.offset}`,
-		)
-	}
-
-	// Validate against schema (Law 2: Parse, Don't Validate)
-	const result = ghostConfigSchema.safeParse(json)
-	if (!result.success) {
-		const issues = result.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`)
-		throw new GhostConfigError(`Invalid ghost.jsonc:\n${issues.join("\n")}`)
-	}
-
-	return result.data
+	// Parse and validate in one step (Law 2: Parse Don't Validate)
+	return parseJsoncFile(configPath, content, ghostConfigSchema)
 }
 
 /**
@@ -123,8 +176,7 @@ export async function saveGhostConfig(config: GhostConfig): Promise<void> {
 	// Validate before saving (Law 4: Fail Fast)
 	const result = ghostConfigSchema.safeParse(config)
 	if (!result.success) {
-		const issues = result.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`)
-		throw new GhostConfigError(`Invalid config:\n${issues.join("\n")}`)
+		throw new GhostConfigError(`Invalid config:\n${formatZodError(result.error)}`)
 	}
 
 	const content = JSON.stringify(result.data, null, 2)
@@ -148,16 +200,24 @@ export function getGhostOpencodeConfigPath(): string {
  * Load the OpenCode config from the ghost config directory.
  * This is the opencode.jsonc file generated by `ghost add`.
  *
+ * Uses atomic read pattern to avoid TOCTOU race condition:
+ * Instead of exists() then read(), we attempt the read and handle ENOENT.
+ *
  * @returns The parsed config object, or empty object if file doesn't exist
+ * @throws GhostConfigError if config file has invalid JSON syntax
  */
 export async function loadGhostOpencodeConfig(): Promise<Record<string, unknown>> {
 	const configPath = getGhostOpencodeConfigPath()
 
-	// Guard: Return empty object if file doesn't exist (Law 1: Early Exit)
-	if (!existsSync(configPath)) {
-		return {}
+	try {
+		const content = await Bun.file(configPath).text()
+		return parseRawJsonc(configPath, content) as Record<string, unknown>
+	} catch (err) {
+		// File doesn't exist - return empty config (Law 1: Early Exit)
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+			return {}
+		}
+		// Re-throw other errors (Law 4: Fail Fast)
+		throw err
 	}
-
-	const content = await Bun.file(configPath).text()
-	return parseJsonc(content) as Record<string, unknown>
 }

@@ -7,9 +7,21 @@
  */
 
 import { randomBytes } from "node:crypto"
-import { readdir, rm, symlink } from "node:fs/promises"
+import { readdir, rename, rm, stat, symlink } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { isAbsolute, join } from "node:path"
+
+/** Age threshold for stale ghost sessions (24 hours) */
+const STALE_SESSION_THRESHOLD_MS = 24 * 60 * 60 * 1000
+
+/** Age threshold for interrupted deletions (1 hour) */
+const REMOVING_THRESHOLD_MS = 60 * 60 * 1000
+
+/** Prefix for ghost temp directories */
+const GHOST_DIR_PREFIX = "ocx-ghost-"
+
+/** Suffix for directories being removed */
+const REMOVING_SUFFIX = "-removing"
 
 /**
  * Create a symlink farm in a temp directory.
@@ -58,10 +70,97 @@ export async function createSymlinkFarm(
 }
 
 /**
- * Clean up a symlink farm temp directory.
+ * Clean up a symlink farm temp directory using rename-to-removing pattern.
+ * This pattern ensures SIGKILL resilience: if the process dies mid-deletion,
+ * the -removing directory will be cleaned up on next startup.
  *
  * @param tempDir - Path to the temp directory to remove
  */
 export async function cleanupSymlinkFarm(tempDir: string): Promise<void> {
-	await rm(tempDir, { recursive: true, force: true })
+	const removingPath = `${tempDir}${REMOVING_SUFFIX}`
+
+	try {
+		await rename(tempDir, removingPath)
+	} catch {
+		// Directory may already be gone or renamed - that's fine
+		return
+	}
+
+	await rm(removingPath, { recursive: true, force: true })
+}
+
+/**
+ * Cleans up orphaned ghost temp directories from interrupted sessions.
+ * Uses rename-to-removing pattern for SIGKILL resilience.
+ *
+ * Scans for:
+ * - Directories ending in `-removing` (interrupted deletions, 1 hour threshold)
+ * - Directories matching `ocx-ghost-*` (stale sessions, 24 hour threshold)
+ *
+ * @param tempBase - Base temp directory to scan (defaults to system tmpdir)
+ * @returns Count of cleaned directories
+ */
+export async function cleanupOrphanedGhostDirs(tempBase: string = tmpdir()): Promise<number> {
+	let cleanedCount = 0
+
+	// Guard: tempBase must be absolute (Law 1: Early Exit)
+	if (!isAbsolute(tempBase)) {
+		throw new Error(`tempBase must be an absolute path, got: ${tempBase}`)
+	}
+
+	let dirNames: string[]
+	try {
+		dirNames = await readdir(tempBase)
+	} catch {
+		// Can't read temp dir - nothing to clean
+		return 0
+	}
+
+	for (const dirName of dirNames) {
+		const dirPath = join(tempBase, dirName)
+
+		// Check for interrupted deletions (ends with -removing)
+		const isRemovingDir = dirName.endsWith(REMOVING_SUFFIX)
+		const isGhostDir = dirName.startsWith(GHOST_DIR_PREFIX) && !isRemovingDir
+
+		// Skip unrelated entries (Law 1: Early Exit)
+		if (!isRemovingDir && !isGhostDir) continue
+
+		// Check if it's a directory and get stats
+		let stats: Awaited<ReturnType<typeof stat>>
+		try {
+			stats = await stat(dirPath)
+		} catch {
+			// Can't stat - skip this entry
+			continue
+		}
+
+		// Skip non-directories (Law 1: Early Exit)
+		if (!stats.isDirectory()) continue
+
+		// Determine threshold based on directory type
+		const threshold = isRemovingDir ? REMOVING_THRESHOLD_MS : STALE_SESSION_THRESHOLD_MS
+		const ageMs = Date.now() - stats.mtimeMs
+
+		// Skip if not stale enough (Law 1: Early Exit)
+		if (ageMs <= threshold) continue
+
+		// Clean up the stale directory
+		try {
+			if (isGhostDir) {
+				// Use rename-to-removing pattern for normal ghost dirs
+				const removingPath = `${dirPath}${REMOVING_SUFFIX}`
+				await rename(dirPath, removingPath)
+				await rm(removingPath, { recursive: true, force: true })
+			} else {
+				// Already a -removing dir, just delete it
+				await rm(dirPath, { recursive: true, force: true })
+			}
+			cleanedCount++
+		} catch {
+			// Best effort cleanup - continue with others
+		}
+	}
+
+	return cleanedCount
 }

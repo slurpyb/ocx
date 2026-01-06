@@ -112,9 +112,8 @@ describe("ocx ghost init", () => {
 		const content = await configFile.text()
 		const config = parseJsonc(content) as Record<string, unknown>
 
-		// Check for default structure
+		// Check for default structure (opencode config is stored separately in opencode.jsonc)
 		expect(config.registries).toBeDefined()
-		expect(config.opencode).toBeDefined()
 		expect(config.componentPath).toBeDefined()
 	})
 

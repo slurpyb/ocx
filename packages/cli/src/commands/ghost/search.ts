@@ -6,7 +6,7 @@
  */
 
 import type { Command } from "commander"
-import { Option } from "commander"
+import { InvalidArgumentError, Option } from "commander"
 import { GhostConfigProvider } from "../../config/provider.js"
 import { handleError, logger, outputJson } from "../../utils/index.js"
 import { addCommonOptions, addVerboseOption } from "../../utils/shared-options.js"
@@ -20,20 +20,35 @@ interface GhostSearchOptions {
 	limit: number
 }
 
+/**
+ * Parses and validates a positive integer from CLI input.
+ * @param value - The string value from CLI
+ * @returns The parsed positive integer
+ * @throws InvalidArgumentError if value is not a positive integer
+ */
+function parsePositiveInt(value: string): number {
+	const parsed = parseInt(value, 10)
+	if (Number.isNaN(parsed) || parsed <= 0) {
+		throw new InvalidArgumentError("Must be a positive integer")
+	}
+	return parsed
+}
+
 export function registerGhostSearchCommand(parent: Command): void {
 	const cmd = parent
 		.command("search")
 		.alias("list")
 		.description("Search for components using ghost mode registries")
 		.argument("[query]", "Search query")
-		.addOption(new Option("-l, --limit <n>", "Limit results").default("20"))
+		.addOption(
+			new Option("-l, --limit <n>", "Limit results").default(20).argParser(parsePositiveInt),
+		)
 
 	addCommonOptions(cmd)
 	addVerboseOption(cmd)
 
 	cmd.action(async (query: string | undefined, options: GhostSearchOptions) => {
 		try {
-			const limit = parseInt(String(options.limit), 10)
 			const provider = await GhostConfigProvider.create(options.cwd)
 
 			// Guard: Check ghost has registries configured
@@ -48,7 +63,7 @@ export function registerGhostSearchCommand(parent: Command): void {
 				return
 			}
 
-			await runSearchCore(query, { ...options, limit }, provider)
+			await runSearchCore(query, options, provider)
 		} catch (error) {
 			handleError(error, { json: options.json })
 		}

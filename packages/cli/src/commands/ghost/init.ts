@@ -5,17 +5,19 @@
  * at ~/.config/ocx/ghost.jsonc (XDG-compliant path).
  */
 
-import { mkdir } from "node:fs/promises"
+import { mkdir, writeFile } from "node:fs/promises"
 import type { Command } from "commander"
-import { getGhostConfigDir, getGhostConfigPath, ghostConfigExists } from "../../ghost/config.js"
+import { getGhostConfigDir, getGhostConfigPath } from "../../ghost/config.js"
 import { GhostAlreadyInitializedError } from "../../utils/errors.js"
 import { handleError, logger } from "../../utils/index.js"
 import { addOutputOptions, addVerboseOption } from "../../utils/shared-options.js"
 
 // Default ghost.jsonc content with helpful comments
+// Note: OpenCode configuration is stored separately in opencode.jsonc
 const DEFAULT_GHOST_CONFIG = `{
   // OCX Ghost Mode Configuration
   // This config is used when running commands with \`ocx ghost\` or \`ocx g\`
+  // Note: OpenCode settings go in ~/.config/ocx/opencode.jsonc (see: ocx ghost opencode --edit)
   
   // Component registries to use
   "registries": {
@@ -25,13 +27,7 @@ const DEFAULT_GHOST_CONFIG = `{
   },
   
   // Where to install components (relative to project root)
-  "componentPath": "src/components",
-  
-  // OpenCode configuration (passed via OPENCODE_CONFIG_CONTENT)
-  // Customize your preferred model, providers, agents, etc.
-  "opencode": {
-    // "model": "anthropic/claude-sonnet-4-20250514"
-  }
+  "componentPath": "src/components"
 }
 `
 
@@ -58,22 +54,22 @@ export function registerGhostInitCommand(parent: Command): void {
 }
 
 async function runGhostInit(options: GhostInitOptions): Promise<void> {
-	// Get config path early for error message (Law 5: Intentional Naming)
+	// Get paths early for error message (Law 5: Intentional Naming)
 	const configPath = getGhostConfigPath()
-
-	// Guard: Check if already initialized (Law 1: Early Exit)
-	if (await ghostConfigExists()) {
-		throw new GhostAlreadyInitializedError(configPath)
-	}
-
-	// Create config directory if needed
 	const configDir = getGhostConfigDir()
 
-	// Create config directory (recursive is idempotent)
+	// Create config directory (recursive is idempotent, safe if exists)
 	await mkdir(configDir, { recursive: true })
 
-	// Write default configuration
-	await Bun.write(configPath, DEFAULT_GHOST_CONFIG)
+	// Atomic exclusive create - eliminates TOCTOU race condition (Law 4: Fail Fast)
+	try {
+		await writeFile(configPath, DEFAULT_GHOST_CONFIG, { flag: "wx" })
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+			throw new GhostAlreadyInitializedError(configPath)
+		}
+		throw err
+	}
 
 	// Output success
 	if (options.json) {
