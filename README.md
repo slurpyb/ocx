@@ -146,13 +146,14 @@ ocx ghost opencode          # Runs OpenCode with YOUR config
 #### Config Location
 
 Ghost config is stored at `~/.config/ocx/ghost.jsonc` (or `$XDG_CONFIG_HOME/ocx/ghost.jsonc`).
+OpenCode configuration for ghost mode is stored in `~/.config/ocx/opencode.jsonc`.
 
 ```jsonc
 {
-  // Component registries
+  // Component registries (Record<name, url>)
   "registries": {
-    "default": { "url": "https://registry.opencode.ai" },
-    "kdco": { "url": "https://registry.kdco.dev" }
+    "default": "https://registry.opencode.ai",
+    "kdco": "https://registry.kdco.dev"
   },
   
   // Where to install components (relative to ghost config dir)
@@ -176,7 +177,9 @@ By default, ghost mode hides all OpenCode project files (AGENTS.md, .opencode/, 
 ```jsonc
 // ~/.config/ocx/ghost.jsonc
 {
-  "registries": ["https://ocx.build/r/kdco"],
+  "registries": {
+    "kdco": "https://registry.kdco.dev"
+  },
   
   // Include specific OpenCode files in ghost sessions
   "include": [

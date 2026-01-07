@@ -5,13 +5,17 @@
  */
 
 import type { Command } from "commander"
+import { InvalidArgumentError, Option } from "commander"
 import fuzzysort from "fuzzysort"
 import kleur from "kleur"
+import type { ConfigProvider } from "../config/provider.js"
+import { LocalConfigProvider } from "../config/provider.js"
 import { fetchRegistryIndex } from "../registry/fetcher.js"
-import { readOcxConfig, readOcxLock } from "../schemas/config.js"
-import { createSpinner, handleError, logger, outputJson, ValidationError } from "../utils/index.js"
+import { readOcxLock } from "../schemas/config.js"
+import { createSpinner, handleError, logger, outputJson } from "../utils/index.js"
+import { addCommonOptions, addVerboseOption } from "../utils/shared-options.js"
 
-interface SearchOptions {
+export interface SearchOptions {
 	cwd: string
 	json: boolean
 	quiet: boolean
@@ -20,143 +24,163 @@ interface SearchOptions {
 	limit: number
 }
 
+/**
+ * Parses and validates a positive integer from CLI input.
+ * @param value - The string value from CLI
+ * @returns The parsed positive integer
+ * @throws InvalidArgumentError if value is not a positive integer
+ */
+function parsePositiveInt(value: string): number {
+	const parsed = parseInt(value, 10)
+	if (Number.isNaN(parsed) || parsed <= 0) {
+		throw new InvalidArgumentError("Must be a positive integer")
+	}
+	return parsed
+}
+
 export function registerSearchCommand(program: Command): void {
-	program
+	const cmd = program
 		.command("search")
 		.alias("list")
 		.description("Search for components across registries or list installed")
 		.argument("[query]", "Search query")
-		.option("--cwd <path>", "Working directory", process.cwd())
-		.option("--json", "Output as JSON", false)
-		.option("-q, --quiet", "Suppress output", false)
-		.option("-v, --verbose", "Verbose output", false)
 		.option("-i, --installed", "List installed components only", false)
-		.option("-l, --limit <n>", "Limit results", "20")
-		.action(async (query: string | undefined, options: SearchOptions) => {
-			try {
-				const limit = parseInt(String(options.limit), 10)
-				if (Number.isNaN(limit) || limit < 1) {
-					throw new ValidationError("--limit must be a positive integer")
-				}
+		.addOption(
+			new Option("-l, --limit <n>", "Limit results").default(20).argParser(parsePositiveInt),
+		)
 
-				// List installed only
-				if (options.installed) {
-					const lock = await readOcxLock(options.cwd)
-					if (!lock) {
-						if (options.json) {
-							outputJson({ success: true, data: { components: [] } })
-						} else {
-							logger.info("No components installed.")
-						}
-						return
-					}
+	addCommonOptions(cmd)
+	addVerboseOption(cmd)
 
-					const installed = Object.entries(lock.installed).map(([name, info]) => ({
-						name,
-						registry: info.registry,
-						version: info.version,
-						installedAt: info.installedAt,
-					}))
-
+	cmd.action(async (query: string | undefined, options: SearchOptions) => {
+		try {
+			// List installed only
+			if (options.installed) {
+				const lock = await readOcxLock(options.cwd)
+				if (!lock) {
 					if (options.json) {
-						outputJson({ success: true, data: { components: installed } })
+						outputJson({ success: true, data: { components: [] } })
 					} else {
-						logger.info(`Installed components (${installed.length}):`)
-						for (const comp of installed) {
-							console.log(
-								`  ${kleur.cyan(comp.name)} ${kleur.dim(`v${comp.version}`)} from ${comp.registry}`,
-							)
-						}
+						logger.info("No components installed.")
 					}
 					return
 				}
 
-				// Search across registries
-				const config = await readOcxConfig(options.cwd)
-				if (!config) {
-					logger.warn("No ocx.jsonc found. Run 'ocx init' first.")
-					return
-				}
-
-				if (options.verbose) {
-					logger.info(`Searching in ${Object.keys(config.registries).length} registries...`)
-				}
-
-				const allComponents: Array<{
-					name: string
-					description: string
-					type: string
-					registry: string
-				}> = []
-
-				const spinner = createSpinner({
-					text: "Searching registries...",
-					quiet: options.quiet || options.verbose,
-				})
-
-				if (!options.json && !options.verbose) {
-					spinner.start()
-				}
-
-				for (const [registryName, registryConfig] of Object.entries(config.registries)) {
-					try {
-						if (options.verbose) {
-							logger.info(`Fetching index from ${registryName} (${registryConfig.url})...`)
-						}
-						const index = await fetchRegistryIndex(registryConfig.url)
-						if (options.verbose) {
-							logger.info(`Found ${index.components.length} components in ${registryName}`)
-						}
-						for (const comp of index.components) {
-							allComponents.push({
-								name: `${index.namespace}/${comp.name}`,
-								description: comp.description,
-								type: comp.type,
-								registry: registryName,
-							})
-						}
-					} catch (error) {
-						if (options.verbose) {
-							logger.warn(
-								`Failed to fetch registry ${registryName}: ${error instanceof Error ? error.message : String(error)}`,
-							)
-						}
-						// Skip failed registries
-					}
-				}
-
-				if (!options.json && !options.verbose) {
-					spinner.stop()
-				}
-
-				// Filter by query if provided
-				let results = allComponents
-				if (query) {
-					const fuzzyResults = fuzzysort.go(query, allComponents, {
-						keys: ["name", "description"],
-						limit,
-					})
-					results = fuzzyResults.map((r) => r.obj)
-				} else {
-					results = results.slice(0, limit)
-				}
+				const installed = Object.entries(lock.installed).map(([name, info]) => ({
+					name,
+					registry: info.registry,
+					version: info.version,
+					installedAt: info.installedAt,
+				}))
 
 				if (options.json) {
-					outputJson({ success: true, data: { components: results } })
+					outputJson({ success: true, data: { components: installed } })
 				} else {
-					if (results.length === 0) {
-						logger.info("No components found.")
-					} else {
-						logger.info(`Found ${results.length} components:`)
-						for (const comp of results) {
-							console.log(
-								`  ${kleur.cyan(comp.name)} ${kleur.dim(`(${comp.type})`)} - ${comp.description}`,
-							)
-						}
+					logger.info(`Installed components (${installed.length}):`)
+					for (const comp of installed) {
+						console.log(
+							`  ${kleur.cyan(comp.name)} ${kleur.dim(`v${comp.version}`)} from ${comp.registry}`,
+						)
 					}
 				}
-			} catch (error) {
-				handleError(error, { json: options.json })
+				return
 			}
+
+			// Search using local config provider
+			const provider = await LocalConfigProvider.create(options.cwd)
+			await runSearchCore(query, options, provider)
+		} catch (error) {
+			handleError(error, { json: options.json })
+		}
+	})
+}
+
+/**
+ * Core search logic that accepts a ConfigProvider.
+ * This enables reuse across both standard and ghost modes.
+ */
+export async function runSearchCore(
+	query: string | undefined,
+	options: { limit: number; json?: boolean; quiet?: boolean; verbose?: boolean },
+	provider: ConfigProvider,
+): Promise<void> {
+	const registries = provider.getRegistries()
+
+	if (options.verbose) {
+		logger.info(`Searching in ${Object.keys(registries).length} registries...`)
+	}
+
+	const allComponents: Array<{
+		name: string
+		description: string
+		type: string
+		registry: string
+	}> = []
+
+	const spinner = createSpinner({
+		text: "Searching registries...",
+		quiet: options.quiet || options.verbose,
+	})
+
+	if (!options.json && !options.verbose) {
+		spinner.start()
+	}
+
+	for (const [registryName, registryConfig] of Object.entries(registries)) {
+		try {
+			if (options.verbose) {
+				logger.info(`Fetching index from ${registryName} (${registryConfig.url})...`)
+			}
+			const index = await fetchRegistryIndex(registryConfig.url)
+			if (options.verbose) {
+				logger.info(`Found ${index.components.length} components in ${registryName}`)
+			}
+			for (const comp of index.components) {
+				allComponents.push({
+					name: `${index.namespace}/${comp.name}`,
+					description: comp.description,
+					type: comp.type,
+					registry: registryName,
+				})
+			}
+		} catch (error) {
+			if (options.verbose) {
+				logger.warn(
+					`Failed to fetch registry ${registryName}: ${error instanceof Error ? error.message : String(error)}`,
+				)
+			}
+			// Skip failed registries
+		}
+	}
+
+	if (!options.json && !options.verbose) {
+		spinner.stop()
+	}
+
+	// Filter by query if provided
+	let results = allComponents
+	if (query) {
+		const fuzzyResults = fuzzysort.go(query, allComponents, {
+			keys: ["name", "description"],
+			limit: options.limit,
 		})
+		results = fuzzyResults.map((r) => r.obj)
+	} else {
+		results = results.slice(0, options.limit)
+	}
+
+	if (options.json) {
+		outputJson({ success: true, data: { components: results } })
+	} else {
+		if (results.length === 0) {
+			logger.info("No components found.")
+		} else {
+			logger.info(`Found ${results.length} components:`)
+			for (const comp of results) {
+				console.log(
+					`  ${kleur.cyan(comp.name)} ${kleur.dim(`(${comp.type})`)} - ${comp.description}`,
+				)
+			}
+		}
+	}
 }
