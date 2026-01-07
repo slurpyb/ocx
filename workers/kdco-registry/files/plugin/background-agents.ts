@@ -1,9 +1,13 @@
 /**
- * background-agents
- * Unified delegation system for OpenCode
+ * Background Agents Plugin for OpenCode
  *
+ * Unified delegation system for OpenCode.
  * Replaces native `task` tool with persistent, async-first agent delegation.
  * All agent outputs are persisted to storage, orchestrator receives only key references.
+ *
+ * NOTE: This file is the source of truth. The copy at
+ * workers/kdco-registry/files/plugin/background-agents.ts
+ * should be synced via build script or manual copy.
  *
  * Based on oh-my-opencode by @code-yeongyu (MIT License)
  * https://github.com/code-yeongyu/oh-my-opencode
@@ -34,7 +38,6 @@ export type AgentConfig = z.infer<typeof agentConfigSchema>
 const poolConfigSchema = z.object({
 	globalMax: z.number().int().positive().default(5),
 	queueMax: z.number().int().positive().default(15),
-	queueTimeout: z.number().int().positive().default(300000),
 	agents: z.record(agentConfigSchema).default({}),
 })
 
@@ -219,6 +222,9 @@ interface Delegation {
 	// Generated on completion by small_model
 	title?: string
 	description?: string
+	// Atomic state transition flag - prevents double-completion race conditions
+	resolved: boolean
+	timeoutTimer?: NodeJS.Timeout
 }
 
 interface DelegateInput {
@@ -340,7 +346,6 @@ async function loadOrCreateConfig(directory: string): Promise<PoolConfig> {
   "pool": {
     "globalMax": 5,           // Max concurrent delegations
     "queueMax": 15,           // Max pending (rejects if exceeded)
-    "queueTimeout": 300000,   // 5 min timeout (ms)
     "agents": {
       // Per-agent overrides (optional)
       // "researcher": { "maxConcurrency": 2, "priority": 1 }
@@ -372,8 +377,30 @@ class DelegationManager {
 		this.config = config
 		this.queue = new PQueue({
 			concurrency: config.globalMax,
-			timeout: config.queueTimeout,
 		})
+	}
+
+	/**
+	 * Atomically marks a delegation as complete. Returns false if already resolved.
+	 * Must be called BEFORE any await in completion handlers.
+	 * Law 2: Make Illegal States Unrepresentable (prevents double-completion)
+	 * Law 1: Early Exit (returns false for guard clause pattern)
+	 */
+	private markComplete(
+		delegation: Delegation,
+		status: "complete" | "timeout" | "error",
+		errorMessage?: string,
+	): boolean {
+		if (delegation.resolved) return false
+		delegation.resolved = true
+		delegation.status = status
+		delegation.completedAt = new Date()
+		if (delegation.timeoutTimer) {
+			clearTimeout(delegation.timeoutTimer)
+			delegation.timeoutTimer = undefined
+		}
+		if (errorMessage) delegation.error = errorMessage
+		return true
 	}
 
 	/**
@@ -409,6 +436,21 @@ class DelegationManager {
 			}
 		}
 		return currentID
+	}
+
+	/**
+	 * Checks if a delegation's parent session is in the same session tree as the query session.
+	 * Both sessions are resolved to their root and compared.
+	 * Law 2: Make Illegal States Unrepresentable - can't see delegations from other sessions.
+	 * Law 5: Intentional Naming - clearly expresses the tree membership check.
+	 */
+	private async isInSessionTree(
+		delegationParentID: string,
+		querySessionID: string,
+	): Promise<boolean> {
+		const delegationRoot = await this.getRootSessionID(delegationParentID)
+		const queryRoot = await this.getRootSessionID(querySessionID)
+		return delegationRoot === queryRoot
 	}
 
 	/**
@@ -464,6 +506,9 @@ class DelegationManager {
 	/**
 	 * Execute a delegation (called from within queue).
 	 * Preserves fire-and-forget pattern for prompt execution.
+	 *
+	 * API Optimization: Agents list and config are fetched once at the start
+	 * and reused for all validation in this method.
 	 */
 	private async executeDelegation(input: DelegateInput): Promise<Delegation> {
 		// Generate readable ID
@@ -481,7 +526,7 @@ class DelegationManager {
 			throw new Error("Failed to generate unique delegation ID after 10 attempts")
 		}
 
-		// Validate agent exists before creating session
+		// Fetch agents list once - used for validation and error messages
 		const agentsResult = await this.client.app.agents({})
 		const agents = (agentsResult.data ?? []) as {
 			name: string
@@ -502,6 +547,7 @@ class DelegationManager {
 		}
 
 		// Check if agent is read-only (Early Exit + Fail Fast)
+		// Note: parseAgentWriteCapability uses config.get() which is separate from agents()
 		const { isReadOnly } = await parseAgentWriteCapability(this.client, input.agent)
 		if (!isReadOnly) {
 			throw new Error(
@@ -549,6 +595,7 @@ class DelegationManager {
 				toolCalls: 0,
 				lastUpdate: new Date(),
 			},
+			resolved: false,
 		}
 
 		await this.debugLog(`Created delegation ${delegation.id}`)
@@ -569,18 +616,17 @@ class DelegationManager {
 		)
 
 		// Set a timer for the global max run time
-		setTimeout(() => {
-			const current = this.delegations.get(delegation.id)
-			if (current && current.status === "running") {
-				this.handleTimeout(delegation.id)
-			}
+		delegation.timeoutTimer = setTimeout(() => {
+			this.handleTimeout(delegation.id)
 		}, MAX_RUN_TIME_MS + 5000) // Adding 5s buffer
+		delegation.timeoutTimer.unref() // Don't keep process alive
 
 		// Ensure delegations directory exists (early check)
 		await this.ensureDelegationsDir(input.parentSessionID)
 
 		// Fire the prompt (using prompt() instead of promptAsync() to properly initialize agent loop)
 		// Agent param is critical for MCP tools - tells OpenCode which agent's config to use
+		// Fire-and-forget pattern: DO NOT await - return delegation immediately
 		this.client.session
 			.prompt({
 				path: { id: delegation.sessionID },
@@ -589,12 +635,18 @@ class DelegationManager {
 					parts: [{ type: "text", text: input.prompt }],
 				},
 			})
-			.catch((error: Error) => {
-				delegation.status = "error"
-				delegation.error = error.message
-				delegation.completedAt = new Date()
-				this.persistOutput(delegation, `Error: ${error.message}`)
-				this.notifyParent(delegation)
+			.catch(async (error: Error) => {
+				// Atomic check - another handler may have already completed this (Law 2)
+				if (!this.markComplete(delegation, "error", error.message)) return
+
+				await this.debugLog(`Delegation ${delegation.id} failed: ${error.message}`)
+				const persistSuccess = await this.persistOutput(delegation, `Error: ${error.message}`)
+				await this.notifyParent(delegation)
+
+				// Law 3: Disk is truth for completed - only delete from Map if persist succeeded
+				if (persistSuccess) {
+					this.delegations.delete(delegation.id)
+				}
 			})
 
 		return delegation
@@ -616,29 +668,30 @@ class DelegationManager {
 	 */
 	private async handleTimeout(delegationId: string): Promise<void> {
 		const delegation = this.delegations.get(delegationId)
-		if (!delegation || delegation.status !== "running") return
+		if (!delegation) return
+
+		// Atomic state transition BEFORE any await (Law 4: Fail Fast)
+		const errorMessage = `Delegation timed out after ${MAX_RUN_TIME_MS / 1000}s`
+		if (!this.markComplete(delegation, "timeout", errorMessage)) return
 
 		await this.debugLog(`handleTimeout for delegation ${delegation.id}`)
 
-		delegation.status = "timeout"
-		delegation.completedAt = new Date()
-		delegation.error = `Delegation timed out after ${MAX_RUN_TIME_MS / 1000}s`
-
-		// Try to cancel the session
-		try {
-			await this.client.session.delete({
-				path: { id: delegation.sessionID },
-			})
-		} catch {
-			// Ignore
-		}
+		// Use session.abort() instead of session.delete() - fire-and-forget with logging
+		this.client.session.abort({ path: { id: delegation.sessionID } }).catch((e) => {
+			this.debugLog(`Failed to abort session: ${e}`)
+		})
 
 		// Get whatever result was produced so far
 		const result = await this.getResult(delegation)
-		await this.persistOutput(delegation, `${result}\n\n[TIMEOUT REACHED]`)
+		const persistSuccess = await this.persistOutput(delegation, `${result}\n\n[TIMEOUT REACHED]`)
 
 		// Notify parent session
 		await this.notifyParent(delegation)
+
+		// Law 3: Disk is truth for completed - only delete from Map if persist succeeded
+		if (persistSuccess) {
+			this.delegations.delete(delegation.id)
+		}
 	}
 
 	/**
@@ -664,12 +717,12 @@ class DelegationManager {
 	 */
 	async handleSessionIdle(sessionID: string): Promise<void> {
 		const delegation = this.findBySession(sessionID)
-		if (!delegation || delegation.status !== "running") return
+		if (!delegation) return
+
+		// Atomic state transition BEFORE any await (Law 4: Fail Fast)
+		if (!this.markComplete(delegation, "complete")) return
 
 		await this.debugLog(`handleSessionIdle for delegation ${delegation.id}`)
-
-		delegation.status = "complete"
-		delegation.completedAt = new Date()
 
 		// Get the result
 		const result = await this.getResult(delegation)
@@ -680,10 +733,15 @@ class DelegationManager {
 		delegation.description = metadata.description
 
 		// Persist output with generated metadata
-		await this.persistOutput(delegation, result)
+		const persistSuccess = await this.persistOutput(delegation, result)
 
 		// Notify parent session
 		await this.notifyParent(delegation)
+
+		// Law 3: Disk is truth for completed - only delete from Map if persist succeeded
+		if (persistSuccess) {
+			this.delegations.delete(delegation.id)
+		}
 	}
 
 	/**
@@ -744,9 +802,11 @@ class DelegationManager {
 	}
 
 	/**
-	 * Persist delegation output to storage
+	 * Persist delegation output to storage.
+	 * Returns true on success, false on failure.
+	 * Law 4: Fail Fast - caller should NOT delete from Map if this fails.
 	 */
-	private async persistOutput(delegation: Delegation, content: string): Promise<void> {
+	private async persistOutput(delegation: Delegation, content?: string): Promise<boolean> {
 		try {
 			// Ensure we resolve the root session ID of the PARENT session for storage
 			const dir = await this.ensureDelegationsDir(delegation.parentSessionID)
@@ -769,12 +829,12 @@ ${description}
 ---
 
 `
-			await fs.writeFile(filePath, header + content, "utf8")
+			await fs.writeFile(filePath, header + (content ?? ""), "utf8")
 			await this.debugLog(`Persisted output to ${filePath}`)
+			return true
 		} catch (error) {
-			await this.debugLog(
-				`Failed to persist output: ${error instanceof Error ? error.message : "Unknown error"}`,
-			)
+			await this.debugLog(`Failed to persist output: ${error}`)
+			return false
 		}
 	}
 
@@ -782,44 +842,38 @@ ${description}
 	 * Notify parent session that delegation is complete.
 	 * Uses batching: individual notifications are silent (noReply: true),
 	 * but when ALL delegations for a parent session complete, triggers a response.
+	 *
+	 * Law 1: Early Exit - notification must succeed before cleanup.
+	 * Law 4: Fail Fast - pendingSet.delete only after notification succeeds.
 	 */
 	private async notifyParent(delegation: Delegation): Promise<void> {
-		try {
-			// Use generated title/description if available
-			const title = delegation.title || delegation.id
-			const description = delegation.description || "(No description)"
-			const statusText = delegation.status === "complete" ? "complete" : delegation.status
+		// Use generated title/description if available
+		const title = delegation.title || delegation.id
+		const description = delegation.description || "(No description)"
+		const statusText = delegation.status === "complete" ? "complete" : delegation.status
 
-			// Mark this delegation as complete in the pending tracker
-			const pendingSet = this.pendingByParent.get(delegation.parentSessionID)
-			if (pendingSet) {
-				pendingSet.delete(delegation.id)
-			}
+		// Get pending set for this parent (but don't delete yet - need to send notification first)
+		const pendingSet = this.pendingByParent.get(delegation.parentSessionID)
 
-			// Check if ALL delegations for this parent are now complete
-			const allComplete = !pendingSet || pendingSet.size === 0
+		// Calculate remaining count BEFORE we would delete
+		// (we'll delete after successful notification)
+		const remainingAfterThis = pendingSet ? pendingSet.size - 1 : 0
+		const allComplete = remainingAfterThis <= 0
 
-			// Clean up if all complete
-			if (allComplete && pendingSet) {
-				this.pendingByParent.delete(delegation.parentSessionID)
-			}
+		// Build notification based on whether all are complete or some remain
+		let notification: string
+		if (allComplete) {
+			// All delegations complete - list all that completed for this parent
+			const completedDelegations = Array.from(this.delegations.values())
+				.filter(
+					(d) =>
+						d.parentSessionID === delegation.parentSessionID &&
+						(d.status === "complete" || d.status === "timeout" || d.status === "error"),
+				)
+				.map((d) => `- \`${d.id}\`: ${d.title || d.id}`)
+				.join("\n")
 
-			const remainingCount = pendingSet?.size || 0
-
-			// Build notification based on whether all are complete or some remain
-			let notification: string
-			if (allComplete) {
-				// All delegations complete - list all that completed for this parent
-				const completedDelegations = Array.from(this.delegations.values())
-					.filter(
-						(d) =>
-							d.parentSessionID === delegation.parentSessionID &&
-							(d.status === "complete" || d.status === "timeout" || d.status === "error"),
-					)
-					.map((d) => `- \`${d.id}\`: ${d.title || d.id}`)
-					.join("\n")
-
-				notification = `<system-reminder>
+			notification = `<system-reminder>
 All delegations complete.
 
 **Completed:**
@@ -827,9 +881,9 @@ ${completedDelegations || `- \`${delegation.id}\`: ${title}`}
 
 Use \`delegation_read(id)\` to retrieve each result.
 </system-reminder>`
-			} else {
-				// Individual completion - show remaining count with anti-polling reinforcement
-				notification = `<system-reminder>
+		} else {
+			// Individual completion - show remaining count with anti-polling reinforcement
+			notification = `<system-reminder>
 Delegation ${statusText}.
 
 **ID:** \`${delegation.id}\`
@@ -837,17 +891,18 @@ Delegation ${statusText}.
 **Description:** ${description}
 **Status:** ${delegation.status}${delegation.error ? `\n**Error:** ${delegation.error}` : ""}
 
-**${remainingCount} delegation${remainingCount === 1 ? "" : "s"} still in progress.** You WILL be notified when ALL complete.
+**${remainingAfterThis} delegation${remainingAfterThis === 1 ? "" : "s"} still in progress.** You WILL be notified when ALL complete.
 ❌ Do NOT poll \`delegation_list\` - continue productive work.
 
 Use \`delegation_read("${delegation.id}")\` to retrieve this result when ready.
 </system-reminder>`
-			}
+		}
 
-			// If all delegations complete, trigger a response (noReply: false)
-			// Otherwise, add notification silently (noReply: true)
-			const shouldTriggerResponse = allComplete
+		// If all delegations complete, trigger a response (noReply: false)
+		// Otherwise, add notification silently (noReply: true)
+		const shouldTriggerResponse = allComplete
 
+		try {
 			await this.client.session.prompt({
 				path: { id: delegation.parentSessionID },
 				body: {
@@ -858,12 +913,23 @@ Use \`delegation_read("${delegation.id}")\` to retrieve this result when ready.
 			})
 
 			await this.debugLog(
-				`Notified parent session ${delegation.parentSessionID} (trigger=${shouldTriggerResponse}, remaining=${pendingSet?.size || 0})`,
+				`Notified parent session ${delegation.parentSessionID} (trigger=${shouldTriggerResponse}, remaining=${remainingAfterThis})`,
 			)
+
+			// Only delete from pending AFTER successful notification (Law 1: Early Exit)
+			if (pendingSet) {
+				pendingSet.delete(delegation.id)
+
+				// Only delete the parent's Map entry if the set is now empty (Law 2: prevents race condition)
+				if (pendingSet.size === 0) {
+					this.pendingByParent.delete(delegation.parentSessionID)
+				}
+			}
 		} catch (error) {
 			await this.debugLog(
 				`Failed to notify parent: ${error instanceof Error ? error.message : "Unknown error"}`,
 			)
+			// Do NOT delete from pendingSet if notification failed - allows retry
 		}
 	}
 
@@ -914,18 +980,26 @@ Use \`delegation_read("${delegation.id}")\` to retrieve this result when ready.
 	}
 
 	/**
-	 * List all delegations for a session
+	 * List all delegations for a session.
+	 * Filters in-memory (running) delegations by session tree.
+	 * Filesystem delegations are already scoped by directory (root session ID).
 	 */
 	async listDelegations(sessionID: string): Promise<DelegationListItem[]> {
 		const results: DelegationListItem[] = []
 
-		// Add in-memory delegations that match this session (or parent)
+		// Add in-memory delegations - FILTER BY SESSION TREE
+		// Law 2: Can't see delegations from other session trees
 		for (const delegation of this.delegations.values()) {
+			// Only include delegations that belong to this session tree
+			const isInTree = await this.isInSessionTree(delegation.parentSessionID, sessionID)
+			if (!isInTree) continue
+
 			results.push({
 				id: delegation.id,
 				status: delegation.status,
 				title: delegation.title || "(generating...)",
 				description: delegation.description || "(generating...)",
+				agent: delegation.agent,
 			})
 		}
 
@@ -980,29 +1054,23 @@ Use \`delegation_read("${delegation.id}")\` to retrieve this result when ready.
 	 * Used internally for cleanup (timeout, etc.)
 	 */
 	async deleteDelegation(sessionID: string, id: string): Promise<boolean> {
-		// Find delegation by id
-		let delegationId: string | undefined
-		for (const [dId, d] of this.delegations) {
-			if (d.id === id) {
-				delegationId = dId
-				break
-			}
-		}
+		const delegation = this.delegations.get(id)
 
-		if (delegationId) {
-			const delegation = this.delegations.get(delegationId)
-			if (delegation?.status === "running") {
-				try {
-					await this.client.session.delete({
-						path: { id: delegation.sessionID },
-					})
-				} catch {
-					// Session may already be deleted
+		if (delegation) {
+			// Atomic state transition BEFORE any async work (Law 4: Fail Fast)
+			if (delegation.status === "running") {
+				if (!this.markComplete(delegation, "error", "Cancelled by user")) {
+					// Already completed by another handler
+					return false
 				}
-				delegation.status = "cancelled"
-				delegation.completedAt = new Date()
+
+				// Fire-and-forget abort (don't await)
+				this.client.session.abort({ path: { id: delegation.sessionID } }).catch((e) => {
+					this.debugLog(`Failed to abort session: ${e}`)
+				})
 			}
-			this.delegations.delete(delegationId)
+
+			this.delegations.delete(id)
 		}
 
 		// Remove from filesystem
@@ -1053,17 +1121,6 @@ Use \`delegation_read("${delegation.id}")\` to retrieve this result when ready.
 	}
 
 	/**
-	 * Get recent completed delegations for compaction injection
-	 */
-	async getRecentCompletedDelegations(
-		sessionID: string,
-		limit: number = 10,
-	): Promise<DelegationListItem[]> {
-		const all = await this.listDelegations(sessionID)
-		return all.filter((d) => d.status !== "running").slice(-limit)
-	}
-
-	/**
 	 * Log debug messages
 	 */
 	async debugLog(msg: string): Promise<void> {
@@ -1079,6 +1136,26 @@ Use \`delegation_read("${delegation.id}")\` to retrieve this result when ready.
 			// Ignore errors, try to ensure dir once if it fails?
 			// Simpler to just ignore for debug logs
 		}
+	}
+
+	/**
+	 * Cleans up all resources held by the DelegationManager.
+	 * Should be called when the plugin is being unloaded.
+	 */
+	public dispose(): void {
+		// Clear all timeout timers
+		for (const delegation of this.delegations.values()) {
+			if (delegation.timeoutTimer) {
+				clearTimeout(delegation.timeoutTimer)
+				delegation.timeoutTimer = undefined
+			}
+		}
+
+		// Clear the queue
+		this.queue.clear()
+
+		// Log cleanup (fire-and-forget, don't block disposal)
+		this.debugLog("DelegationManager disposed").catch(() => {})
 	}
 }
 
