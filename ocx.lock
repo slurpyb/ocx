@@ -8,7 +8,7 @@
       "files": [
         ".opencode/plugin/background-agents.ts"
       ],
-      "installedAt": "2026-01-07T11:34:10.209Z"
+      "installedAt": "2026-01-07T16:43:41.820Z"
     },
     "kdco/workspace-plugin": {
       "registry": "kdco",
@@ -17,7 +17,7 @@
       "files": [
         ".opencode/plugin/workspace-plugin.ts"
       ],
-      "installedAt": "2026-01-07T11:34:10.209Z"
+      "installedAt": "2026-01-07T16:43:41.820Z"
     },
     "kdco/plan-protocol": {
       "registry": "kdco",
@@ -26,7 +26,7 @@
       "files": [
         ".opencode/skill/plan-protocol/SKILL.md"
       ],
-      "installedAt": "2026-01-07T11:34:10.209Z"
+      "installedAt": "2026-01-07T16:43:41.820Z"
     },
     "kdco/researcher": {
       "registry": "kdco",
@@ -35,7 +35,7 @@
       "files": [
         ".opencode/agent/researcher.md"
       ],
-      "installedAt": "2026-01-07T11:34:10.210Z"
+      "installedAt": "2026-01-07T16:43:41.820Z"
     },
     "kdco/scribe": {
       "registry": "kdco",
@@ -44,7 +44,7 @@
       "files": [
         ".opencode/agent/scribe.md"
       ],
-      "installedAt": "2026-01-07T11:34:10.210Z"
+      "installedAt": "2026-01-07T16:43:41.821Z"
     },
     "kdco/coder": {
       "registry": "kdco",
@@ -53,7 +53,7 @@
       "files": [
         ".opencode/agent/coder.md"
       ],
-      "installedAt": "2026-01-07T11:34:10.210Z"
+      "installedAt": "2026-01-07T16:43:41.821Z"
     },
     "kdco/code-review": {
       "registry": "kdco",
@@ -62,7 +62,7 @@
       "files": [
         ".opencode/skill/code-review/SKILL.md"
       ],
-      "installedAt": "2026-01-07T11:34:10.210Z"
+      "installedAt": "2026-01-07T16:43:41.821Z"
     },
     "kdco/reviewer": {
       "registry": "kdco",
@@ -71,7 +71,7 @@
       "files": [
         ".opencode/agent/reviewer.md"
       ],
-      "installedAt": "2026-01-07T11:34:10.210Z"
+      "installedAt": "2026-01-07T16:43:41.821Z"
     },
     "kdco/review": {
       "registry": "kdco",
@@ -80,7 +80,7 @@
       "files": [
         ".opencode/command/review.md"
       ],
-      "installedAt": "2026-01-07T11:34:10.210Z"
+      "installedAt": "2026-01-07T16:43:41.821Z"
     },
     "kdco/notify": {
       "registry": "kdco",
@@ -89,50 +89,25 @@
       "files": [
         ".opencode/plugin/notify.ts"
       ],
-      "installedAt": "2026-01-07T11:34:10.210Z"
+      "installedAt": "2026-01-07T16:43:41.821Z"
     },
-    "kdco/worktree-plugin": {
+    "kdco/worktree": {
       "registry": "kdco",
       "version": "1.0.0",
-      "hash": "b537c2e6f78aee05bfe14cc19d1949538bb39957249d590debb4e9e51f2e13b6",
+      "hash": "0e790f0122cdd313ec7c6db77a5c77b98bd67e9e0b9c1225958d9f36cabd80a0",
       "files": [
-        ".opencode/plugin/worktree-plugin.ts"
+        ".opencode/plugin/worktree.ts",
+        ".opencode/plugin/worktree/state.ts",
+        ".opencode/plugin/worktree/terminal.ts"
       ],
-      "installedAt": "2026-01-07T11:34:10.210Z"
+      "installedAt": "2026-01-07T16:43:41.822Z"
     },
     "kdco/workspace": {
       "registry": "kdco",
       "version": "1.0.0",
       "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "files": [],
-      "installedAt": "2026-01-07T11:34:10.210Z"
-    },
-    "kdco/code-philosophy": {
-      "registry": "kdco",
-      "version": "1.0.0",
-      "hash": "1c9b013f1aacf3b524665d3bdc30aed992f6b78b1281eaafa3b986e71aaa8256",
-      "files": [
-        ".opencode/skill/code-philosophy/SKILL.md"
-      ],
-      "installedAt": "2026-01-07T11:34:10.211Z"
-    },
-    "kdco/frontend-philosophy": {
-      "registry": "kdco",
-      "version": "1.0.0",
-      "hash": "94c59572402621a869b2cd69da91dc9bfbb6dc6a24ca7ddff9c14805a7ea42e3",
-      "files": [
-        ".opencode/skill/frontend-philosophy/SKILL.md"
-      ],
-      "installedAt": "2026-01-07T11:34:10.211Z"
-    },
-    "kdco/philosophy": {
-      "registry": "kdco",
-      "version": "1.0.0",
-      "hash": "946587f02649d0bb118327421213b6f5886852f1747511857b92be3af3f7a12e",
-      "files": [
-        ".opencode/philosophy/AGENTS.md"
-      ],
-      "installedAt": "2026-01-07T11:34:10.211Z"
+      "installedAt": "2026-01-07T16:43:41.822Z"
     }
   }
 }

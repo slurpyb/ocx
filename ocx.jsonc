@@ -2,7 +2,7 @@
   "$schema": "https://ocx.kdco.dev/schema.json",
   "registries": {
     "kdco": {
-      "url": "file:///Users/kenny/workspace/kdcokenny/ocx/workers/kdco-registry/dist"
+      "url": "file:///Users/kenny/workspace/kdcokenny/ocx/.opencode/worktrees/issue-20-worktree-race-conditions/workers/kdco-registry/dist"
     }
   },
   "lockRegistries": false,

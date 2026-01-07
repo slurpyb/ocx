@@ -45,11 +45,11 @@
 			"npmDevDependencies": ["node-notifier@10.0.1", "detect-terminal@2.0.0"]
 		},
 		{
-			"name": "worktree-plugin",
+			"name": "worktree",
 			"type": "ocx:plugin",
-			"title": "Worktree Plugin",
+			"title": "Worktree",
 			"description": "Auto-manages Git worktrees for isolated AI sessions with seamless terminal spawning",
-			"files": ["plugin/worktree-plugin.ts"],
+			"files": ["plugin/worktree.ts", "plugin/worktree/state.ts", "plugin/worktree/terminal.ts"],
 			"dependencies": [],
 			"npmDevDependencies": ["jsonc-parser@3.3.1", "zod@4.3.5"]
 		},
@@ -276,8 +276,7 @@
 				"reviewer",
 				"review",
 				"notify",
-				"philosophy",
-				"worktree-plugin"
+				"worktree"
 			],
 			"opencode": {
 				// External npm plugin for diff/patch support

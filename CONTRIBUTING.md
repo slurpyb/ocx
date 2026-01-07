@@ -16,7 +16,7 @@ my-registry/
 └── files/              # Component source files
     ├── agent/          # .md files
     ├── skill/          # Directories with SKILL.md
-    └── plugin/         # .ts files
+    └── plugin/         # .ts files (can have sub-directories)
 ```
 
 ### 2. Registry Manifest (registry.json)
@@ -84,6 +84,13 @@ bun run scripts/build-binary.ts  # Build standalone binaries
 ```bash
 cd packages/cli
 bun test
+```
+
+### Registry Tests
+
+```bash
+# Run registry plugin tests
+bun test workers/kdco-registry/tests/
 ```
 
 ### Testing the Update Command

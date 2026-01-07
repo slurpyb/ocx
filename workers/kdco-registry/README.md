@@ -38,6 +38,7 @@ Install individually if you don't want the full bundle.
 | background-agents | Async task execution | `ocx add kdco/background-agents` |
 | notify | OS notifications | `ocx add kdco/notify` |
 | workspace-plugin | Plan management | `ocx add kdco/workspace-plugin` |
+| worktree | Auto-manages Git worktrees for isolated AI sessions with seamless terminal spawning | `ocx add kdco/worktree` |
 
 ### Skills
 
