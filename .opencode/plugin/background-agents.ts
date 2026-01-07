@@ -168,16 +168,18 @@ Respond with ONLY valid JSON in this exact format:
 // ==========================================
 
 export class QueueFullError extends Error {
+	name = "QueueFullError"
 	constructor(max: number) {
 		super(`Queue at capacity (${max}). Try again later.`)
-		this.name = "QueueFullError"
+		Object.setPrototypeOf(this, QueueFullError.prototype)
 	}
 }
 
 export class AgentAtCapacityError extends Error {
-	constructor(agent: string, max: number) {
-		super(`Agent "${agent}" at capacity (${max}/${max}). Try again later or use different agent.`)
-		this.name = "AgentAtCapacityError"
+	name = "AgentAtCapacityError"
+	constructor(agent: string, limit: number) {
+		super(`Agent "${agent}" is at capacity (${limit} concurrent)`)
+		Object.setPrototypeOf(this, AgentAtCapacityError.prototype)
 	}
 }
 
