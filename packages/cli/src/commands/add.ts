@@ -11,13 +11,20 @@ import { dirname, join } from "node:path"
 import type { Command } from "commander"
 import { CLI_VERSION, GITHUB_REPO } from "../constants.js"
 import { fetchFileContent, fetchRegistryIndex } from "../registry/fetcher.js"
-import type { ResolvedComponent } from "../registry/resolver.js"
+import type { ResolvedComponent, ResolvedNpmDependency } from "../registry/resolver.js"
 import { type ResolvedDependencies, resolveDependencies } from "../registry/resolver.js"
 import { type OcxLock, readOcxConfig, readOcxLock } from "../schemas/config.js"
 import type { ComponentFileObject, RegistryIndex } from "../schemas/registry.js"
 import { updateOpencodeJsonConfig } from "../updaters/update-opencode-config.js"
 import { isContentIdentical } from "../utils/content.js"
-import { ConfigError, ConflictError, IntegrityError, ValidationError } from "../utils/errors.js"
+import {
+	ConfigError,
+	ConflictError,
+	type DependencyConflict,
+	DependencyConflictError,
+	IntegrityError,
+	ValidationError,
+} from "../utils/errors.js"
 import {
 	collectCompatIssues,
 	createSpinner,
@@ -78,29 +85,33 @@ async function runAdd(componentNames: string[], options: AddOptions): Promise<vo
 	spin?.start()
 
 	try {
-		// Resolve all dependencies across all configured registries
-		const resolved = await resolveDependencies(config.registries, componentNames)
+		// Fetch registry indexes BEFORE resolution (needed for catalog resolution)
+		const registryIndexes = new Map<string, RegistryIndex>()
+		const failedRegistries = new Set<string>()
+
+		// Fetch registry indexes in parallel
+		await Promise.all(
+			Object.entries(config.registries).map(async ([namespace, regConfig]) => {
+				try {
+					const index = await fetchRegistryIndex(regConfig.url)
+					registryIndexes.set(namespace, index)
+				} catch {
+					failedRegistries.add(namespace)
+					logger.warn(
+						`Could not fetch registry index for ${namespace} - catalog references will not work`,
+					)
+				}
+			}),
+		)
+
+		// Resolve all dependencies across all configured registries (with catalog data)
+		const resolved = await resolveDependencies(config.registries, componentNames, registryIndexes)
 
 		if (options.verbose) {
 			logger.info("Install order:")
 			for (const name of resolved.installOrder) {
 				logger.info(`  - ${name}`)
 			}
-		}
-
-		// Fetch registry indexes once (Law 2: Parse at boundary)
-		const registryIndexes = new Map<string, RegistryIndex>()
-		const uniqueBaseUrls = new Map<string, string>() // namespace -> baseUrl
-
-		for (const component of resolved.components) {
-			if (!uniqueBaseUrls.has(component.registryName)) {
-				uniqueBaseUrls.set(component.registryName, component.baseUrl)
-			}
-		}
-
-		for (const [namespace, baseUrl] of uniqueBaseUrls) {
-			const index = await fetchRegistryIndex(baseUrl)
-			registryIndexes.set(namespace, index)
 		}
 
 		spin?.succeed(
@@ -116,6 +127,24 @@ async function runAdd(componentNames: string[], options: AddOptions): Promise<vo
 					ocxVersion: CLI_VERSION,
 				})
 				warnCompatIssues(namespace, issues)
+			}
+		}
+
+		// Check for npm dependency version conflicts (Law 4: Fail Fast)
+		const existingDeps = await getExistingDevDependencies(cwd)
+		const allResolved = [...resolved.npmDependencies, ...resolved.npmDevDependencies]
+		const conflicts = detectVersionConflicts(allResolved, existingDeps)
+
+		if (conflicts.length > 0) {
+			if (!options.yes) {
+				throw new DependencyConflictError(conflicts)
+			}
+			// With --yes: warn and continue (last declared wins)
+			logger.warn("Dependency version conflicts detected (continuing with --yes):")
+			for (const conflict of conflicts) {
+				logger.warn(
+					`  ${conflict.packageName}: ${conflict.versions.map((v) => v.version).join(" vs ")}`,
+				)
 			}
 		}
 
@@ -418,7 +447,13 @@ function logResolved(resolved: ResolvedDependencies): void {
 		logger.info("")
 		logger.info("Would install npm dependencies:")
 		for (const dep of resolved.npmDependencies) {
-			logger.info(`  ${dep}`)
+			if (dep.kind === "catalog") {
+				logger.info(`  ${dep.name}@${dep.version} (from catalog:${dep.catalogKey})`)
+			} else if (dep.kind === "pinned") {
+				logger.info(`  ${dep.name}@${dep.version}`)
+			} else {
+				logger.info(`  ${dep.name} (latest)`)
+			}
 		}
 	}
 
@@ -426,7 +461,13 @@ function logResolved(resolved: ResolvedDependencies): void {
 		logger.info("")
 		logger.info("Would install npm dev dependencies:")
 		for (const dep of resolved.npmDevDependencies) {
-			logger.info(`  ${dep}`)
+			if (dep.kind === "catalog") {
+				logger.info(`  ${dep.name}@${dep.version} (from catalog:${dep.catalogKey})`)
+			} else if (dep.kind === "pinned") {
+				logger.info(`  ${dep.name}@${dep.version}`)
+			} else {
+				logger.info(`  ${dep.name} (latest)`)
+			}
 		}
 	}
 }
@@ -438,6 +479,18 @@ function logResolved(resolved: ResolvedDependencies): void {
 interface NpmDependency {
 	name: string
 	version: string
+}
+
+/**
+ * Converts a ResolvedNpmDependency to NpmDependency for package.json.
+ * - catalog/pinned: uses the resolved version
+ * - bare: uses "*" as version (any version acceptable)
+ */
+function toNpmDependency(dep: ResolvedNpmDependency): NpmDependency {
+	if (dep.kind === "bare") {
+		return { name: dep.name, version: "*" }
+	}
+	return { name: dep.name, version: dep.version }
 }
 
 interface OpencodePackageJson {
@@ -452,33 +505,6 @@ const DEFAULT_PACKAGE_JSON: OpencodePackageJson = {
 	name: "opencode-plugins",
 	private: true,
 	type: "module",
-}
-
-/**
- * Parses an npm dependency spec into name and version.
- * Handles: "lodash", "lodash@4.0.0", "@types/node", "@types/node@1.0.0"
- */
-function parseNpmDependency(spec: string): NpmDependency {
-	// Guard: invalid input
-	if (!spec?.trim()) {
-		throw new ValidationError(`Invalid npm dependency: expected non-empty string, got "${spec}"`)
-	}
-
-	const trimmed = spec.trim()
-	const lastAt = trimmed.lastIndexOf("@")
-
-	// Has version: "lodash@4.0.0" or "@types/node@1.0.0"
-	if (lastAt > 0) {
-		const name = trimmed.slice(0, lastAt)
-		const version = trimmed.slice(lastAt + 1)
-		if (!version) {
-			throw new ValidationError(`Invalid npm dependency: missing version after @ in "${spec}"`)
-		}
-		return { name, version }
-	}
-
-	// No version: "lodash" or "@types/node" → use "*"
-	return { name: trimmed, version: "*" }
 }
 
 /**
@@ -555,20 +581,20 @@ async function ensureManifestFilesAreTracked(opencodeDir: string): Promise<void>
  */
 async function updateOpencodeDevDependencies(
 	cwd: string,
-	npmDeps: string[],
-	npmDevDeps: string[],
+	npmDeps: ResolvedNpmDependency[],
+	npmDevDeps: ResolvedNpmDependency[],
 ): Promise<void> {
 	// Guard: no deps to process
-	const allDepSpecs = [...npmDeps, ...npmDevDeps]
-	if (allDepSpecs.length === 0) return
+	const allDeps = [...npmDeps, ...npmDevDeps]
+	if (allDeps.length === 0) return
 
 	const opencodeDir = join(cwd, ".opencode")
 
 	// Ensure directory exists
 	await mkdir(opencodeDir, { recursive: true })
 
-	// Parse all deps - fails fast on invalid
-	const parsedDeps = allDepSpecs.map(parseNpmDependency)
+	// Convert resolved deps to package.json format
+	const parsedDeps = allDeps.map(toNpmDependency)
 
 	// Read → merge → write
 	const existing = await readOpencodePackageJson(opencodeDir)
@@ -577,6 +603,74 @@ async function updateOpencodeDevDependencies(
 
 	// Ensure manifest files are tracked by git
 	await ensureManifestFilesAreTracked(opencodeDir)
+}
+
+// ============================================================================
+// Dependency Conflict Detection
+// ============================================================================
+
+/**
+ * Reads existing dependencies from .opencode/package.json.
+ * Returns empty object if file doesn't exist or is invalid.
+ */
+async function getExistingDevDependencies(cwd: string): Promise<Record<string, string>> {
+	const pkgPath = join(cwd, ".opencode", "package.json")
+	try {
+		const content = await Bun.file(pkgPath).text()
+		const pkg = JSON.parse(content)
+		return { ...pkg.dependencies, ...pkg.devDependencies }
+	} catch {
+		return {} // File doesn't exist or is invalid
+	}
+}
+
+/**
+ * Detects version conflicts between resolved dependencies and existing package.json.
+ * Returns conflicts grouped: component conflicts first, then package.json conflicts.
+ */
+export function detectVersionConflicts(
+	resolved: ResolvedNpmDependency[],
+	existing: Record<string, string>,
+): DependencyConflict[] {
+	// Group versions by package name
+	const byName = new Map<string, Array<{ version: string; source: string }>>()
+
+	// Collect versions from resolved deps
+	for (const dep of resolved) {
+		if (dep.kind === "bare") continue // bare deps accept any version
+		const entries = byName.get(dep.name) ?? []
+		entries.push({
+			version: dep.version,
+			source: dep.declaredBy + (dep.kind === "catalog" ? ` via catalog:${dep.catalogKey}` : ""),
+		})
+		byName.set(dep.name, entries)
+	}
+
+	// Add existing package.json versions
+	for (const [name, version] of Object.entries(existing)) {
+		const entries = byName.get(name)
+		if (entries) {
+			entries.push({ version, source: ".opencode/package.json" })
+		}
+	}
+
+	// Find conflicts (different versions for same package)
+	const conflicts: DependencyConflict[] = []
+	for (const [packageName, versions] of byName) {
+		const uniqueVersions = [...new Set(versions.map((v) => v.version.trim()))]
+		if (uniqueVersions.length > 1) {
+			conflicts.push({ packageName, versions })
+		}
+	}
+
+	// Sort: component conflicts first, then package.json conflicts
+	return conflicts.sort((a, b) => {
+		const aHasPkgJson = a.versions.some((v) => v.source.includes("package.json"))
+		const bHasPkgJson = b.versions.some((v) => v.source.includes("package.json"))
+		if (aHasPkgJson && !bHasPkgJson) return 1
+		if (!aHasPkgJson && bHasPkgJson) return -1
+		return a.packageName.localeCompare(b.packageName)
+	})
 }
 
 /**

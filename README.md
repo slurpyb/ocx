@@ -66,6 +66,7 @@ See [examples/registry-starter](./examples/registry-starter) for the full templa
 ## What OCX Handles
 
 - **npm Dependencies** — Plugins need packages? Installed automatically. No manual `package.json` editing.
+- **Catalog Support** — Registries can define shared dependency versions that components reference via `catalog:name` syntax
 - **MCP Servers** — Registered to your config with one command. No manual JSON.
 - **Config Merging** — Components bring settings that merge safely with yours.
 - **Lockfiles** — Track versions, verify integrity with SHA-256 hashes.

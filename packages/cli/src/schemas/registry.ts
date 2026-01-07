@@ -678,6 +678,15 @@ export const registrySchema = z
 			})
 			.optional(),
 
+		/**
+		 * Shared dependency versions for the registry.
+		 * Components can reference these using the "catalog:key" syntax in npmDependencies/npmDevDependencies.
+		 * Example: { "zod": "^4.3.5", "openai": "^4.73.0" }
+		 *
+		 * @see https://pnpm.io/catalogs for the pattern this follows
+		 */
+		catalog: z.record(z.string(), z.string()).optional(),
+
 		/** Components in this registry */
 		components: z.array(componentManifestSchema),
 	})
@@ -750,6 +759,15 @@ export const registryIndexSchema = z.object({
 			message: "OCX version must be valid semver",
 		})
 		.optional(),
+
+	/**
+	 * Shared dependency versions for the registry.
+	 * Components can reference these using the "catalog:key" syntax in npmDependencies/npmDevDependencies.
+	 * Example: { "zod": "^4.3.5", "openai": "^4.73.0" }
+	 *
+	 * @see https://pnpm.io/catalogs for the pattern this follows
+	 */
+	catalog: z.record(z.string(), z.string()).optional(),
 
 	/** Component summaries for search */
 	components: z.array(

@@ -35,6 +35,20 @@
 			"items": {
 				"$ref": "#/definitions/component"
 			}
+		},
+		"catalog": {
+			"type": "object",
+			"description": "Shared dependency versions. Components reference via 'catalog:key' syntax in npmDependencies/npmDevDependencies.",
+			"additionalProperties": {
+				"type": "string",
+				"description": "Version specifier (e.g., '^4.3.5', '~2.0.0', '4.0.0')"
+			},
+			"examples": [
+				{
+					"zod": "^4.3.5",
+					"openai": "^4.73.0"
+				}
+			]
 		}
 	},
 	"definitions": {

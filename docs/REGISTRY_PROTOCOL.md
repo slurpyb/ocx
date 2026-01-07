@@ -45,6 +45,10 @@ Returns registry metadata and a list of available components. Must conform to [`
   "namespace": "myregistry",
   "version": "1.0.0",
   "author": "Your Name",
+  "catalog": {
+    "zod": "^4.3.5",
+    "openai": "^4.73.0"
+  },
   "components": [
     {
       "name": "my-skill",
@@ -63,7 +67,41 @@ Returns registry metadata and a list of available components. Must conform to [`
 | `namespace` | string | Yes | Unique identifier (kebab-case) |
 | `version` | string | Yes | Registry version (semver recommended) |
 | `author` | string | Yes | Registry author or organization |
+| `catalog` | object | No | Shared dependency versions (see Catalog section below) |
 | `components` | array | Yes | List of available components |
+
+#### Catalog (Shared Dependency Versions)
+
+Registries can define a `catalog` field to centralize dependency versions. This allows component authors to update a dependency version in one place instead of editing every component manifest.
+
+```json
+{
+  "name": "kdco",
+  "version": "1.0.0",
+  "catalog": {
+    "zod": "^4.3.5",
+    "openai": "^4.73.0",
+    "jsonc-parser": "^3.3.1"
+  },
+  "components": [...]
+}
+```
+
+Components can reference catalog entries using the `catalog:` prefix in `npmDependencies` or `npmDevDependencies`:
+
+```json
+{
+  "name": "workspace-plugin",
+  "npmDevDependencies": ["catalog:zod", "catalog:openai"]
+}
+```
+
+When OCX resolves dependencies, `catalog:zod` is expanded to `zod@^4.3.5` based on the registry's catalog.
+
+**Benefits:**
+- Single source of truth for dependency versions
+- Easy version updates across all components
+- Follows [pnpm catalogs](https://pnpm.io/catalogs) pattern
 
 ### Component Packument
 
@@ -186,5 +224,5 @@ Registries can be hosted on:
 ## Related Documentation
 
 - [Registry Schema](./schemas/registry.schema.json) - Full JSON Schema for validation
-- [Creating a Registry](../registry/REGISTRY.md) - Guide to building your own registry
+- [Creating a Registry](./CREATING_REGISTRIES.md) - Guide to building your own registry
 - [Enterprise Features](./ENTERPRISE.md) - Locking, versioning, and integrity verification

@@ -29,7 +29,37 @@ OCX follows the **Cargo + ShadCN model**:
 1. **Namespace as Identity**: Every registry declares a `namespace` (e.g., `kdco`). Components are referenced as `namespace/component` (e.g., `kdco/researcher`).
 2. **Clean Component Names**: Components within a registry use clean names (`researcher`, not `kdco-researcher`). The namespace provides provenance.
 3. **Explicit Trust**: Cross-namespace dependencies require the user to have that registry configured. No auto-fetching from unknown sources.
-4. **Own Your Code**: Components are copied into your project with clean filenames. The lockfile tracks provenance.
+4. **Own Your Code**: Components are copied into your project, not hidden in `node_modules`. You own the code—customize freely.
+
+## Using Catalogs for Dependency Management
+
+If multiple components share the same npm dependencies, use a catalog to manage versions centrally:
+
+1. Define the catalog in your registry index:
+
+```json
+{
+  "catalog": {
+    "zod": "^4.3.5",
+    "lodash": "^4.17.21"
+  }
+}
+```
+
+2. Reference catalog entries in component manifests:
+
+```json
+{
+  "npmDevDependencies": ["catalog:zod", "catalog:lodash"]
+}
+```
+
+3. To update a dependency version, change it once in the catalog - all components will use the new version.
+
+**Best Practices:**
+- Use catalogs for dependencies shared across 2+ components
+- Use pinned versions directly for component-specific dependencies
+- Use bare names (no version) when any version is acceptable
 
 ## Structure
 

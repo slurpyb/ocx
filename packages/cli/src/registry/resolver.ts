@@ -12,10 +12,20 @@ import {
 	normalizeComponentManifest,
 	type OpencodeConfig,
 	parseQualifiedComponent,
+	type RegistryIndex,
 } from "../schemas/registry.js"
 import { ConfigError, OCXError, ValidationError } from "../utils/errors.js"
 import { fetchComponent } from "./fetcher.js"
 import { mergeOpencodeConfig } from "./merge.js"
+
+/**
+ * Resolved npm dependency with source tracking.
+ * Discriminated union ensures illegal states are unrepresentable (Law 2).
+ */
+export type ResolvedNpmDependency =
+	| { kind: "catalog"; name: string; version: string; catalogKey: string; declaredBy: string }
+	| { kind: "pinned"; name: string; version: string; declaredBy: string }
+	| { kind: "bare"; name: string; declaredBy: string }
 
 /**
  * Parse a component reference into namespace and component name.
@@ -40,6 +50,55 @@ export function parseComponentRef(
 	throw new ValidationError(`Component '${ref}' must include a namespace (e.g., 'kdco/${ref}')`)
 }
 
+/**
+ * Resolves a dependency specifier to a ResolvedNpmDependency.
+ * Handles catalog:X, pinned (name@version), and bare (name) formats.
+ *
+ * @throws ValidationError if catalog:X references non-existent catalog entry (Law 1: Early Exit)
+ */
+export function resolveDependencySpec(
+	spec: string,
+	catalog: Record<string, string> | undefined,
+	declaredBy: string,
+): ResolvedNpmDependency {
+	// Guard clause: catalog reference
+	if (spec.startsWith("catalog:")) {
+		const catalogKey = spec.slice(8)
+		if (!catalog?.[catalogKey]) {
+			const available = catalog ? Object.keys(catalog).join(", ") : "none"
+			throw new ValidationError(
+				`Catalog reference "${spec}" not found in registry. Available catalog entries: ${available}`,
+			)
+		}
+		return {
+			kind: "catalog",
+			name: catalogKey,
+			version: catalog[catalogKey],
+			catalogKey,
+			declaredBy,
+		}
+	}
+
+	// Parse pinned or bare
+	const atIndex = spec.lastIndexOf("@")
+	if (atIndex > 0) {
+		// Pinned: name@version
+		const name = spec.slice(0, atIndex)
+		const version = spec.slice(atIndex + 1)
+
+		// Guard: version must be non-empty (Law 4: Fail Fast)
+		if (!version) {
+			throw new ValidationError(
+				`Invalid dependency specifier "${spec}": version is empty after "@". Use bare name "${name}" or specify a version.`,
+			)
+		}
+		return { kind: "pinned", name, version, declaredBy }
+	}
+
+	// Bare: just the name
+	return { kind: "bare", name: spec, declaredBy }
+}
+
 export interface ResolvedComponent extends NormalizedComponentManifest {
 	/** The namespace this component belongs to */
 	namespace: string
@@ -56,9 +115,9 @@ export interface ResolvedDependencies {
 	/** Install order (component names) */
 	installOrder: string[]
 	/** Aggregated npm dependencies from all components */
-	npmDependencies: string[]
+	npmDependencies: ResolvedNpmDependency[]
 	/** Aggregated npm dev dependencies from all components */
-	npmDevDependencies: string[]
+	npmDevDependencies: ResolvedNpmDependency[]
 	/** Merged opencode configuration from all components (deep merged) */
 	opencode: OpencodeConfig
 }
@@ -70,11 +129,12 @@ export interface ResolvedDependencies {
 export async function resolveDependencies(
 	registries: Record<string, RegistryConfig>,
 	componentNames: string[],
+	registryIndexes?: Map<string, RegistryIndex>,
 ): Promise<ResolvedDependencies> {
 	const resolved = new Map<string, ResolvedComponent>()
 	const visiting = new Set<string>()
-	const npmDeps = new Set<string>()
-	const npmDevDeps = new Set<string>()
+	const npmDeps = new Map<string, ResolvedNpmDependency>()
+	const npmDevDeps = new Map<string, ResolvedNpmDependency>()
 	let opencode: NormalizedOpencodeConfig = {}
 
 	async function resolve(
@@ -136,15 +196,20 @@ export async function resolveDependencies(
 		})
 		visiting.delete(qualifiedName)
 
-		// Collect npm dependencies
+		// Get catalog from registry index if available
+		const catalog = registryIndexes?.get(componentNamespace)?.catalog
+
+		// Collect npm dependencies (resolved through catalog if needed)
 		if (component.npmDependencies) {
 			for (const dep of component.npmDependencies) {
-				npmDeps.add(dep)
+				const resolved = resolveDependencySpec(dep, catalog, qualifiedName)
+				npmDeps.set(resolved.name, resolved)
 			}
 		}
 		if (component.npmDevDependencies) {
 			for (const dep of component.npmDevDependencies) {
-				npmDevDeps.add(dep)
+				const resolved = resolveDependencySpec(dep, catalog, qualifiedName)
+				npmDevDeps.set(resolved.name, resolved)
 			}
 		}
 
@@ -172,8 +237,8 @@ export async function resolveDependencies(
 	return {
 		components,
 		installOrder,
-		npmDependencies: Array.from(npmDeps),
-		npmDevDependencies: Array.from(npmDevDeps),
+		npmDependencies: Array.from(npmDeps.values()),
+		npmDevDependencies: Array.from(npmDevDeps.values()),
 		opencode,
 	}
 }

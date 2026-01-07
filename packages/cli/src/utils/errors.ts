@@ -11,6 +11,7 @@ export type ErrorCode =
 	| "CONFLICT"
 	| "PERMISSION_ERROR"
 	| "INTEGRITY_ERROR"
+	| "DEPENDENCY_CONFLICT"
 
 export const EXIT_CODES = {
 	SUCCESS: 0,
@@ -19,6 +20,7 @@ export const EXIT_CODES = {
 	NETWORK: 69,
 	CONFIG: 78,
 	INTEGRITY: 1, // Exit code for integrity failures
+	DEPENDENCY_CONFLICT: 1, // Exit code for dependency conflicts
 } as const
 
 export class OCXError extends Error {
@@ -77,5 +79,36 @@ export class IntegrityError extends OCXError {
 			`Use 'ocx update ${component}' to intentionally update this component.`
 		super(message, "INTEGRITY_ERROR", EXIT_CODES.INTEGRITY)
 		this.name = "IntegrityError"
+	}
+}
+
+export interface DependencyConflict {
+	packageName: string
+	versions: Array<{ version: string; source: string }>
+}
+
+function buildConflictMessage(conflicts: DependencyConflict[]): string {
+	const lines = ["Dependency version conflicts detected:", ""]
+
+	for (const conflict of conflicts) {
+		lines.push(`  ${conflict.packageName}`)
+		for (const v of conflict.versions) {
+			lines.push(`    → ${v.version} (from ${v.source})`)
+		}
+		lines.push("")
+	}
+
+	lines.push("Resolution options:")
+	lines.push("  1. Align versions in your component registries")
+	lines.push("  2. Override in .opencode/package.json manually")
+	lines.push("  3. Use --yes to force install (last declared wins)")
+
+	return lines.join("\n")
+}
+
+export class DependencyConflictError extends OCXError {
+	constructor(public conflicts: DependencyConflict[]) {
+		super(buildConflictMessage(conflicts), "DEPENDENCY_CONFLICT", EXIT_CODES.DEPENDENCY_CONFLICT)
+		this.name = "DependencyConflictError"
 	}
 }
