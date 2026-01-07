@@ -167,22 +167,6 @@ Respond with ONLY valid JSON in this exact format:
 // TYPE DEFINITIONS
 // ==========================================
 
-export class QueueFullError extends Error {
-	name = "QueueFullError"
-	constructor(max: number) {
-		super(`Queue at capacity (${max}). Try again later.`)
-		Object.setPrototypeOf(this, QueueFullError.prototype)
-	}
-}
-
-export class AgentAtCapacityError extends Error {
-	name = "AgentAtCapacityError"
-	constructor(agent: string, limit: number) {
-		super(`Agent "${agent}" is at capacity (${limit} concurrent)`)
-		Object.setPrototypeOf(this, AgentAtCapacityError.prototype)
-	}
-}
-
 type OpencodeClient = ReturnType<typeof createOpencodeClient>
 
 interface SessionMessageItem {
@@ -457,13 +441,19 @@ class DelegationManager {
 	 * Delegate a task to an agent.
 	 * Returns delegation ID immediately while queue task runs in background.
 	 * Uses queue for concurrency limiting with fail-fast guards.
+	 * Returns { delegation: null, message } for capacity errors (matching plugin patterns).
 	 */
-	async delegate(input: DelegateInput): Promise<{ delegation: Delegation; message: string }> {
-		// Law 1: Guard clauses first
+	async delegate(
+		input: DelegateInput,
+	): Promise<{ delegation: Delegation | null; message: string }> {
+		// Law 1: Guard clauses first - return error strings instead of throwing
 
 		// Guard 1: Queue capacity
 		if (this.queue.size >= this.config.queueMax) {
-			throw new QueueFullError(this.config.queueMax)
+			return {
+				delegation: null,
+				message: `Error: Delegation queue is full (${this.config.queueMax} max). Please wait for existing delegations to complete before starting new ones.`,
+			}
 		}
 
 		// Guard 2: Per-agent capacity (fail-fast like Bottleneck highWater)
@@ -471,7 +461,10 @@ class DelegationManager {
 		if (agentConfig?.maxConcurrency) {
 			const running = this.getRunningCount(input.agent)
 			if (running >= agentConfig.maxConcurrency) {
-				throw new AgentAtCapacityError(input.agent, agentConfig.maxConcurrency)
+				return {
+					delegation: null,
+					message: `Error: Agent "${input.agent}" is at capacity (${agentConfig.maxConcurrency} concurrent). Please wait for existing delegations to complete.`,
+				}
 			}
 		}
 
@@ -1198,7 +1191,7 @@ Use \`delegation_read\` with the ID to retrieve the full result.`,
 			}
 
 			try {
-				const { message } = await manager.delegate({
+				const result = await manager.delegate({
 					parentSessionID: toolCtx.sessionID,
 					parentMessageID: toolCtx.messageID,
 					parentAgent: toolCtx.agent,
@@ -1206,7 +1199,10 @@ Use \`delegation_read\` with the ID to retrieve the full result.`,
 					agent: args.agent,
 				})
 
-				return message
+				// Capacity errors return null delegation with error message
+				// Success returns delegation object with success message
+				// Both cases: just return the message to the user
+				return result.message
 			} catch (error) {
 				// Return validation errors as guidance, not exceptions
 				return `❌ Delegation failed:\n\n${error instanceof Error ? error.message : "Unknown error"}`
