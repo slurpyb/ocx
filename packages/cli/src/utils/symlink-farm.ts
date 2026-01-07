@@ -18,10 +18,13 @@ const STALE_SESSION_THRESHOLD_MS = 24 * 60 * 60 * 1000
 const REMOVING_THRESHOLD_MS = 60 * 60 * 1000
 
 /** Prefix for ghost temp directories */
-const GHOST_DIR_PREFIX = "ocx-ghost-"
+export const GHOST_DIR_PREFIX = "ocx-ghost-"
 
 /** Suffix for directories being removed */
-const REMOVING_SUFFIX = "-removing"
+export const REMOVING_SUFFIX = "-removing"
+
+/** Marker file to identify ghost temp directories */
+export const GHOST_MARKER_FILE = ".ocx-ghost-marker"
 
 /**
  * Create a symlink farm in a temp directory.
@@ -43,10 +46,10 @@ export async function createSymlinkFarm(
 	}
 
 	const suffix = randomBytes(4).toString("hex")
-	const tempDir = join(tmpdir(), `ocx-ghost-${suffix}`)
+	const tempDir = join(tmpdir(), `${GHOST_DIR_PREFIX}${suffix}`)
 
 	// Create temp directory manually (mkdtemp adds random suffix, we already have one)
-	await Bun.write(join(tempDir, ".ocx-ghost-marker"), "")
+	await Bun.write(join(tempDir, GHOST_MARKER_FILE), "")
 
 	try {
 		const entries = await readdir(sourceDir, { withFileTypes: true })

@@ -7,7 +7,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { lstat, mkdir, readlink, rm } from "node:fs/promises"
 import { join } from "node:path"
-import { cleanupSymlinkFarm, createSymlinkFarm } from "../../src/utils/symlink-farm.js"
+import {
+	cleanupSymlinkFarm,
+	createSymlinkFarm,
+	GHOST_MARKER_FILE,
+} from "../../src/utils/symlink-farm.js"
 
 // =============================================================================
 // HELPERS
@@ -162,7 +166,7 @@ describe("createSymlinkFarm", () => {
 
 		try {
 			// Should have created the marker file
-			const markerExists = await Bun.file(join(tempDir, ".ocx-ghost-marker")).exists()
+			const markerExists = await Bun.file(join(tempDir, GHOST_MARKER_FILE)).exists()
 			expect(markerExists).toBe(true)
 		} finally {
 			await cleanupSymlinkFarm(tempDir)

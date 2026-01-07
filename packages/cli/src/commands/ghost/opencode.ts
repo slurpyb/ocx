@@ -24,10 +24,8 @@ import {
 	cleanupOrphanedGhostDirs,
 	cleanupSymlinkFarm,
 	createSymlinkFarm,
+	REMOVING_SUFFIX,
 } from "../../utils/symlink-farm.js"
-
-/** Suffix for directories being removed (matches symlink-farm.ts) */
-const REMOVING_SUFFIX = "-removing"
 
 interface GhostOpenCodeOptions {
 	json?: boolean
