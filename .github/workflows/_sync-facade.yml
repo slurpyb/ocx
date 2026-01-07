@@ -34,22 +34,21 @@ jobs:
           path: ocx
 
       - name: Checkout Target Repo
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ inputs.target_repo }}
-          token: ${{ secrets.FACADE_SYNC_PAT }}
-          path: ${{ inputs.checkout_path }}
-
-      - name: Initialize Target Repo if Empty
-        working-directory: ${{ inputs.checkout_path }}
         run: |
-          if [ -z "$(git branch -a)" ]; then
-            echo "Empty repo detected, initializing..."
+          git clone https://x-access-token:${{ secrets.FACADE_SYNC_PAT }}@github.com/${{ inputs.target_repo }}.git ${{ inputs.checkout_path }} || {
+            # Clone failed - repo is likely empty, initialize it
+            mkdir -p ${{ inputs.checkout_path }}
+            cd ${{ inputs.checkout_path }}
+            git init
+            git remote add origin https://x-access-token:${{ secrets.FACADE_SYNC_PAT }}@github.com/${{ inputs.target_repo }}.git
             git checkout -b main
-            touch .gitkeep
+            echo "# Initialized by sync workflow" > .gitkeep
             git add .
             git commit -m "chore: initialize repository"
-          fi
+          }
+          cd ${{ inputs.checkout_path }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Sync Files
         run: |
@@ -69,10 +68,7 @@ jobs:
       - name: Commit and Push
         working-directory: ${{ inputs.checkout_path }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          if git diff --quiet; then
+          if git diff --quiet && git diff --cached --quiet; then
             echo "No changes to sync"
             exit 0
           fi
@@ -80,4 +76,4 @@ jobs:
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           git add .
           git commit -m "sync: update from ocx@${SHORT_SHA} [skip ci]"
-          git push
+          git push -u origin main
