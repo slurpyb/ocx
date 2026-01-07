@@ -4,7 +4,7 @@
  * Provides mutex-protected tmux operations and cross-platform terminal spawning.
  * Serializes tmux commands to prevent socket races since tmux server is single-threaded.
  *
- * This module is extracted from worktree-plugin.ts to provide a focused, testable
+ * This module is extracted from worktree.ts to provide a focused, testable
  * interface for terminal operations with proper concurrency control.
  */
 
@@ -502,10 +502,16 @@ function detectCurrentMacTerminal(): MacTerminal {
 
 	// Fallback to TERM_PROGRAM
 	const termProgram = env.TERM_PROGRAM?.toLowerCase()
-	if (termProgram === "ghostty") return "ghostty"
-	if (termProgram === "iterm.app") return "iterm"
-	if (termProgram === "warpterm") return "warp"
-	if (termProgram === "apple_terminal") return "terminal"
+	switch (termProgram) {
+		case "ghostty":
+			return "ghostty"
+		case "iterm.app":
+			return "iterm"
+		case "warpterm":
+			return "warp"
+		case "apple_terminal":
+			return "terminal"
+	}
 
 	// Default to Terminal.app
 	return "terminal"
@@ -535,42 +541,42 @@ export async function openMacOSTerminal(cwd: string, command?: string): Promise<
 
 	const terminal = detectCurrentMacTerminal()
 
-	// Ghostty uses inline command to avoid permission dialog - no temp script needed
-	if (terminal === "ghostty") {
-		try {
-			const proc = Bun.spawn(
-				[
-					"open",
-					"-na",
-					"Ghostty.app",
-					"--args",
-					`--working-directory=${cwd}`,
-					"-e",
-					"bash",
-					"-c",
-					command ? `cd "${escapedCwd}" && ${escapedCommand}` : `cd "${escapedCwd}"`,
-				],
-				{
-					detached: true,
-					stdio: ["ignore", "ignore", "ignore"],
-				},
-			)
-			proc.unref()
-			return { success: true }
-		} catch (error) {
-			return {
-				success: false,
-				error: error instanceof Error ? error.message : String(error),
-			}
-		}
-	}
-
 	// Track script path for detached spawns to clean up on error
 	let detachedScriptPath: string | null = null
 
 	// Handle terminals based on whether they use detached spawns
 	try {
 		switch (terminal) {
+			// Ghostty uses inline command to avoid permission dialog - no temp script needed
+			case "ghostty": {
+				try {
+					const proc = Bun.spawn(
+						[
+							"open",
+							"-na",
+							"Ghostty.app",
+							"--args",
+							`--working-directory=${cwd}`,
+							"-e",
+							"bash",
+							"-c",
+							command ? `cd "${escapedCwd}" && ${escapedCommand}` : `cd "${escapedCwd}"`,
+						],
+						{
+							detached: true,
+							stdio: ["ignore", "ignore", "ignore"],
+						},
+					)
+					proc.unref()
+					return { success: true }
+				} catch (error) {
+					return {
+						success: false,
+						error: error instanceof Error ? error.message : String(error),
+					}
+				}
+			}
+
 			// Detached terminals: write script directly - it self-deletes via trap
 			// DO NOT use withTempScript for these - the finally block would delete
 			// the script before the detached process reads it

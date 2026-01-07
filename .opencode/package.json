@@ -8,8 +8,5 @@
     "node-notifier": "10.0.1",
     "detect-terminal": "2.0.0",
     "jsonc-parser": "3.3.1"
-  },
-  "dependencies": {
-    "@opencode-ai/plugin": "1.0.223"
   }
 }
