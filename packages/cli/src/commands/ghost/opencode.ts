@@ -12,11 +12,13 @@ import {
 	getGhostConfigDir,
 	getGhostOpencodeConfigPath,
 	ghostConfigExists,
+	loadGhostConfig,
 	loadGhostOpencodeConfig,
 } from "../../ghost/config.js"
 import { GhostNotInitializedError } from "../../utils/errors.js"
 import { detectGitRepo, handleError, logger } from "../../utils/index.js"
 import { discoverProjectFiles } from "../../utils/opencode-discovery.js"
+import { filterExcludedPaths } from "../../utils/pattern-filter.js"
 import { sharedOptions } from "../../utils/shared-options.js"
 import {
 	cleanupOrphanedGhostDirs,
@@ -78,7 +80,16 @@ async function runGhostOpenCode(args: string[], options: GhostOpenCodeOptions): 
 
 	// Discover project files to exclude (use cwd as gitRoot fallback if not in repo)
 	const gitRoot = gitContext?.workTree ?? cwd
-	const excludePaths = await discoverProjectFiles(cwd, gitRoot)
+	const discoveredPaths = await discoverProjectFiles(cwd, gitRoot)
+
+	// Apply user's include/exclude patterns from ghost config
+	const ghostConfig = await loadGhostConfig()
+	const excludePaths = filterExcludedPaths(
+		discoveredPaths,
+		ghostConfig.include,
+		ghostConfig.exclude,
+	)
+
 	const tempDir = await createSymlinkFarm(cwd, excludePaths)
 
 	// Track cleanup state to prevent double cleanup

@@ -248,10 +248,14 @@ Ghost mode enables working in repositories without modifying them:
 ### How `ghost opencode` Works
 
 1. Discovers all OpenCode project files (config, AGENTS.md, .opencode/)
-2. Creates temp directory with symlinks to project (excluding discovered files)
-3. Sets `GIT_WORK_TREE` and `GIT_DIR` so Git sees real project
-4. Spawns OpenCode from temp dir with ghost config via env vars
-5. Cleans up temp dir on exit
+2. Applies `include`/`exclude` patterns from ghost config to customize visibility
+3. Creates temp directory with symlinks to project (excluding filtered files)
+4. Sets `GIT_WORK_TREE` and `GIT_DIR` so Git sees real project
+5. Spawns OpenCode from temp dir with ghost config via env vars
+6. Cleans up temp dir on exit
+
+**Customization:** The `include`/`exclude` fields in `ghost.jsonc` control which OpenCode files
+are visible. Follows TypeScript-style semantics—`include` selects, `exclude` filters.
 
 ### OpenCode Discovery Reference
 

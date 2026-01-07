@@ -169,6 +169,30 @@ Ghost config is stored at `~/.config/ocx/ghost.jsonc` (or `$XDG_CONFIG_HOME/ocx/
 | Per-project settings | Yes | No (same config everywhere) |
 | Requires `ocx init` | Yes | No (uses ghost config) |
 
+#### Customizing File Visibility
+
+By default, ghost mode hides all OpenCode project files (AGENTS.md, .opencode/, etc.) from the symlink farm. You can customize which files are included using glob patterns in your ghost config:
+
+```jsonc
+// ~/.config/ocx/ghost.jsonc
+{
+  "registries": ["https://ocx.build/r/kdco"],
+  
+  // Include specific OpenCode files in ghost sessions
+  "include": [
+    "**/AGENTS.md",           // Include all AGENTS.md files
+    ".opencode/skills/**"     // Include skills directory
+  ],
+  
+  // Exclude patterns filter the include results  
+  "exclude": [
+    "**/vendor/**"            // But not files in vendor directories
+  ]
+}
+```
+
+This follows the TypeScript-style include/exclude model—no confusing negation patterns.
+
 **Looking for the KDCO registry?** See [workers/kdco-registry](./workers/kdco-registry) for components like `kdco/workspace`, `kdco/researcher`, and more.
 
 ## Project structure

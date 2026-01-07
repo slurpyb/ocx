@@ -793,3 +793,37 @@ Ghost mode lets you work in repositories without modifying them.
 | `ocx ghost opencode [args...]` | Run OpenCode with ghost config (isolated from project) |
 
 **Alias:** All ghost commands support `ocx g` shorthand (e.g., `ocx g add`).
+
+### Ghost Config Reference
+
+The ghost config file (`~/.config/ocx/ghost.jsonc`) supports these fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `registries` | `object` | Registry name → URL mapping |
+| `componentPath` | `string` | Where to install components (default: `.opencode`) |
+| `include` | `string[]` | Glob patterns for project files to include in ghost sessions |
+| `exclude` | `string[]` | Glob patterns to filter out from include results |
+
+#### Include/Exclude Patterns
+
+By default, ghost mode hides all OpenCode project files from the symlink farm. Use `include` and `exclude` to customize:
+
+```jsonc
+{
+  "registries": { "kdco": { "url": "https://registry.kdco.dev" } },
+  
+  // Include specific OpenCode files in ghost sessions
+  "include": [
+    "**/AGENTS.md",           // Include all AGENTS.md files
+    ".opencode/skills/**"     // Include skills directory
+  ],
+  
+  // Exclude patterns filter the include results  
+  "exclude": [
+    "**/vendor/**"            // But not files in vendor directories
+  ]
+}
+```
+
+This follows the TypeScript-style include/exclude model—`include` selects files, `exclude` filters the results.
