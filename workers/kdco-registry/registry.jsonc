@@ -28,7 +28,12 @@
 			"description": "Background agent execution - run async tasks while you work",
 			"files": ["plugin/background-agents.ts"],
 			"dependencies": [],
-			"npmDevDependencies": ["unique-names-generator@4.7.1"],
+			"npmDevDependencies": [
+				"unique-names-generator@4.7.1",
+				"p-queue@9.1.0",
+				"zod@4.3.5",
+				"jsonc-parser@3.3.1"
+			],
 			"opencode": {
 				// Disable native task tool since this plugin provides delegation
 				"permission": {
