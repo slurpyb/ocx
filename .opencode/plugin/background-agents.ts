@@ -15,7 +15,30 @@ import * as os from "node:os"
 import * as path from "node:path"
 import { type Plugin, type ToolContext, tool } from "@opencode-ai/plugin"
 import type { createOpencodeClient, Event, Message, Part, TextPart } from "@opencode-ai/sdk"
+import { parse } from "jsonc-parser"
+import PQueue from "p-queue"
 import { adjectives, animals, colors, uniqueNamesGenerator } from "unique-names-generator"
+import { z } from "zod"
+
+// ==========================================
+// POOL CONFIGURATION SCHEMA
+// ==========================================
+
+const agentConfigSchema = z.object({
+	maxConcurrency: z.number().int().positive().optional(),
+	priority: z.number().int().default(0),
+})
+
+export type AgentConfig = z.infer<typeof agentConfigSchema>
+
+const poolConfigSchema = z.object({
+	globalMax: z.number().int().positive().default(5),
+	queueMax: z.number().int().positive().default(15),
+	queueTimeout: z.number().int().positive().default(300000),
+	agents: z.record(agentConfigSchema).default({}),
+})
+
+export type PoolConfig = z.infer<typeof poolConfigSchema>
 
 // ==========================================
 // READABLE ID GENERATION
@@ -144,6 +167,20 @@ Respond with ONLY valid JSON in this exact format:
 // ==========================================
 // TYPE DEFINITIONS
 // ==========================================
+
+export class QueueFullError extends Error {
+	constructor(max: number) {
+		super(`Queue at capacity (${max}). Try again later.`)
+		this.name = "QueueFullError"
+	}
+}
+
+export class AgentAtCapacityError extends Error {
+	constructor(agent: string, max: number) {
+		super(`Agent "${agent}" at capacity (${max}/${max}). Try again later or use different agent.`)
+		this.name = "AgentAtCapacityError"
+	}
+}
 
 type OpencodeClient = ReturnType<typeof createOpencodeClient>
 
@@ -285,6 +322,39 @@ async function parseAgentWriteCapability(
 }
 
 /**
+ * Load pool config from .opencode/background-agents.jsonc
+ * Auto-creates with sensible defaults if missing (OSS pattern)
+ */
+async function loadOrCreateConfig(directory: string): Promise<PoolConfig> {
+	const configPath = path.join(directory, ".opencode", "background-agents.jsonc")
+
+	try {
+		const content = await fs.readFile(configPath, "utf8")
+		const parsed = parse(content) // jsonc-parser already imported
+		return poolConfigSchema.parse(parsed?.pool ?? {})
+	} catch (err) {
+		if ((err as { code?: string }).code === "ENOENT") {
+			// Auto-create with commented defaults
+			const defaultConfig = `{
+  // Background agents pool configuration
+  "pool": {
+    "globalMax": 5,           // Max concurrent delegations
+    "queueMax": 15,           // Max pending (rejects if exceeded)
+    "queueTimeout": 300000,   // 5 min timeout (ms)
+    "agents": {
+      // Per-agent overrides (optional)
+      // "researcher": { "maxConcurrency": 2, "priority": 1 }
+    }
+  }
+}`
+			await fs.writeFile(configPath, defaultConfig, "utf8")
+			return poolConfigSchema.parse({}) // Returns defaults
+		}
+		throw err // Fail fast on other errors
+	}
+}
+
+/**
  * DELEGATION MANAGER
  */
 class DelegationManager {
@@ -293,10 +363,27 @@ class DelegationManager {
 	private baseDir: string
 	// Track pending delegations per parent session for batched notifications
 	private pendingByParent: Map<string, Set<string>> = new Map()
+	private queue: PQueue
+	private config: PoolConfig
 
-	constructor(client: OpencodeClient, baseDir: string) {
+	constructor(client: OpencodeClient, baseDir: string, config: PoolConfig) {
 		this.client = client
 		this.baseDir = baseDir
+		this.config = config
+		this.queue = new PQueue({
+			concurrency: config.globalMax,
+			timeout: config.queueTimeout,
+		})
+	}
+
+	/**
+	 * Get count of running delegations, optionally filtered by agent.
+	 * Derived from existing delegations Map (Law 3: no duplicate state).
+	 */
+	private getRunningCount(agent?: string): number {
+		return Array.from(this.delegations.values()).filter(
+			(d) => d.status === "running" && (!agent || d.agent === agent),
+		).length
 	}
 
 	/**
@@ -342,12 +429,46 @@ class DelegationManager {
 	}
 
 	/**
-	 * Delegate a task to an agent
+	 * Delegate a task to an agent.
+	 * Uses queue for concurrency limiting with fail-fast guards.
 	 */
 	async delegate(input: DelegateInput): Promise<Delegation> {
+		// Law 1: Guard clauses first
+
+		// Guard 1: Queue capacity
+		// Note: Race condition possible but acceptable for in-memory (OSS pattern: LibreChat)
+		if (this.queue.size >= this.config.queueMax) {
+			throw new QueueFullError(this.config.queueMax)
+		}
+
+		// Guard 2: Per-agent capacity (fail-fast like Bottleneck highWater)
+		const agentConfig = this.config.agents[input.agent] as AgentConfig | undefined
+		if (agentConfig?.maxConcurrency) {
+			const running = this.getRunningCount(input.agent)
+			if (running >= agentConfig.maxConcurrency) {
+				throw new AgentAtCapacityError(input.agent, agentConfig.maxConcurrency)
+			}
+		}
+
+		// Add to queue with priority
+		const priority = agentConfig?.priority ?? 0
+		const delegation = await this.queue.add(() => this.executeDelegation(input), { priority })
+
+		if (!delegation) {
+			throw new Error("Delegation execution returned undefined")
+		}
+
+		return delegation
+	}
+
+	/**
+	 * Execute a delegation (called from within queue).
+	 * Preserves fire-and-forget pattern for prompt execution.
+	 */
+	private async executeDelegation(input: DelegateInput): Promise<Delegation> {
 		// Generate readable ID
 		const id = generateReadableId()
-		await this.debugLog(`delegate() called, generated ID: ${id}`)
+		await this.debugLog(`executeDelegation() called, generated ID: ${id}`)
 
 		// Check for ID collisions (regenerate if needed)
 		let finalId = id
@@ -460,6 +581,7 @@ class DelegationManager {
 
 		// Fire the prompt (using prompt() instead of promptAsync() to properly initialize agent loop)
 		// Agent param is critical for MCP tools - tells OpenCode which agent's config to use
+		// Fire-and-forget pattern: DO NOT await - return delegation immediately
 		this.client.session
 			.prompt({
 				path: { id: delegation.sessionID },
@@ -477,6 +599,17 @@ class DelegationManager {
 			})
 
 		return delegation
+	}
+
+	/**
+	 * Get current pool status for observability.
+	 */
+	getPoolStatus(): { running: number; queued: number; capacity: number } {
+		return {
+			running: this.queue.pending,
+			queued: this.queue.size,
+			capacity: this.config.globalMax,
+		}
 	}
 
 	/**
@@ -997,15 +1130,14 @@ Use \`delegation_read\` with the ID to retrieve the full result.`,
 					agent: args.agent,
 				})
 
-				// Get total active count for this parent session
-				const pendingSet = manager.getPendingCount(toolCtx.sessionID)
-				const totalActive = pendingSet
+				// Get pool status for observability
+				const poolStatus = manager.getPoolStatus()
 
 				let response = `Delegation started: ${delegation.id}\nAgent: ${args.agent}`
-				if (totalActive > 1) {
-					response += `\n\n${totalActive} delegations now active.`
+				if (poolStatus.queued > 0) {
+					response += `\n\nPool: ${poolStatus.running}/${poolStatus.capacity} running, ${poolStatus.queued} queued`
 				}
-				response += `\nYou WILL be notified when ${totalActive > 1 ? "ALL complete" : "complete"}. Do NOT poll.`
+				response += `\nYou WILL be notified when complete. Do NOT poll.`
 
 				return response
 			} catch (error) {
@@ -1045,8 +1177,16 @@ Shows both running and completed delegations.`,
 
 			const delegations = await manager.listDelegations(toolCtx.sessionID)
 
+			// Get pool status for observability
+			const poolStatus = manager.getPoolStatus()
+
+			const header = `## Delegations
+
+**Pool Status:** ${poolStatus.running}/${poolStatus.capacity} running, ${poolStatus.queued} queued
+`
+
 			if (delegations.length === 0) {
-				return "No delegations found for this session."
+				return header + "\nNo delegations found for this session."
 			}
 
 			const lines = delegations.map((d) => {
@@ -1055,7 +1195,7 @@ Shows both running and completed delegations.`,
 				return `- **${d.id}**${titlePart} [${d.status}]${descPart}`
 			})
 
-			return `## Delegations\n\n${lines.join("\n")}`
+			return header + lines.join("\n")
 		},
 	})
 }
@@ -1210,7 +1350,10 @@ export const BackgroundAgentsPlugin: Plugin = async (ctx) => {
 	// Ensure base directory exists (for debug logs etc)
 	await fs.mkdir(baseDir, { recursive: true })
 
-	const manager = new DelegationManager(client as OpencodeClient, baseDir)
+	// Load pool configuration
+	const config = await loadOrCreateConfig(directory)
+
+	const manager = new DelegationManager(client as OpencodeClient, baseDir, config)
 
 	await manager.debugLog("BackgroundAgentsPlugin initialized with delegation system")
 
