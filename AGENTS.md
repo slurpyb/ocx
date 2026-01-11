@@ -242,7 +242,7 @@ Ghost mode enables working in repositories without modifying them:
 |-----------|----------|---------|
 | `ProfileManager` | `src/profile/manager.ts` | Static factory for profile CRUD operations |
 | `profile/paths.ts` | `src/profile/paths.ts` | Path constants and helpers for profile directories |
-| `profile/migrate.ts` | `src/profile/migrate.ts` | Migration from legacy `~/.config/ocx/` to profiles |
+
 | `GhostConfigProvider` | `src/config/provider.ts` | Provides config from current profile |
 | `symlink-farm.ts` | `src/utils/` | Creates temp dir with symlinks |
 | Ghost commands | `src/commands/ghost/` | init, config, registry, add, search, opencode |
@@ -326,17 +326,6 @@ ocx ghost profile add client-x --from work
 # List all profiles
 ocx ghost profile list
 ```
-
-#### Migration from Legacy Config
-
-If you have an existing `~/.config/ocx/` configuration:
-
-```bash
-ocx ghost migrate --dry-run  # Preview changes
-ocx ghost migrate            # Perform migration
-```
-
-This moves your config to `profiles/default/` and renames the old directory to `~/.config/ocx.bak/`.
 
 ## Quick Reference
 

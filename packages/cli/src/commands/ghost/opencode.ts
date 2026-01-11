@@ -12,7 +12,6 @@ import path from "node:path"
 import { Glob } from "bun"
 import type { Command } from "commander"
 import { ProfileManager } from "../../profile/manager.js"
-import { needsMigration } from "../../profile/migrate.js"
 import { getProfileDir, getProfileOpencodeConfig } from "../../profile/paths.js"
 import { ProfilesNotInitializedError } from "../../utils/errors.js"
 import { getGitInfo } from "../../utils/git-context.js"
@@ -62,12 +61,6 @@ async function runGhostOpenCode(args: string[], options: GhostOpenCodeOptions): 
 	const manager = ProfileManager.create()
 	if (!(await manager.isInitialized())) {
 		throw new ProfilesNotInitializedError()
-	}
-
-	// Check for legacy config and print migration notice (but still proceed)
-	if (!options.quiet && (await needsMigration())) {
-		console.log("Notice: Found legacy config at ~/.config/ocx/")
-		console.log("Run 'ocx ghost migrate' to upgrade to the new profiles system.\n")
 	}
 
 	// Clean up orphaned temp directories from interrupted sessions (SIGKILL resilience)

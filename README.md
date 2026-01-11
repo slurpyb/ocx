@@ -118,9 +118,6 @@ Ghost mode lets you work in repositories without modifying them, using your own 
 ocx ghost init              # Creates your first profile
 ocx ghost config            # Edit your active profile
 
-# Or migrate existing config
-ocx ghost migrate           # Move from ~/.config/ocx/ → ~/.config/opencode/profiles/default/
-
 # Add registries
 ocx ghost registry add https://registry.kdco.dev --name kdco
 ocx ghost registry list

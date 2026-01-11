@@ -840,7 +840,6 @@ Ghost mode lets you work in repositories without modifying them.
 | Command | Description |
 |---------|-------------|
 | `ocx ghost init` | Initialize ghost mode (`~/.config/opencode/profiles/<profile-name>/ghost.jsonc`) |
-| `ocx ghost migrate` | Migrate from legacy config location |
 | `ocx ghost profile add <name>` | Create a new profile |
 | `ocx ghost profile remove <name>` | Delete a profile |
 | `ocx ghost profile list` | List available profiles |
@@ -1233,50 +1232,6 @@ ocx ghost init --profile work
 ~/.config/opencode/profiles/
 └── default/
     └── ghost.jsonc
-```
-
----
-
-### Ghost Migrate
-
-Migrate legacy ghost configuration from `~/.config/ocx/` to the multi-profile directory structure at `~/.config/opencode/profiles/`.
-
-#### Usage
-
-```bash
-ocx ghost migrate [options]
-```
-
-#### Options
-
-| Option | Description |
-|--------|-------------|
-| `--dry-run` | Preview changes without applying them |
-
-#### Examples
-
-```bash
-# Preview migration
-ocx ghost migrate --dry-run
-
-# Execute migration (backs up old config)
-ocx ghost migrate
-```
-
-#### Changes
-
-- **Before**: `~/.config/ocx/ghost.jsonc`
-- **After**: `~/.config/opencode/profiles/default/ghost.jsonc`
-- **Backup**: `~/.config/ocx.bak/` (original directory moved)
-
-#### Dry Run Output
-
-```bash
-$ ocx ghost migrate --dry-run
-Would migrate ghost config from ~/.config/ocx to ~/.config/opencode/profiles/default
-Would backup: ~/.config/ocx → ~/.config/ocx.bak
-Starting profile: default
-✔ Migration ready to execute
 ```
 
 ---
