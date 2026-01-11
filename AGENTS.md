@@ -282,6 +282,7 @@ Ghost mode enables working in repositories without modifying them:
    - If user's `include` pattern matches a file, project version is used (not profile overlay)
 4. Sets `GIT_WORK_TREE` and `GIT_DIR` so Git sees real project
 5. Sets terminal/tmux window name to `ghost[profile]:repo/branch` for session identification
+   - Disabled with `--no-rename` flag or `renameWindow: false` in ghost config
 6. Spawns OpenCode from temp dir with `OCX_PROFILE` env var set
 7. Cleans up temp dir on exit
 

@@ -872,12 +872,13 @@ Ghost mode uses multi-profile configuration with configuration files stored at `
 
 #### Schema
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `registries` | `object` | Registry name → URL mapping |
-| `componentPath` | `string` | Where to install components (default: `.opencode`) |
-| `include` | `string[]` | Glob patterns for project files to include in ghost sessions |
-| `exclude` | `string[]` | Glob patterns to filter out from include results |
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `registries` | `object` | `{}` | Registry name → URL mapping |
+| `componentPath` | `string` | `.opencode` | Where to install components |
+| `include` | `string[]` | `[]` | Glob patterns for project files to include in ghost sessions |
+| `exclude` | `string[]` | `[]` | Glob patterns to filter out from include results |
+| `renameWindow` | `boolean` | `true` | Set terminal/tmux window name when launching OpenCode |
 
 #### Include/Exclude Patterns
 
@@ -1302,6 +1303,7 @@ ocx ghost opencode [args...] [options]
 | Option | Description |
 |--------|-------------|
 | `--profile, -p <name>` | Specify ghost profile to use |
+| `--no-rename` | Disable terminal/tmux window renaming |
 
 #### Examples
 
@@ -1323,7 +1325,7 @@ ocx ghost opencode -- /path/to/file.md
 3. **Apply Filters**: Uses `include`/`exclude` patterns from ghost config
 4. **Symlink Farm**: Creates temporary directory with symlinks to filtered files
 5. **Git Integration**: Sets `GIT_WORK_TREE` and `GIT_DIR` to see real project
-6. **Terminal Naming**: Sets terminal/tmux window name to `ghost[profile]:repo/branch` for session identification
+6. **Terminal Naming**: Sets terminal/tmux window name to `ghost[profile]:repo/branch` for session identification (unless disabled via `--no-rename` flag or `renameWindow: false` in config)
 7. **Spawn OpenCode**: Runs OpenCode from temp directory with ghost config via env vars
 8. **Cleanup**: Removes temp directory on exit
 
