@@ -120,6 +120,36 @@ The plugin detects your terminal automatically:
 3. **Environment vars** - Checks `TERM_PROGRAM`, `KITTY_WINDOW_ID`, `GHOSTTY_RESOURCES_DIR`, etc.
 4. **Fallback** - System defaults (Terminal.app, xterm, cmd.exe)
 
+## OCX Profile Support
+
+When running OpenCode via [OCX](https://github.com/kdcokenny/ocx) (`ocx opencode -p <profile>`), the worktree plugin automatically preserves your profile context.
+
+### How It Works
+
+| Launch Command | Worktree Spawns |
+|----------------|-----------------|
+| `opencode` | `opencode --session <id>` |
+| `ocx opencode` | `ocx opencode --session <id>` |
+| `ocx opencode -p work` | `ocx opencode -p work --session <id>` |
+
+The plugin detects OCX context via environment variables (`OCX_CONTEXT`, `OCX_BIN`, `OCX_PROFILE`) and spawns worktrees with the same profile configuration.
+
+### Multiple Profiles
+
+You can run multiple OpenCode sessions with different profiles simultaneously. Each session's worktrees will inherit the correct profile:
+
+```bash
+# Terminal 1
+ocx opencode -p work
+# Creates worktree → spawns with -p work
+
+# Terminal 2  
+ocx opencode -p personal
+# Creates worktree → spawns with -p personal
+```
+
+Environment variables are process-scoped, so profiles don't "leak" between sessions.
+
 ## Configuration
 
 Auto-creates `.opencode/worktree.jsonc` on first use:
@@ -202,6 +232,10 @@ No. It uses standard git worktrees. `git worktree list` shows them. Branches mer
 ### Why spawn a new terminal instead of reusing the current one?
 
 Isolation. You can close the worktree session without affecting your main workflow. If the AI breaks something, your original terminal remains untouched.
+
+### Does the worktree preserve my OCX profile?
+
+Yes! If you launch OpenCode via `ocx opencode -p <profile>`, any worktrees you create will automatically use the same profile. See [OCX Profile Support](#ocx-profile-support) for details.
 
 ## Limitations
 

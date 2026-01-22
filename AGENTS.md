@@ -310,8 +310,11 @@ Configurations are merged in this order (later sources override earlier ones):
    - Filters by `exclude`/`include` patterns from profile's `ocx.jsonc`
    - Include patterns override exclude patterns (TypeScript/Vite style)
 4. **Window naming** (optional): Sets terminal/tmux window name to `[profile]:repo/branch` for session identification
-5. **Spawn OpenCode**: Launches OpenCode with merged configuration and discovered instructions
-6. **Working directory**: OpenCode runs directly in the project directory
+5. **Environment variables**: Sets context markers for plugin detection:
+   - **`OCX_CONTEXT: "1"`** - Marker indicating OpenCode was launched via OCX (used by plugins)
+   - **`OCX_BIN: <path>`** - Absolute path to OCX binary (used by worktree plugin)
+6. **Spawn OpenCode**: Launches OpenCode with merged configuration and discovered instructions
+7. **Working directory**: OpenCode runs directly in the project directory
 
 ### Instruction File Discovery
 
@@ -354,6 +357,18 @@ To use a custom OpenCode binary (e.g., a development build), set the `bin` optio
 1. `bin` in profile's `ocx.jsonc`
 2. `OPENCODE_BIN` environment variable
 3. `opencode` (system PATH)
+
+### Worktree Profile Preservation
+
+When using the worktree plugin with OCX, your profile context is automatically preserved:
+
+| Launch Command | Worktree Spawns |
+|----------------|-----------------|
+| `opencode` | `opencode --session <id>` |
+| `ocx opencode` | `ocx opencode --session <id>` |
+| `ocx opencode -p work` | `ocx opencode -p work --session <id>` |
+
+This ensures your profile settings, instructions, and configuration follow you into worktrees. The worktree plugin detects OCX context via the `OCX_CONTEXT` environment variable and uses `OCX_BIN` to spawn the correct binary.
 
 ### Profile Management
 

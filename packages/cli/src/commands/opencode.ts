@@ -29,6 +29,24 @@ interface OpencodeOptions {
 	json?: boolean
 }
 
+/**
+ * Resolve the path to the OCX binary.
+ * Priority: existing OCX_BIN env > Bun.which("ocx")
+ * Fails if OCX binary cannot be found.
+ */
+function resolveOcxBin(): string {
+	// 1. Already set (nested OCX) - preserve it if non-empty
+	const envBin = process.env.OCX_BIN?.trim()
+	if (envBin) return envBin
+
+	// 2. Resolve from PATH (preferred - returns symlinked command path)
+	const which = Bun.which("ocx")
+	if (which) return which
+
+	// 3. Fail before spawning
+	throw new Error("Cannot determine ocx binary path. Set OCX_BIN or ensure ocx is in PATH.")
+}
+
 export function registerOpencodeCommand(program: Command): void {
 	program
 		.command("opencode [path]")
@@ -137,10 +155,14 @@ async function runOpencode(
 		cwd: projectDir,
 		env: {
 			...process.env,
+			// OCX context markers for worktree plugin
+			OCX_CONTEXT: "1",
+			OCX_BIN: resolveOcxBin(),
+			...(config.profileName && { OCX_PROFILE: config.profileName }),
+			// OpenCode config injection
 			OPENCODE_DISABLE_PROJECT_CONFIG: "true",
 			...(profileDir && { OPENCODE_CONFIG_DIR: profileDir }),
 			...(configToPass && { OPENCODE_CONFIG_CONTENT: JSON.stringify(configToPass) }),
-			...(config.profileName && { OCX_PROFILE: config.profileName }),
 		},
 		stdin: "inherit",
 		stdout: "inherit",
