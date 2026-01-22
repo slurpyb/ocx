@@ -16,7 +16,6 @@ import type { OpencodeClient } from "../kdco-primitives"
 import {
 	escapeAppleScript,
 	escapeBash,
-	escapeBatch,
 	getTempDir,
 	isInsideTmux,
 	logWarn,
@@ -45,7 +44,7 @@ function argvToBashCommand(argv: string[]): string {
 
 /**
  * Convert argv array to a properly-escaped Windows batch command string.
- * Validates that arguments don't contain characters that can't be safely escaped in cmd.exe.
+ * Uses quoted-context escaping where only % and " need special handling.
  */
 function argvToBatchCommand(argv: string[]): string {
 	return argv
@@ -57,12 +56,12 @@ function argvToBatchCommand(argv: string[]): string {
 				)
 			}
 
-			// For cmd.exe, embedded quotes are problematic. The safest approach is to:
-			// 1. Replace embedded " with "" (batch quote escaping)
-			// 2. Then wrap the whole thing in quotes
-			// 3. Then apply escapeBatch for other metacharacters
-			const quoteSafeArg = arg.replace(/"/g, '""')
-			return `"${escapeBatch(quoteSafeArg)}"`
+			// For quoted batch arguments:
+			// 1. Escape percent signs: % → %% (special even inside quotes)
+			// 2. Escape embedded quotes: " → "" (batch quote escaping)
+			// Note: Other metacharacters (&, <, >, |, ^) are protected by the surrounding quotes
+			const escaped = arg.replace(/%/g, "%%").replace(/"/g, '""')
+			return `"${escaped}"`
 		})
 		.join(" ")
 }
@@ -844,7 +843,9 @@ export async function openWindowsTerminal(cwd: string, command?: string): Promis
 		return { success: false, error: "Working directory is required" }
 	}
 
-	const escapedCwd = escapeBatch(cwd)
+	// For quoted batch arguments, only % and " need escaping
+	// (other metacharacters are protected by the surrounding quotes)
+	const escapedCwd = cwd.replace(/%/g, "%%").replace(/"/g, '""')
 	// Command is already a valid shell command (either passed as string or converted from argv)
 	const scriptContent = wrapBatchWithSelfCleanup(
 		command ? `cd /d "${escapedCwd}"\r\n${command}\r\ncmd /k` : `cd /d "${escapedCwd}"\r\ncmd /k`,
