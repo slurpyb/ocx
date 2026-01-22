@@ -9,10 +9,9 @@
 
 import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
-import { mkdir, rename, rm, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
-import { getProfileDir } from "../../profile/paths"
+import { getProfileDir, getProfilesDir } from "../../profile/paths"
 import { profileNameSchema } from "../../profile/schema"
 import { fetchComponent, fetchFileContent, fetchRegistryIndex } from "../../registry/fetcher"
 import { resolveDependencies } from "../../registry/resolver"
@@ -278,13 +277,15 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 
 	// ==========================================================================
 	// Phase 4: Create staging directory
+	// Use profiles directory as parent to ensure same filesystem (avoids EXDEV on rename)
 	// ==========================================================================
 
-	const stagingDir = join(tmpdir(), `ocx-profile-${profileName}-${process.pid}`)
+	const profilesDir = getProfilesDir()
+	await mkdir(profilesDir, { recursive: true, mode: 0o700 })
+	const stagingDir = await mkdtemp(join(profilesDir, ".staging-"))
 	const stagingOpencodeDir = join(stagingDir, ".opencode")
 
 	try {
-		await mkdir(stagingDir, { recursive: true, mode: 0o700 })
 		await mkdir(stagingOpencodeDir, { recursive: true, mode: 0o700 })
 
 		// ==========================================================================
@@ -403,13 +404,14 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 			await rename(profileDir, backupDir)
 			try {
 				await rename(stagingDir, profileDir)
-				// Success: remove backup
-				await rm(backupDir, { recursive: true, force: true })
 			} catch (err) {
 				// Rollback: restore backup
 				await rename(backupDir, profileDir)
 				throw err
 			}
+			// Cleanup backup after successful install (outside try block)
+			// Failure here shouldn't trigger rollback since install succeeded
+			await rm(backupDir, { recursive: true, force: true })
 		} else {
 			// No existing profile: simple rename
 			await rename(stagingDir, profileDir)

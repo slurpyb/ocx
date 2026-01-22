@@ -56,7 +56,7 @@ export function parseFromOption(from: string): FromInput {
 	// Route registry references: contains exactly one /
 	const slashCount = (trimmed.match(/\//g) || []).length
 	if (slashCount === 1) {
-		const [namespace, component] = trimmed.split("/")
+		const [namespace, component] = trimmed.split("/").map((s) => s.trim())
 		if (!namespace || !component) {
 			throw new ValidationError(
 				`Invalid registry reference: "${from}". Expected format: namespace/component`,

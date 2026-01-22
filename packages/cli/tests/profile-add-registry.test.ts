@@ -63,6 +63,11 @@ describe("parseFromOption()", () => {
 		const result = parseFromOption("  kdco/minimal  ")
 		expect(result).toEqual({ type: "registry", namespace: "kdco", component: "minimal" })
 	})
+
+	it("trims whitespace around slash in registry reference", () => {
+		const result = parseFromOption("kdco / minimal")
+		expect(result).toEqual({ type: "registry", namespace: "kdco", component: "minimal" })
+	})
 })
 
 // =============================================================================
