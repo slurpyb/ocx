@@ -24,6 +24,50 @@ import {
 } from "../kdco-primitives"
 
 // =============================================================================
+// ARGV TO SHELL COMMAND HELPERS
+// =============================================================================
+
+/**
+ * Convert argv array to a properly-escaped bash command string.
+ * Validates that arguments don't contain characters that can't be safely escaped.
+ */
+function argvToBashCommand(argv: string[]): string {
+	return argv
+		.map((arg) => {
+			// Null bytes can't exist in bash arguments
+			if (arg.includes("\0")) {
+				throw new Error("Cannot escape argument containing null bytes for bash")
+			}
+			return `"${escapeBash(arg)}"`
+		})
+		.join(" ")
+}
+
+/**
+ * Convert argv array to a properly-escaped Windows batch command string.
+ * Validates that arguments don't contain characters that can't be safely escaped in cmd.exe.
+ */
+function argvToBatchCommand(argv: string[]): string {
+	return argv
+		.map((arg) => {
+			// Reject arguments with newlines (can't be safely escaped in batch)
+			if (arg.includes("\n") || arg.includes("\r")) {
+				throw new Error(
+					`Cannot safely escape argument containing newlines for Windows batch: ${arg.slice(0, 50)}...`,
+				)
+			}
+
+			// For cmd.exe, embedded quotes are problematic. The safest approach is to:
+			// 1. Replace embedded " with "" (batch quote escaping)
+			// 2. Then wrap the whole thing in quotes
+			// 3. Then apply escapeBatch for other metacharacters
+			const quoteSafeArg = arg.replace(/"/g, '""')
+			return `"${escapeBatch(quoteSafeArg)}"`
+		})
+		.join(" ")
+}
+
+// =============================================================================
 // TEMP SCRIPT HELPER
 // =============================================================================
 
@@ -255,10 +299,10 @@ export async function openTmuxWindow(options: {
 			if (command) {
 				const scriptPath = path.join(getTempDir(), `worktree-${Bun.randomUUIDv7()}.sh`)
 				const escapedCwd = escapeBash(cwd)
-				const escapedCommand = escapeBash(command)
+				// Command is already a valid shell command (either passed as string or converted from argv)
 				const scriptContent = wrapWithSelfCleanup(
 					`cd "${escapedCwd}" || exit 1
-${escapedCommand}
+${command}
 exec $SHELL`,
 				)
 				await Bun.write(scriptPath, scriptContent)
@@ -340,11 +384,9 @@ export async function openMacOSTerminal(cwd: string, command?: string): Promise<
 	}
 
 	const escapedCwd = escapeBash(cwd)
-	const escapedCommand = command ? escapeBash(command) : ""
+	// Command is already a valid shell command (either passed as string or converted from argv)
 	const scriptContent = wrapWithSelfCleanup(
-		command
-			? `cd "${escapedCwd}" && ${escapedCommand}\nexec bash`
-			: `cd "${escapedCwd}"\nexec bash`,
+		command ? `cd "${escapedCwd}" && ${command}\nexec bash` : `cd "${escapedCwd}"\nexec bash`,
 	)
 
 	const terminal = detectCurrentMacTerminal()
@@ -368,7 +410,7 @@ export async function openMacOSTerminal(cwd: string, command?: string): Promise<
 							"-e",
 							"bash",
 							"-c",
-							command ? `cd "${escapedCwd}" && ${escapedCommand}` : `cd "${escapedCwd}"`,
+							command ? `cd "${escapedCwd}" && ${command}` : `cd "${escapedCwd}"`,
 						],
 						{
 							detached: true,
@@ -573,11 +615,9 @@ export async function openLinuxTerminal(cwd: string, command?: string): Promise<
 	}
 
 	const escapedCwd = escapeBash(cwd)
-	const escapedCommand = command ? escapeBash(command) : ""
+	// Command is already a valid shell command (either passed as string or converted from argv)
 	const scriptContent = wrapWithSelfCleanup(
-		command
-			? `cd "${escapedCwd}" && ${escapedCommand}\nexec bash`
-			: `cd "${escapedCwd}"\nexec bash`,
+		command ? `cd "${escapedCwd}" && ${command}\nexec bash` : `cd "${escapedCwd}"\nexec bash`,
 	)
 
 	// Write script directly - it self-deletes via trap
@@ -805,11 +845,9 @@ export async function openWindowsTerminal(cwd: string, command?: string): Promis
 	}
 
 	const escapedCwd = escapeBatch(cwd)
-	const escapedCommand = command ? escapeBatch(command) : ""
+	// Command is already a valid shell command (either passed as string or converted from argv)
 	const scriptContent = wrapBatchWithSelfCleanup(
-		command
-			? `cd /d "${escapedCwd}"\r\n${escapedCommand}\r\ncmd /k`
-			: `cd /d "${escapedCwd}"\r\ncmd /k`,
+		command ? `cd /d "${escapedCwd}"\r\n${command}\r\ncmd /k` : `cd /d "${escapedCwd}"\r\ncmd /k`,
 	)
 
 	// Write script directly - it self-deletes via goto trick
@@ -887,11 +925,9 @@ export async function openWSLTerminal(cwd: string, command?: string): Promise<Te
 	}
 
 	const escapedCwd = escapeBash(cwd)
-	const escapedCommand = command ? escapeBash(command) : ""
+	// Command is already a valid shell command (either passed as string or converted from argv)
 	const scriptContent = wrapWithSelfCleanup(
-		command
-			? `cd "${escapedCwd}" && ${escapedCommand}\nexec bash`
-			: `cd "${escapedCwd}"\nexec bash`,
+		command ? `cd "${escapedCwd}" && ${command}\nexec bash` : `cd "${escapedCwd}"\nexec bash`,
 	)
 
 	// Write script directly - it self-deletes via trap
@@ -957,13 +993,13 @@ export async function openWSLTerminal(cwd: string, command?: string): Promise<Te
  * Automatically detects the best terminal type and method.
  *
  * @param cwd - Working directory for the terminal
- * @param command - Optional command to execute
+ * @param command - Optional command to execute (string or argv array)
  * @param windowName - Optional window name (used for tmux)
  * @returns Success status and optional error message
  */
 export async function openTerminal(
 	cwd: string,
-	command?: string,
+	command?: string | string[],
 	windowName?: string,
 ): Promise<TerminalResult> {
 	const terminalType = detectTerminalType()
@@ -973,21 +1009,25 @@ export async function openTerminal(
 			return openTmuxWindow({
 				windowName: windowName || "worktree",
 				cwd,
-				command,
+				command: Array.isArray(command) ? argvToBashCommand(command) : command,
 			})
 
 		case "macos":
-			return openMacOSTerminal(cwd, command)
+			return openMacOSTerminal(cwd, Array.isArray(command) ? argvToBashCommand(command) : command)
 
 		case "windows":
-			// Check if we're in WSL
+			// Check if we're in WSL (bash-based, not batch)
 			if (process.platform === "linux" && isInsideWSL()) {
-				return openWSLTerminal(cwd, command)
+				return openWSLTerminal(cwd, Array.isArray(command) ? argvToBashCommand(command) : command)
 			}
-			return openWindowsTerminal(cwd, command)
+			// Native Windows uses batch escaping
+			return openWindowsTerminal(
+				cwd,
+				Array.isArray(command) ? argvToBatchCommand(command) : command,
+			)
 
 		case "linux-desktop":
-			return openLinuxTerminal(cwd, command)
+			return openLinuxTerminal(cwd, Array.isArray(command) ? argvToBashCommand(command) : command)
 
 		default:
 			return { success: false, error: `Unsupported terminal type: ${terminalType}` }

@@ -30,7 +30,7 @@ interface Logger {
 import { parse as parseJsonc } from "jsonc-parser"
 import { z } from "zod"
 import { getProjectId } from "./kdco-primitives/get-project-id"
-import { escapeBash } from "./kdco-primitives/shell"
+
 import {
 	addSession,
 	clearPendingDelete,
@@ -67,26 +67,28 @@ function parseOcxContext(): OcxContext {
 		)
 	}
 
-	const profile = process.env.OCX_PROFILE || undefined
+	const profile = process.env.OCX_PROFILE?.trim() || undefined
 	return { mode: "ocx", bin, profile }
 }
 
 /**
- * Build the command to spawn OpenCode in a worktree.
- * Uses OCX with profile if running under OCX, otherwise plain opencode.
+ * Build argv array for spawning OpenCode in a worktree.
+ * Returns structured data - terminal layer handles shell escaping.
  */
-function buildWorktreeCommand(sessionId: string): string {
+function buildWorktreeArgv(sessionId: string): string[] {
 	const ctx = parseOcxContext()
-	const escapedSessionId = escapeBash(sessionId)
 
 	if (ctx.mode === "ocx") {
-		const escapedBin = escapeBash(ctx.bin)
-		const profileArg = ctx.profile ? ` -p "${escapeBash(ctx.profile)}"` : ""
-		return `"${escapedBin}" opencode${profileArg} --session "${escapedSessionId}"`
+		return [
+			ctx.bin,
+			"opencode",
+			...(ctx.profile ? ["-p", ctx.profile] : []),
+			"--session",
+			sessionId,
+		]
 	} else {
 		const bin = process.env.OPENCODE_BIN ?? "opencode"
-		const escapedBin = escapeBash(bin)
-		return `"${escapedBin}" --session "${escapedSessionId}"`
+		return [bin, "--session", sessionId]
 	}
 }
 
@@ -820,8 +822,8 @@ export const WorktreePlugin: Plugin = async (ctx) => {
 					)
 
 					// Spawn worktree with forked session
-					const command = buildWorktreeCommand(forkedSession.id)
-					const terminalResult = await openTerminal(worktreePath, command, args.branch)
+					const argv = buildWorktreeArgv(forkedSession.id)
+					const terminalResult = await openTerminal(worktreePath, argv, args.branch)
 
 					if (!terminalResult.success) {
 						log.warn(`[worktree] Failed to open terminal: ${terminalResult.error}`)
