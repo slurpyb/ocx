@@ -96,7 +96,7 @@ export async function buildRegistry(options: BuildRegistryOptions): Promise<Buil
 
 		// Copy files to components/[name]/[path]
 		for (const rawFile of component.files) {
-			const file = normalizeFile(rawFile)
+			const file = normalizeFile(rawFile, component.type)
 			const sourceFilePath = join(sourcePath, "files", file.path)
 			const destFilePath = join(componentsDir, component.name, file.path)
 			const destFileDir = dirname(destFilePath)

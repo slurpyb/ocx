@@ -5,7 +5,9 @@
  * Uses Cargo-style union types: string for simple defaults, object for full control.
  */
 
+import { isAbsolute, normalize } from "node:path"
 import { z } from "zod"
+import { ValidationError } from "../utils/errors"
 
 // =============================================================================
 // NPM SPECIFIER SCHEMA
@@ -134,9 +136,15 @@ export const componentTypeSchema = z.enum([
 	"ocx:command",
 	"ocx:tool",
 	"ocx:bundle",
+	"ocx:profile",
 ])
 
 export type ComponentType = z.infer<typeof componentTypeSchema>
+
+/** Valid target paths for profile files (flat structure, no .opencode/ prefix) */
+export const profileTargetPathSchema = z.enum(["ocx.jsonc", "opencode.jsonc", "AGENTS.md"])
+
+export type ProfileTargetPath = z.infer<typeof profileTargetPathSchema>
 
 /**
  * Target path must be inside .opencode/ with valid subdirectory
@@ -234,13 +242,16 @@ export type McpServerRef = z.infer<typeof mcpServerRefSchema>
 // =============================================================================
 
 /**
- * Full file configuration object
+ * Full file configuration object (profile-aware).
+ * Target validation is deferred to normalizeFile() where component type is known.
+ * For profiles: flat paths (ocx.jsonc, opencode.jsonc, AGENTS.md) or .opencode/... for embedded deps
+ * For other types: must be .opencode/...
  */
 export const componentFileObjectSchema = z.object({
 	/** Source path in registry */
 	path: z.string().min(1, "File path cannot be empty"),
-	/** Target path in .opencode/ */
-	target: targetPathSchema,
+	/** Target path - validation deferred to normalizeFile() for type-aware checking */
+	target: z.string().min(1, "Target path cannot be empty"),
 })
 
 export type ComponentFileObject = z.infer<typeof componentFileObjectSchema>
@@ -593,6 +604,26 @@ export type ComponentManifest = z.infer<typeof componentManifestSchema>
 // =============================================================================
 
 /**
+ * Validates path doesn't contain traversal attacks.
+ * Fails fast with descriptive error (Law 4: Fail Fast, Fail Loud).
+ * Uses path.normalize for proper traversal detection.
+ * @param filePath - The path to validate
+ * @throws ValidationError if path contains traversal patterns
+ */
+export function validateSafePath(filePath: string): void {
+	if (isAbsolute(filePath)) {
+		throw new ValidationError(`Invalid path: "${filePath}" - absolute paths not allowed`)
+	}
+	if (filePath.startsWith("~")) {
+		throw new ValidationError(`Invalid path: "${filePath}" - home directory paths not allowed`)
+	}
+	const normalized = normalize(filePath)
+	if (normalized.startsWith("..")) {
+		throw new ValidationError(`Invalid path: "${filePath}" - path traversal not allowed`)
+	}
+}
+
+/**
  * Infer target path from source path
  * e.g., "plugin/foo.ts" -> ".opencode/plugin/foo.ts"
  */
@@ -601,15 +632,73 @@ export function inferTargetPath(sourcePath: string): string {
 }
 
 /**
- * Normalize a file entry from string shorthand to full object
+ * Validate a file target path based on component type.
+ * - Profile types: allow flat paths (ocx.jsonc, etc.) OR .opencode/... for embedded deps
+ * - Other types: require .opencode/... paths
+ * @param target - The target path to validate
+ * @param componentType - The component type for context-aware validation
+ * @throws ValidationError if target is invalid for the component type
  */
-export function normalizeFile(file: ComponentFile): ComponentFileObject {
-	if (typeof file === "string") {
-		return {
-			path: file,
-			target: inferTargetPath(file),
+export function validateFileTarget(target: string, componentType?: ComponentType): void {
+	const isProfile = componentType === "ocx:profile"
+
+	if (isProfile) {
+		// Profiles allow flat profile files OR .opencode/... for embedded dependencies
+		const isProfileFile = profileTargetPathSchema.safeParse(target).success
+		const isOpencodeTarget = target.startsWith(".opencode/")
+
+		if (!isProfileFile && !isOpencodeTarget) {
+			throw new ValidationError(
+				`Invalid profile target: "${target}". ` +
+					`Must be a profile file (ocx.jsonc, opencode.jsonc, AGENTS.md) or start with ".opencode/"`,
+			)
+		}
+
+		// If .opencode target, validate the subdirectory
+		if (isOpencodeTarget) {
+			const parseResult = targetPathSchema.safeParse(target)
+			if (!parseResult.success) {
+				throw new ValidationError(
+					`Invalid embedded target: "${target}". ${parseResult.error.errors[0]?.message}`,
+				)
+			}
+		}
+	} else {
+		// Non-profile types require .opencode/... paths
+		const parseResult = targetPathSchema.safeParse(target)
+		if (!parseResult.success) {
+			throw new ValidationError(
+				`Invalid target: "${target}". ${parseResult.error.errors[0]?.message}`,
+			)
 		}
 	}
+}
+
+/**
+ * Normalize a file entry from string shorthand to full object.
+ * Handles profile type differently - uses flat paths without .opencode/ prefix.
+ * @param file - The file entry to normalize
+ * @param componentType - Component type to determine path behavior and validation
+ */
+export function normalizeFile(
+	file: ComponentFile,
+	componentType?: ComponentType,
+): ComponentFileObject {
+	const isProfile = componentType === "ocx:profile"
+
+	if (typeof file === "string") {
+		validateSafePath(file)
+		const target = isProfile ? file : inferTargetPath(file)
+		validateFileTarget(target, componentType)
+		return {
+			path: file,
+			target,
+		}
+	}
+
+	validateSafePath(file.path)
+	validateSafePath(file.target)
+	validateFileTarget(file.target, componentType)
 	return file
 }
 
@@ -667,7 +756,7 @@ export function normalizeComponentManifest(
 
 	return {
 		...manifest,
-		files: manifest.files.map(normalizeFile),
+		files: manifest.files.map((file) => normalizeFile(file, manifest.type)),
 		opencode: normalizedOpencode,
 	}
 }

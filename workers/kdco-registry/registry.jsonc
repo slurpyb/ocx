@@ -396,6 +396,22 @@
 			"description": "Full KDCO Philosophy enforcement",
 			"files": ["philosophy/AGENTS.md"],
 			"dependencies": ["code-philosophy", "frontend-philosophy"]
+		},
+
+		// ============================================================================
+		// PROFILES
+		// Pre-configured profiles for OpenCode environments
+		// ============================================================================
+		{
+			"name": "minimal",
+			"type": "ocx:profile",
+			"description": "A minimal profile with researcher and coder agents",
+			"files": [
+				{ "path": "profiles/minimal/ocx.jsonc", "target": "ocx.jsonc" },
+				{ "path": "profiles/minimal/opencode.jsonc", "target": "opencode.jsonc" },
+				{ "path": "profiles/minimal/AGENTS.md", "target": "AGENTS.md" }
+			],
+			"dependencies": ["researcher", "coder"]
 		}
 	]
 }

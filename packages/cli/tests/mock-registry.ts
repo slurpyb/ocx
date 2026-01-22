@@ -44,6 +44,18 @@ export function startMockRegistry(): MockRegistry {
 				},
 			},
 		},
+		// Profile component for testing profile installation
+		"test-profile": {
+			name: "test-profile",
+			type: "ocx:profile",
+			description: "A test profile for registry installation",
+			files: [
+				{ path: "ocx.jsonc", target: "ocx.jsonc" },
+				{ path: "opencode.jsonc", target: "opencode.jsonc" },
+				{ path: "AGENTS.md", target: "AGENTS.md" },
+			],
+			dependencies: [],
+		},
 		// Components for testing MCP merge regression
 		"test-mcp-provider": {
 			name: "test-mcp-provider",
@@ -135,6 +147,18 @@ export function startMockRegistry(): MockRegistry {
 				const customKey = `${name}:${filePath}`
 				if (customFiles.has(customKey)) {
 					return new Response(customFiles.get(customKey))
+				}
+				// Return proper default content for profile files
+				if (name === "test-profile") {
+					if (filePath === "ocx.jsonc") {
+						return new Response(JSON.stringify({ registries: {} }, null, 2))
+					}
+					if (filePath === "opencode.jsonc") {
+						return new Response(JSON.stringify({}, null, 2))
+					}
+					if (filePath === "AGENTS.md") {
+						return new Response("# Test Profile\n\nTest profile instructions.")
+					}
 				}
 				return new Response(`Content of ${filePath} for ${name}`)
 			}
