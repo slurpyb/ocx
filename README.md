@@ -126,6 +126,10 @@ ocx init --global           # Initialize global profiles
 ocx profile add work        # Create a work profile
 ocx profile config work     # Edit your profile settings
 
+# Install pre-configured profile from registry (optional)
+ocx registry add kdco https://registry.kdco.dev --global
+ocx profile add minimal --from kdco/minimal
+
 # Use in any repo (without touching it)
 cd ~/oss/some-project
 ocx opencode -p work        # Launch OpenCode with your work profile
@@ -165,7 +169,7 @@ Profiles keep your configurations isolated and portable:
 | Command | Alias | Description |
 |---------|-------|-------------|
 | `ocx profile list` | `ocx p ls` | List all global profiles |
-| `ocx profile add <name>` | `ocx p add` | Create a new profile |
+| `ocx profile add <name>` | `ocx p add` | Create new profile or install from registry |
 | `ocx profile remove <name>` | `ocx p rm` | Delete a profile |
 | `ocx profile show <name>` | `ocx p show` | Display profile contents |
 | `ocx profile config <name>` | `ocx p config` | Edit profile's ocx.jsonc in $EDITOR |

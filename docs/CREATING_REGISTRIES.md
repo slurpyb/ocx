@@ -167,6 +167,7 @@ Components can specify settings to merge into the user's `opencode.jsonc`:
 | `ocx:command` | `command/` | Markdown templates for TUI commands. |
 | `ocx:tool` | `tool/` | Custom tool implementations. |
 | `ocx:bundle` | N/A | Virtual components that install multiple other components. |
+| `ocx:profile` | N/A | Shareable profile configuration. |
 
 ## Building
 

@@ -23,6 +23,7 @@
 		//   - ocx:plugin    - TypeScript plugins that extend functionality
 		//   - ocx:command   - User-invokable commands
 		//   - ocx:bundle    - Collections of related components
+		//   - ocx:profile   - Shareable profile configuration
 		{
 			"name": "hello-world",
 			"type": "ocx:skill",

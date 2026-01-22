@@ -153,12 +153,22 @@ async function requireGlobalRegistry(
 export function registerProfileAddCommand(parent: Command): void {
 	parent
 		.command("add <name>")
-		.description("Create a new global profile")
+		.description("Create a new profile, clone from existing, or install from registry")
 		.option(
 			"--from <source>",
-			"Clone from existing profile or install from registry (namespace/component)",
+			"Clone from existing profile or install from registry (e.g., kdco/minimal)",
 		)
 		.option("-f, --force", "Overwrite existing profile")
+		.addHelpText(
+			"after",
+			`
+Examples:
+  $ ocx profile add work                      # Create empty profile
+  $ ocx profile add work --from dev           # Clone from existing profile
+  $ ocx profile add work --from kdco/minimal  # Install from registry
+  $ ocx profile add work --from kdco/minimal --force  # Overwrite existing
+`,
+		)
 		.action(async (name: string, options: ProfileAddOptions) => {
 			try {
 				await runProfileAdd(name, options)

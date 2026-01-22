@@ -116,6 +116,7 @@ bun run build && bun run deploy
 | `ocx:command` | Custom TUI commands | Markdown |
 | `ocx:tool` | Custom tool implementations | TypeScript |
 | `ocx:bundle` | Component collections | JSON |
+| `ocx:profile` | Shareable profile configuration | JSON |
 
 See [AGENTS.md](./AGENTS.md) for detailed documentation on each type.
 

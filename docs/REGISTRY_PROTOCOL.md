@@ -135,6 +135,7 @@ Returns raw file content for installation.
 | `ocx:command` | `.opencode/command/` | Custom CLI commands |
 | `ocx:tool` | `.opencode/tool/` | Custom tools |
 | `ocx:bundle` | (varies) | Meta-package grouping other components |
+| `ocx:profile` | `~/.config/opencode/profiles/{name}/` | Shareable profile configuration |
 
 ## Example: Minimal Compliant Registry
 

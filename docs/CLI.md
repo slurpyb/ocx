@@ -931,7 +931,7 @@ Manage global profiles for different OpenCode configurations.
 ### Subcommands
 
 - [`ocx profile list`](#ocx-profile-list) - List all global profiles
-- [`ocx profile add`](#ocx-profile-add) - Create a new profile
+- [`ocx profile add`](#ocx-profile-add) - Create new profile or install from registry
 - [`ocx profile remove`](#ocx-profile-remove) - Delete a profile
 - [`ocx profile show`](#ocx-profile-show) - Display profile contents
 - [`ocx profile config`](#ocx-profile-config) - Edit profile's ocx.jsonc
@@ -991,7 +991,7 @@ $ ocx profile list --json
 
 ### ocx profile add
 
-Create a new global profile.
+Create a new profile, clone from existing, or install from registry.
 
 #### Usage
 
@@ -1010,7 +1010,8 @@ ocx p add <name> [options]  # alias
 
 | Option | Description |
 |--------|-------------|
-| `--from <profile>` | Clone configuration from existing profile |
+| `--from <source>` | Clone from existing profile or install from registry (e.g., kdco/minimal) |
+| `-f, --force` | Overwrite existing profile |
 
 #### Examples
 
@@ -1021,6 +1022,13 @@ ocx profile add work
 # Clone from existing profile
 ocx profile add client-x --from work
 
+# Install from registry (requires global registry config)
+ocx registry add kdco https://registry.kdco.dev --global
+ocx profile add minimal --from kdco/minimal
+
+# Force overwrite existing profile
+ocx profile add minimal --from kdco/minimal --force
+
 # Using alias
 ocx p add personal
 ```
@@ -1029,7 +1037,8 @@ ocx p add personal
 
 - Profile names must be valid filesystem names
 - Spaces are automatically converted to hyphens
-- Cannot create a profile that already exists
+- Installing from registry requires global registry configuration
+- Use `--force` to overwrite existing profiles
 
 ---
 

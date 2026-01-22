@@ -150,7 +150,7 @@ The registry manifest defines your components:
 
 ## Component Types
 
-OCX supports four component types:
+OCX supports the following component types:
 
 | Type | Purpose | File Format |
 |------|---------|-------------|
@@ -158,6 +158,7 @@ OCX supports four component types:
 | `ocx:plugin` | Code that extends OpenCode | TypeScript |
 | `ocx:agent` | Agent role definitions | Markdown |
 | `ocx:bundle` | Collection of components | JSON manifest |
+| `ocx:profile` | Shareable profile configuration | JSON |
 
 ### Skills (ocx:skill)
 
