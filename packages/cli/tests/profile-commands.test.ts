@@ -1,13 +1,13 @@
 /**
  * Profile Commands Tests
  *
- * Comprehensive tests for profile show, config, and remove commands.
+ * Comprehensive tests for profile show and remove commands.
  * Uses unique componentPath values as sentinels to verify correct profile selection.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { existsSync } from "node:fs"
-import { chmod, mkdir } from "node:fs/promises"
+import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import { cleanupTempDir, createTempDir, runCLI } from "./helpers"
 
@@ -68,19 +68,6 @@ afterEach(async () => {
 	}
 	await cleanupTempDir(testDir)
 })
-
-/**
- * Fail-fast helper for waiting on file creation.
- */
-async function waitForFile(filePath: string, timeoutMs = 2000): Promise<void> {
-	const startTime = Date.now()
-	while (!existsSync(filePath)) {
-		if (Date.now() - startTime > timeoutMs) {
-			throw new Error(`Timeout: ${filePath} not created within ${timeoutMs}ms`)
-		}
-		await Bun.sleep(50)
-	}
-}
 
 // =============================================================================
 // Profile Remove Tests
@@ -265,220 +252,6 @@ describe("ocx profile show", () => {
 			expect(data.opencode).toBeDefined()
 			expect(data.opencode.mcpServers).toBeDefined()
 		})
-	})
-})
-
-// =============================================================================
-// Profile Config Tests
-// =============================================================================
-
-describe("ocx profile config", () => {
-	const RACE_TIMEOUT_MS = 500
-	let stubPath: string
-	let argsPath: string
-	let startedPath: string
-	let releasePath: string
-	let donePath: string
-
-	beforeEach(async () => {
-		// Create stub editor with blocking handshake
-		stubPath = join(testDir, "stub-editor.sh")
-		argsPath = join(testDir, "editor-args.txt")
-		startedPath = join(testDir, "editor-started.txt")
-		releasePath = join(testDir, "editor-release.txt")
-		donePath = join(testDir, "editor-done.txt")
-
-		await Bun.write(
-			stubPath,
-			`#!/usr/bin/env bash
-echo "$@" > "${argsPath}"
-touch "${startedPath}"
-for i in {1..100}; do
-  if [ -f "${releasePath}" ]; then break; fi
-  sleep 0.05
-done
-echo "completed" > "${donePath}"
-exit 0`,
-		)
-		await chmod(stubPath, 0o755)
-	})
-
-	it("should invoke editor with correct config path", async () => {
-		const configDir = join(testDir, "opencode")
-		const expectedPath = join(configDir, "profiles", "test-profile", "ocx.jsonc")
-
-		// Start CLI (non-blocking)
-		const cliPromise = runCLI(["profile", "config", "test-profile"], testDir, {
-			env: { EDITOR: stubPath },
-		})
-
-		// Wait for editor to start
-		await waitForFile(startedPath)
-
-		// Read the args passed to the editor
-		const args = await Bun.file(argsPath).text()
-		expect(args.trim()).toBe(expectedPath)
-
-		// Release the editor
-		await Bun.write(releasePath, "release")
-
-		// Wait for CLI to complete
-		const { exitCode } = await cliPromise
-		expect(exitCode).toBe(0)
-	})
-
-	it("should wait for editor to complete", async () => {
-		// Start CLI (non-blocking)
-		const cliPromise = runCLI(["profile", "config", "test-profile"], testDir, {
-			env: { EDITOR: stubPath },
-		})
-
-		// Wait for editor to start
-		await waitForFile(startedPath)
-
-		// CLI should still be waiting (use Promise.race to verify)
-		const raceResult = await Promise.race([
-			cliPromise.then(() => "cli-done"),
-			Bun.sleep(RACE_TIMEOUT_MS).then(() => "timeout"),
-		])
-
-		expect(raceResult).toBe("timeout")
-
-		// Release the editor
-		await Bun.write(releasePath, "release")
-
-		// Now CLI should complete
-		const { exitCode } = await cliPromise
-		expect(exitCode).toBe(0)
-
-		// Verify editor completed
-		await waitForFile(donePath)
-	})
-
-	it("should fail for non-existent profile before invoking editor", async () => {
-		const { exitCode, output } = await runCLI(["profile", "config", "nonexistent"], testDir, {
-			env: { EDITOR: stubPath },
-		})
-
-		expect(exitCode).not.toBe(0)
-		expect(output).toContain("nonexistent")
-
-		// Editor should NOT have been invoked
-		expect(existsSync(startedPath)).toBe(false)
-	})
-
-	it("should use default profile when no name provided", async () => {
-		const configDir = join(testDir, "opencode")
-		const expectedPath = join(configDir, "profiles", "default", "ocx.jsonc")
-
-		// Start CLI (non-blocking)
-		const cliPromise = runCLI(["profile", "config"], testDir, {
-			env: { EDITOR: stubPath },
-		})
-
-		// Wait for editor to start
-		await waitForFile(startedPath)
-
-		// Read the args passed to the editor
-		const args = await Bun.file(argsPath).text()
-		expect(args.trim()).toBe(expectedPath)
-
-		// Release the editor
-		await Bun.write(releasePath, "release")
-
-		// Wait for CLI to complete
-		const { exitCode } = await cliPromise
-		expect(exitCode).toBe(0)
-	})
-
-	it("should respect OCX_PROFILE env when no name provided", async () => {
-		const configDir = join(testDir, "opencode")
-		const expectedPath = join(configDir, "profiles", "other-profile", "ocx.jsonc")
-
-		// Start CLI (non-blocking)
-		const cliPromise = runCLI(["profile", "config"], testDir, {
-			env: { EDITOR: stubPath, OCX_PROFILE: "other-profile" },
-		})
-
-		// Wait for editor to start
-		await waitForFile(startedPath)
-
-		// Read the args passed to the editor
-		const args = await Bun.file(argsPath).text()
-		expect(args.trim()).toBe(expectedPath)
-
-		// Release the editor
-		await Bun.write(releasePath, "release")
-
-		// Wait for CLI to complete
-		const { exitCode } = await cliPromise
-		expect(exitCode).toBe(0)
-	})
-
-	it("should prioritize explicit arg over OCX_PROFILE env", async () => {
-		const configDir = join(testDir, "opencode")
-		const expectedPath = join(configDir, "profiles", "test-profile", "ocx.jsonc")
-
-		// Start CLI (non-blocking)
-		const cliPromise = runCLI(["profile", "config", "test-profile"], testDir, {
-			env: { EDITOR: stubPath, OCX_PROFILE: "other-profile" },
-		})
-
-		// Wait for editor to start
-		await waitForFile(startedPath)
-
-		// Read the args passed to the editor
-		const args = await Bun.file(argsPath).text()
-		expect(args.trim()).toBe(expectedPath)
-
-		// Release the editor
-		await Bun.write(releasePath, "release")
-
-		// Wait for CLI to complete
-		const { exitCode } = await cliPromise
-		expect(exitCode).toBe(0)
-	})
-
-	it("should use VISUAL when EDITOR not set", async () => {
-		const configDir = join(testDir, "opencode")
-		const expectedPath = join(configDir, "profiles", "default", "ocx.jsonc")
-
-		// Start CLI with VISUAL instead of EDITOR
-		const cliPromise = runCLI(["profile", "config"], testDir, {
-			env: { VISUAL: stubPath },
-		})
-
-		// Wait for editor to start
-		await waitForFile(startedPath)
-
-		// Read the args passed to the editor
-		const args = await Bun.file(argsPath).text()
-		expect(args.trim()).toBe(expectedPath)
-
-		// Release the editor
-		await Bun.write(releasePath, "release")
-
-		// Wait for CLI to complete
-		const { exitCode } = await cliPromise
-		expect(exitCode).toBe(0)
-	})
-
-	it("should report non-zero editor exit code", async () => {
-		// Create a failing editor stub
-		const failingStub = join(testDir, "failing-editor.sh")
-		await Bun.write(
-			failingStub,
-			`#!/usr/bin/env bash
-exit 1`,
-		)
-		await chmod(failingStub, 0o755)
-
-		const { exitCode, output } = await runCLI(["profile", "config", "test-profile"], testDir, {
-			env: { EDITOR: failingStub },
-		})
-
-		expect(exitCode).not.toBe(0)
-		expect(output).toContain("Editor exited with code 1")
 	})
 })
 

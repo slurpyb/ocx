@@ -9,7 +9,6 @@
 
 import type { Command } from "commander"
 import { registerProfileAddCommand } from "./add"
-import { registerProfileConfigCommand } from "./config"
 import { registerProfileListCommand } from "./list"
 import { registerProfileRemoveCommand } from "./remove"
 import { registerProfileShowCommand } from "./show"
@@ -24,5 +23,4 @@ export function registerProfileCommand(program: Command): void {
 	registerProfileAddCommand(profile)
 	registerProfileRemoveCommand(profile)
 	registerProfileShowCommand(profile)
-	registerProfileConfigCommand(profile)
 }

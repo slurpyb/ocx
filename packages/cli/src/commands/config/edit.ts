@@ -10,17 +10,21 @@ import { existsSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import type { Command } from "commander"
+import { ProfileManager } from "../../profile/manager"
 import {
 	findLocalConfigDir,
 	getGlobalConfig,
+	getProfileOcxConfig,
 	LOCAL_CONFIG_DIR,
 	OCX_CONFIG_FILE,
 } from "../../profile/paths"
-import { ConfigError } from "../../utils/errors"
+import { profileNameSchema } from "../../profile/schema"
+import { ConfigError, ProfileNotFoundError, ValidationError } from "../../utils/errors"
 import { handleError, logger } from "../../utils/index"
 
 interface ConfigEditOptions {
 	global?: boolean
+	profile?: string
 }
 
 export function registerConfigEditCommand(parent: Command): void {
@@ -28,6 +32,7 @@ export function registerConfigEditCommand(parent: Command): void {
 		.command("edit")
 		.description("Open configuration file in editor")
 		.option("-g, --global", "Edit global ocx.jsonc")
+		.option("-p, --profile <name>", "Edit specific profile's config")
 		.action(async (options: ConfigEditOptions) => {
 			try {
 				await runConfigEdit(options)
@@ -38,9 +43,32 @@ export function registerConfigEditCommand(parent: Command): void {
 }
 
 async function runConfigEdit(options: ConfigEditOptions): Promise<void> {
+	// Guard: mutual exclusivity
+	if (options.global && options.profile) {
+		throw new ValidationError("Cannot use both --global and --profile flags")
+	}
+
 	let configPath: string
 
-	if (options.global) {
+	if (options.profile) {
+		// Validate profile name first (prevents path traversal)
+		const parseResult = profileNameSchema.safeParse(options.profile)
+		if (!parseResult.success) {
+			throw new ValidationError(
+				`Invalid profile name "${options.profile}": ${parseResult.error.errors[0]?.message ?? "Invalid name"}`,
+			)
+		}
+
+		// Check profiles are initialized
+		await ProfileManager.requireInitialized()
+
+		// Edit profile config
+		const manager = ProfileManager.create()
+		if (!(await manager.exists(options.profile))) {
+			throw new ProfileNotFoundError(options.profile)
+		}
+		configPath = getProfileOcxConfig(options.profile)
+	} else if (options.global) {
 		// Edit global config
 		configPath = getGlobalConfig()
 		if (!existsSync(configPath)) {

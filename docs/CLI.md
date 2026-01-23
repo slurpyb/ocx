@@ -938,7 +938,7 @@ Lock file tracking installed components (managed automatically):
 | `NO_COLOR` | Standard no-color flag |
 | `OCX_SELF_UPDATE` | Set to `off` to disable self-update functionality |
 | `OCX_NO_UPDATE_CHECK` | Set to `1` to disable update notifications on startup |
-| `EDITOR` | Text editor for `ocx config edit` and `ocx profile config` |
+| `EDITOR` | Text editor for `ocx config edit` |
 | `VISUAL` | Fallback editor if `EDITOR` not set |
 
 ---
@@ -953,7 +953,6 @@ Manage global profiles for different OpenCode configurations.
 - [`ocx profile add`](#ocx-profile-add) - Create new profile or install from registry
 - [`ocx profile remove`](#ocx-profile-remove) - Delete a profile
 - [`ocx profile show`](#ocx-profile-show) - Display profile contents
-- [`ocx profile config`](#ocx-profile-config) - Edit profile's ocx.jsonc
 
 ### Aliases
 
@@ -1145,48 +1144,6 @@ Configuration:
   Exclude patterns: **/AGENTS.md, **/CLAUDE.md
   Include patterns: (none)
 ```
-
----
-
-### ocx profile config
-
-Edit a profile's ocx.jsonc configuration file in `$EDITOR`.
-
-#### Usage
-
-```bash
-ocx profile config [name]
-ocx p config [name]  # alias
-```
-
-#### Arguments
-
-| Argument | Description |
-|----------|-------------|
-| `name` | Profile name (optional, defaults to resolved profile) |
-
-#### Environment
-
-- **`$EDITOR`**: Text editor to use (e.g., `vim`, `nano`, `code`)
-- **`$VISUAL`**: Fallback editor if `$EDITOR` not set
-
-#### Examples
-
-```bash
-# Edit current profile config (uses resolved profile)
-ocx profile config
-
-# Edit work profile config
-ocx profile config work
-
-# Using alias
-ocx p config personal
-```
-
-#### Notes
-
-- Opens `ocx.jsonc` at `~/.config/opencode/profiles/<name>/ocx.jsonc`
-- Falls back to `vi` if neither `$EDITOR` nor `$VISUAL` are set
 
 ---
 

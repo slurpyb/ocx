@@ -370,7 +370,6 @@ Use profile commands to manage multiple configurations:
 | `ocx profile add <name>` | `ocx p add` | Create new profile or install from registry |
 | `ocx profile remove <name>` | `ocx p rm` | Delete profile |
 | `ocx profile show <name>` | `ocx p show` | Display profile contents |
-| `ocx profile config <name>` | `ocx p config` | Edit profile's ocx.jsonc |
 
 #### Config Commands
 
@@ -412,7 +411,7 @@ ocx init --global
 
 # Create and use a work profile
 ocx profile add work
-ocx profile config work  # Edit settings
+ocx config edit -p work  # Edit settings
 
 # Install profile from registry (requires global registry config)
 ocx registry add https://registry.kdco.dev --name kdco --global
