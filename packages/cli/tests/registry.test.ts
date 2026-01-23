@@ -84,6 +84,150 @@ describe("ocx registry", () => {
 	})
 })
 
+describe("registry add --force", () => {
+	let testDir: string
+	let registry: MockRegistry
+
+	beforeEach(async () => {
+		testDir = await createTempDir("registry-force-test")
+		registry = startMockRegistry()
+		await runCLI(["init", "--force"], testDir)
+	})
+
+	afterEach(async () => {
+		registry.stop()
+		await cleanupTempDir(testDir)
+	})
+
+	it("should error when adding duplicate registry without --force", async () => {
+		// Add initial registry
+		await runCLI(["registry", "add", "https://example.com", "--name", "test"], testDir)
+
+		// Try to add again without --force
+		const result = await runCLI(["registry", "add", "https://new.com", "--name", "test"], testDir)
+
+		expect(result.exitCode).not.toBe(0)
+		expect(result.stderr).toContain("already exists")
+		expect(result.stderr).toContain("--force")
+	})
+
+	it("should overwrite registry with --force flag", async () => {
+		// Add initial registry
+		await runCLI(["registry", "add", "https://old.com", "--name", "test"], testDir)
+
+		// Overwrite with --force
+		const result = await runCLI(
+			["registry", "add", "https://new.com", "--name", "test", "--force"],
+			testDir,
+		)
+
+		expect(result.exitCode).toBe(0)
+		expect(result.stdout).toContain("Updated registry")
+
+		// Verify URL was updated
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const configContent = await Bun.file(configPath).text()
+		const config = parseJsonc(configContent) as { registries: Record<string, { url: string }> }
+		expect(config.registries.test.url).toBe("https://new.com")
+	})
+
+	it("should show current and new URL in error message", async () => {
+		await runCLI(["registry", "add", "https://current.com", "--name", "test"], testDir)
+
+		const result = await runCLI(["registry", "add", "https://new.com", "--name", "test"], testDir)
+
+		expect(result.stderr).toContain("https://current.com")
+		expect(result.stderr).toContain("https://new.com")
+	})
+})
+
+describe("registry add --force with --global", () => {
+	let testDir: string
+	let globalTestDir: string
+	let globalConfigDir: string
+	let registry: MockRegistry
+	let env: Record<string, string>
+
+	beforeEach(async () => {
+		globalTestDir = await mkdtemp(join(tmpdir(), "registry-force-global-"))
+		testDir = await createTempDir("registry-force-global-local")
+		globalConfigDir = join(globalTestDir, "opencode")
+		await mkdir(globalConfigDir, { recursive: true })
+		await Bun.write(join(globalConfigDir, "ocx.jsonc"), JSON.stringify({ registries: {} }, null, 2))
+		registry = startMockRegistry()
+		env = { XDG_CONFIG_HOME: globalTestDir }
+	})
+
+	afterEach(async () => {
+		registry.stop()
+		await rm(globalTestDir, { recursive: true, force: true })
+		await cleanupTempDir(testDir)
+	})
+
+	it("should work with --force on --global registries", async () => {
+		await runCLI(["registry", "add", "https://old.com", "--name", "test", "--global"], testDir, {
+			env,
+		})
+
+		const result = await runCLI(
+			["registry", "add", "https://new.com", "--name", "test", "--global", "--force"],
+			testDir,
+			{ env },
+		)
+
+		expect(result.exitCode).toBe(0)
+		expect(result.stdout).toContain("Updated registry")
+	})
+})
+
+describe("registry add --force with --profile", () => {
+	let testDir: string
+	let globalTestDir: string
+
+	beforeEach(async () => {
+		testDir = await createTempDir("registry-force-profile")
+		globalTestDir = await createTempDir("registry-force-profile-global")
+
+		// Create test profile with empty registries
+		const profileDir = join(globalTestDir, "opencode", "profiles", "test-profile")
+		await mkdir(profileDir, { recursive: true })
+		await Bun.write(join(profileDir, "ocx.jsonc"), JSON.stringify({ registries: {} }, null, 2))
+	})
+
+	afterEach(async () => {
+		await cleanupTempDir(testDir)
+		await cleanupTempDir(globalTestDir)
+	})
+
+	it("should work with --force on --profile registries", async () => {
+		const env = { XDG_CONFIG_HOME: globalTestDir }
+
+		await runCLI(
+			["registry", "add", "https://old.com", "--name", "test", "--profile", "test-profile"],
+			testDir,
+			{ env },
+		)
+
+		const result = await runCLI(
+			[
+				"registry",
+				"add",
+				"https://new.com",
+				"--name",
+				"test",
+				"--profile",
+				"test-profile",
+				"--force",
+			],
+			testDir,
+			{ env },
+		)
+
+		expect(result.exitCode).toBe(0)
+		expect(result.stdout).toContain("Updated registry")
+	})
+})
+
 describe("ocx registry --global", () => {
 	let globalTestDir: string
 	let globalConfigDir: string

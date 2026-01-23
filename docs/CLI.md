@@ -528,6 +528,7 @@ ocx registry add <url> [options]
 |--------|-------------|
 | `--name <name>` | Registry alias (defaults to hostname) |
 | `--version <version>` | Pin to specific version |
+| `-f, --force`          | Overwrite existing registry            |
 | `-g, --global` | Add to global config (~/.config/opencode) instead of local project |
 | `-p, --profile <name>` | Use specific global profile for registry resolution |
 | `--cwd <path>` | Working directory (default: current directory) |
@@ -548,6 +549,9 @@ ocx registry add https://registry.example.com --name myregistry --version 1.0.0
 
 # Get machine-readable output
 ocx registry add https://registry.example.com --json
+
+# Update existing registry (requires --force)
+ocx registry add https://new-url.example.com --name myregistry --force
 ```
 
 #### Global Registry

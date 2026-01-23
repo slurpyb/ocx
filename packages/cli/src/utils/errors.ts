@@ -20,6 +20,7 @@ export const EXIT_CODES = {
 	NETWORK: 69,
 	CONFIG: 78,
 	INTEGRITY: 1, // Exit code for integrity failures
+	CONFLICT: 6,
 } as const
 
 export class OCXError extends Error {
@@ -110,6 +111,17 @@ export class ProfileExistsError extends OCXError {
 	constructor(name: string) {
 		super(`Profile "${name}" already exists`, "CONFLICT", EXIT_CODES.GENERAL)
 		this.name = "ProfileExistsError"
+	}
+}
+
+export class RegistryExistsError extends OCXError {
+	constructor(
+		public readonly registryName: string,
+		public readonly existingUrl: string,
+		public readonly newUrl: string,
+	) {
+		super(`Registry "${registryName}" already exists`, "CONFLICT", EXIT_CODES.CONFLICT)
+		this.name = "RegistryExistsError"
 	}
 }
 

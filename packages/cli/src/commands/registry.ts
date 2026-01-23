@@ -12,7 +12,13 @@ import { ProfileManager } from "../profile/manager"
 import { getProfileOcxConfig } from "../profile/paths"
 import type { RegistryConfig } from "../schemas/config"
 import { findOcxConfig, readOcxConfig, writeOcxConfig } from "../schemas/config"
-import { OcxConfigError, ProfileNotFoundError, ValidationError } from "../utils/errors"
+import {
+	EXIT_CODES,
+	OcxConfigError,
+	ProfileNotFoundError,
+	RegistryExistsError,
+	ValidationError,
+} from "../utils/errors"
 import { handleError, logger, outputJson } from "../utils/index"
 import { getGlobalConfigPath } from "../utils/paths"
 import {
@@ -33,6 +39,7 @@ export interface RegistryOptions {
 export interface RegistryAddOptions extends RegistryOptions {
 	name?: string
 	version?: string
+	force?: boolean
 }
 
 // =============================================================================
@@ -63,6 +70,10 @@ export async function runRegistryAddCore(
 	const name = options.name || new URL(url).hostname.replace(/\./g, "-")
 
 	const registries = callbacks.getRegistries()
+	const existingRegistry = registries[name]
+	if (existingRegistry && !options.force) {
+		throw new RegistryExistsError(name, existingRegistry.url, url)
+	}
 	const isUpdate = name in registries
 
 	await callbacks.setRegistry(name, {
@@ -212,18 +223,21 @@ export function registerRegistryCommand(program: Command): void {
 		.argument("<url>", "Registry URL")
 		.option("--name <name>", "Registry alias (defaults to hostname)")
 		.option("--version <version>", "Pin to specific version")
+		.option("-f, --force", "Overwrite existing registry")
 
 	addGlobalOption(addCmd)
 	addProfileOption(addCmd)
 	addCommonOptions(addCmd)
 
 	addCmd.action(async (url: string, options: RegistryAddOptions, command: Command) => {
+		let target: RegistryTarget | undefined
 		try {
 			const cwd = options.cwd ?? process.cwd()
-			const target = await resolveRegistryTarget(options, command, cwd)
+			target = await resolveRegistryTarget(options, command, cwd)
+			const { configDir, configPath } = target
 
 			// Read config from resolved path
-			const config = await readOcxConfig(target.configDir)
+			const config = await readOcxConfig(configDir)
 			if (!config) {
 				const initHint =
 					target.scope === "global"
@@ -240,7 +254,7 @@ export function registerRegistryCommand(program: Command): void {
 				isLocked: () => config.lockRegistries ?? false,
 				setRegistry: async (name, regConfig) => {
 					config.registries[name] = regConfig
-					await writeOcxConfig(target.configDir, config, target.configPath)
+					await writeOcxConfig(configDir, config, configPath)
 				},
 			})
 
@@ -256,6 +270,15 @@ export function registerRegistryCommand(program: Command): void {
 				}
 			}
 		} catch (error) {
+			if (error instanceof RegistryExistsError) {
+				const targetLabel = target?.targetLabel ?? "config"
+				logger.error(`✗ Registry "${error.registryName}" already exists in ${targetLabel}`)
+				logger.error(`  Current: ${error.existingUrl}`)
+				logger.error(`  New:     ${error.newUrl}`)
+				logger.error("")
+				logger.error("Use --force to overwrite.")
+				process.exit(EXIT_CODES.CONFLICT)
+			}
 			handleError(error, { json: options.json })
 		}
 	})
