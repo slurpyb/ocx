@@ -308,7 +308,7 @@ OpenCode configuration files DO merge (profile → local), controlled by exclude
 ### How `ocx opencode` Works
 
 1. **Profile resolution**: Uses priority order (flag > env var > default > none)
-2. **Config isolation**: Selects appropriate registry scope and OpenCode config
+2. **Config merging**: Merges OpenCode configuration (profile → local)
 3. **Instruction file discovery**:
    - Walks UP from project directory to git root
    - Finds AGENTS.md, CLAUDE.md, CONTEXT.md at each level

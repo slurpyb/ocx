@@ -74,7 +74,7 @@ See [examples/registry-starter](./examples/registry-starter) for the full templa
 
 - **npm Dependencies** — Plugins need packages? Installed automatically. No manual `package.json` editing.
 - **MCP Servers** — Registered to your config with one command. No manual JSON.
-- **Config Merging** — Components bring settings that merge safely with yours. Registries are isolated per scope for security.
+- **Config Merging** — Components bring OpenCode settings that merge safely with yours (profile → local).
 - **Lockfiles** — Track versions, verify integrity with SHA-256 hashes.
 - **Dependency Resolution** — Component A needs B? Both installed in correct order.
 - **Own Your Code** — Everything lives in `.opencode/`. Customize freely.

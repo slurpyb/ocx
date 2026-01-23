@@ -1351,7 +1351,7 @@ ocx oc -p personal
 ### How It Works
 
 1. **Profile Resolution**: Resolves profile using priority order
-2. **Config Isolation**: Selects appropriate registry scope and OpenCode config
+2. **Config Merging**: Merges OpenCode configuration (profile → local)
 3. **Instruction Discovery**: Walks up from project directory to git root
 4. **Pattern Filtering**: Applies exclude/include patterns from profile's `ocx.jsonc`
 5. **Window Naming** (optional): Sets terminal/tmux window name
@@ -1383,6 +1383,8 @@ Registries are isolated per scope and NEVER merged across scopes:
 3. **Global registries** — Only for `--global` commands and profile downloads
 
 This prevents registry injection across scopes (security).
+
+> **Note:** Registries are used by OCX commands (`add`, `search`, `update`) for downloading components. OpenCode itself does not use registries at runtime.
 
 **OpenCode Config Merging (opencode.jsonc):**
 OpenCode configuration files DO merge (profile → local), controlled by exclude/include patterns:
