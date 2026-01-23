@@ -1,11 +1,15 @@
 /**
  * ConfigResolver - Unified Configuration Resolution
  *
- * Handles the full configuration cascade:
+ * ISOLATION MODEL:
+ * - OCX registries are ISOLATED per scope (profile XOR local, never merged)
+ * - OpenCode config (opencode.jsonc) DOES merge (profile → local)
+ * - This is for security - prevents registry injection across scopes
+ *
+ * Resolution order:
  * 1. Global profile ocx.jsonc + opencode.jsonc (if resolved)
- * 2. Apply exclude/include patterns from profile
- * 3. Local .opencode/ocx.jsonc (if not excluded)
- * 4. Local .opencode/opencode.jsonc (if not excluded)
+ * 2. Apply exclude/include patterns from profile (for opencode.jsonc only)
+ * 3. Local .opencode/opencode.jsonc (if not excluded) - merges with profile
  *
  * Follows the 5 Laws of Elegant Defense:
  * - Law 1 (Early Exit): Guard clauses handle edge cases at top
@@ -15,13 +19,15 @@
  * - Law 5 (Intentional Naming): Names describe exact purpose
  */
 
-import { existsSync, statSync } from "node:fs"
+import { existsSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
 import { Glob } from "bun"
 import { parse as parseJsonc } from "jsonc-parser"
 import { ProfileManager } from "../profile/manager"
 import {
 	findLocalConfigDir,
+	getProfileOcxConfig,
+	getProfileOpencodeConfig,
 	LOCAL_CONFIG_DIR,
 	OCX_CONFIG_FILE,
 	OPENCODE_CONFIG_FILE,
@@ -37,7 +43,7 @@ import type { RegistryConfig } from "../schemas/config"
  * The fully resolved configuration from all sources.
  */
 export interface ResolvedConfig {
-	/** Merged registries from all sources */
+	/** Registries from active scope only (isolated, not merged) */
 	registries: Record<string, RegistryConfig>
 	/** Component installation path */
 	componentPath: string
@@ -109,10 +115,14 @@ function discoverInstructionFiles(projectDir: string, gitRoot: string | null): s
 		// Check for each instruction file (alphabetical order)
 		for (const filename of INSTRUCTION_FILES) {
 			const filePath = join(currentDir, filename)
-			if (existsSync(filePath) && statSync(filePath).isFile()) {
-				// Store as relative to root
-				const relativePath = relative(root, filePath)
-				discovered.push(relativePath)
+			try {
+				if (existsSync(filePath) && statSync(filePath).isFile()) {
+					// Store as relative to root (POSIX style for glob matching)
+					const relativePath = toPosixPath(relative(root, filePath))
+					discovered.push(relativePath)
+				}
+			} catch {
+				// Permission denied or broken symlink - skip this file
 			}
 		}
 
@@ -137,6 +147,14 @@ function discoverInstructionFiles(projectDir: string, gitRoot: string | null): s
  */
 function normalizePattern(pattern: string): string {
 	return pattern.startsWith("./") ? pattern.slice(2) : pattern
+}
+
+/**
+ * Convert path to POSIX-style (forward slashes) for consistent glob matching.
+ * Windows path.relative() returns backslashes which won't match glob patterns.
+ */
+function toPosixPath(p: string): string {
+	return p.replaceAll("\\", "/")
 }
 
 /**
@@ -201,7 +219,8 @@ export class ConfigResolver {
 	 *
 	 * @param cwd - Working directory
 	 * @param options - Optional profile override
-	 * @throws ProfileNotFoundError if specified profile doesn't exist
+	 * @throws ProfileNotFoundError if explicitly requested profile doesn't exist
+	 *         (via options.profile or OCX_PROFILE env var)
 	 */
 	static async create(cwd: string, options?: { profile?: string }): Promise<ConfigResolver> {
 		const manager = ProfileManager.create()
@@ -210,12 +229,19 @@ export class ConfigResolver {
 		let profileName: string | null = null
 		let profile: Profile | null = null
 
+		// Determine if a profile was explicitly requested (Law 4: Fail Fast)
+		const explicitProfileRequest = options?.profile ?? process.env.OCX_PROFILE
+
 		if (await manager.isInitialized()) {
 			try {
 				profileName = await manager.resolveProfile(options?.profile)
 				profile = await manager.get(profileName)
-			} catch {
-				// No profile resolved - that's OK, we'll just use base configs
+			} catch (error) {
+				// If user explicitly requested a profile, fail loudly (security)
+				if (explicitProfileRequest) {
+					throw error
+				}
+				// Otherwise (just "default" fallback failed), proceed without profile
 				profileName = null
 				profile = null
 			}
@@ -239,14 +265,15 @@ export class ConfigResolver {
 			return this.cachedConfig
 		}
 
-		// 1. Start with defaults
-		let registries: Record<string, RegistryConfig> = {}
+		// 1. Get registries from active scope (ISOLATED - never merged)
+		const { registries } = this.getRegistriesForScope()
+
+		// 2. Start with default component path
 		let componentPath = LOCAL_CONFIG_DIR
 		let opencode: Record<string, unknown> = {}
 
-		// 2. Apply global profile if resolved
+		// 3. Apply profile settings (non-registry)
 		if (this.profile) {
-			registries = { ...registries, ...this.profile.ocx.registries }
 			if (this.profile.ocx.componentPath) {
 				componentPath = this.profile.ocx.componentPath
 			}
@@ -255,24 +282,18 @@ export class ConfigResolver {
 			}
 		}
 
-		// 3. Check exclude/include patterns
+		// 4. Check exclude/include patterns for opencode.jsonc
 		const shouldLoadLocal = this.shouldLoadLocalConfig()
 
-		// 4. Apply local config if not excluded
+		// 5. Apply local opencode.jsonc if not excluded (opencode DOES merge)
 		if (shouldLoadLocal && this.localConfigDir) {
-			const localOcxConfig = this.loadLocalOcxConfig()
-			if (localOcxConfig) {
-				registries = { ...registries, ...localOcxConfig.registries }
-				// Local componentPath does NOT override profile (profile wins)
-			}
-
 			const localOpencodeConfig = this.loadLocalOpencodeConfig()
 			if (localOpencodeConfig) {
 				opencode = this.deepMerge(opencode, localOpencodeConfig)
 			}
 		}
 
-		// 5. Discover instruction files
+		// 6. Discover instruction files
 		const instructions = this.discoverInstructions()
 
 		this.cachedConfig = {
@@ -293,21 +314,41 @@ export class ConfigResolver {
 	resolveWithOrigin(): ResolvedConfigWithOrigin {
 		const origins = new Map<string, ConfigOrigin>()
 
-		// 1. Start with defaults
+		// 1. Get registries from active scope (ISOLATED)
+		const { registries: scopeRegistries, origin: registryOrigin } = this.getRegistriesForScope()
 		const registries: Record<string, RegistryConfig> = {}
+
+		// Copy registries with origin tracking
+		for (const [key, value] of Object.entries(scopeRegistries)) {
+			registries[key] = value
+			// Determine origin path with guard clauses (Law 1: Early Exit)
+			let originPath = ""
+			if (registryOrigin === "profile") {
+				if (!this.profileName) {
+					throw new Error("Invariant violation: profile origin requires profileName")
+				}
+				originPath = getProfileOcxConfig(this.profileName)
+			} else if (registryOrigin === "local" && this.localConfigDir) {
+				originPath = join(this.localConfigDir, OCX_CONFIG_FILE)
+			}
+			origins.set(`registries.${key}`, {
+				path: originPath,
+				source: registryOrigin === "profile" ? "global-profile" : "local-config",
+			})
+		}
+
+		// 2. Start with default component path
 		let componentPath = LOCAL_CONFIG_DIR
 		let opencode: Record<string, unknown> = {}
 
 		origins.set("componentPath", { path: "", source: "default" })
 
-		// 2. Apply global profile if resolved
+		// 3. Apply profile settings (non-registry)
 		if (this.profile) {
-			const profileOcxPath = `~/.config/opencode/profiles/${this.profileName}/ocx.jsonc`
-
-			for (const [key, value] of Object.entries(this.profile.ocx.registries)) {
-				registries[key] = value
-				origins.set(`registries.${key}`, { path: profileOcxPath, source: "global-profile" })
+			if (!this.profileName) {
+				throw new Error("Invariant violation: profile requires profileName")
 			}
+			const profileOcxPath = getProfileOcxConfig(this.profileName)
 
 			if (this.profile.ocx.componentPath) {
 				componentPath = this.profile.ocx.componentPath
@@ -316,27 +357,18 @@ export class ConfigResolver {
 
 			if (this.profile.opencode) {
 				opencode = this.deepMerge(opencode, this.profile.opencode)
-				const profileOpencodePath = `~/.config/opencode/profiles/${this.profileName}/opencode.jsonc`
+				const profileOpencodePath = getProfileOpencodeConfig(this.profileName)
 				for (const key of Object.keys(this.profile.opencode)) {
 					origins.set(`opencode.${key}`, { path: profileOpencodePath, source: "global-profile" })
 				}
 			}
 		}
 
-		// 3. Check exclude/include patterns
+		// 4. Check exclude/include patterns for opencode.jsonc
 		const shouldLoadLocal = this.shouldLoadLocalConfig()
 
-		// 4. Apply local config if not excluded
+		// 5. Apply local opencode.jsonc if not excluded (opencode DOES merge)
 		if (shouldLoadLocal && this.localConfigDir) {
-			const localOcxConfig = this.loadLocalOcxConfig()
-			if (localOcxConfig) {
-				const localOcxPath = join(this.localConfigDir, OCX_CONFIG_FILE)
-				for (const [key, value] of Object.entries(localOcxConfig.registries)) {
-					registries[key] = value
-					origins.set(`registries.${key}`, { path: localOcxPath, source: "local-config" })
-				}
-			}
-
 			const localOpencodeConfig = this.loadLocalOpencodeConfig()
 			if (localOpencodeConfig) {
 				opencode = this.deepMerge(opencode, localOpencodeConfig)
@@ -347,7 +379,7 @@ export class ConfigResolver {
 			}
 		}
 
-		// 5. Discover instruction files
+		// 6. Discover instruction files
 		const instructions = this.discoverInstructions()
 
 		return {
@@ -374,8 +406,8 @@ export class ConfigResolver {
 		const gitRoot = detectGitRoot(this.cwd)
 		const root = gitRoot ?? this.cwd
 
-		// Get relative path of local config dir from root
-		const relativePath = relative(root, this.localConfigDir)
+		// Get relative path of local config dir from root (POSIX style for glob matching)
+		const relativePath = toPosixPath(relative(root, this.localConfigDir))
 
 		// Check if .opencode directory matches exclude patterns
 		const exclude = this.profile.ocx.exclude ?? []
@@ -403,8 +435,46 @@ export class ConfigResolver {
 	}
 
 	/**
+	 * Get registries for the active scope.
+	 *
+	 * ISOLATION MODEL: Registries are isolated per scope for security.
+	 * - If profile is active: return ONLY profile registries
+	 * - If no profile: return ONLY local registries
+	 * - Registries are NEVER merged across scopes
+	 *
+	 * This prevents global/profile registries from injecting into projects.
+	 */
+	private getRegistriesForScope(): {
+		registries: Record<string, RegistryConfig>
+		origin: "profile" | "local" | "none"
+	} {
+		// Profile active = use profile registries ONLY
+		if (this.profile) {
+			return {
+				registries: this.profile.ocx.registries ?? {},
+				origin: "profile",
+			}
+		}
+
+		// No profile = use local registries ONLY
+		if (this.localConfigDir) {
+			const localConfig = this.loadLocalOcxConfig()
+			if (localConfig) {
+				return {
+					registries: localConfig.registries,
+					origin: "local",
+				}
+			}
+		}
+
+		// No registries available
+		return { registries: {}, origin: "none" }
+	}
+
+	/**
 	 * Load local ocx.jsonc configuration.
-	 * Returns null if file doesn't exist or fails to parse.
+	 * Returns null if file doesn't exist.
+	 * @throws Error if file exists but fails to parse (Fail Fast)
 	 */
 	private loadLocalOcxConfig(): { registries: Record<string, RegistryConfig> } | null {
 		if (!this.localConfigDir) return null
@@ -413,21 +483,30 @@ export class ConfigResolver {
 		if (!existsSync(configPath)) return null
 
 		try {
-			// Synchronous read for simplicity in resolve path
-			const text = require("node:fs").readFileSync(configPath, "utf8")
+			const text = readFileSync(configPath, "utf8")
 			const parsed = parseJsonc(text)
-			return {
-				registries: parsed?.registries ?? {},
+			if (!this.isPlainObject(parsed)) {
+				throw new Error(`Invalid ocx.jsonc: expected object, got ${typeof parsed}`)
 			}
-		} catch {
-			// Silent fail - local config is optional
-			return null
+			const registries = parsed.registries
+			if (registries !== undefined && !this.isPlainObject(registries)) {
+				throw new Error(`Invalid ocx.jsonc: registries must be an object`)
+			}
+			return {
+				registries: (registries as Record<string, RegistryConfig>) ?? {},
+			}
+		} catch (error) {
+			if (error instanceof SyntaxError || (error as Error).message?.includes("Invalid")) {
+				throw new Error(`Failed to parse ${configPath}: ${(error as Error).message}`)
+			}
+			throw error
 		}
 	}
 
 	/**
 	 * Load local opencode.jsonc configuration.
-	 * Returns null if file doesn't exist or fails to parse.
+	 * Returns null if file doesn't exist.
+	 * @throws Error if file exists but fails to parse (Fail Fast)
 	 */
 	private loadLocalOpencodeConfig(): Record<string, unknown> | null {
 		if (!this.localConfigDir) return null
@@ -436,11 +515,17 @@ export class ConfigResolver {
 		if (!existsSync(configPath)) return null
 
 		try {
-			const text = require("node:fs").readFileSync(configPath, "utf8")
-			return parseJsonc(text) as Record<string, unknown>
-		} catch {
-			// Silent fail - local config is optional
-			return null
+			const text = readFileSync(configPath, "utf8")
+			const parsed = parseJsonc(text)
+			if (!this.isPlainObject(parsed)) {
+				throw new Error(`Invalid opencode.jsonc: expected object, got ${typeof parsed}`)
+			}
+			return parsed
+		} catch (error) {
+			if (error instanceof SyntaxError || (error as Error).message?.includes("Invalid")) {
+				throw new Error(`Failed to parse ${configPath}: ${(error as Error).message}`)
+			}
+			throw error
 		}
 	}
 
@@ -465,7 +550,7 @@ export class ConfigResolver {
 		// Append profile instructions (profile comes LAST = highest priority)
 		const profileInstructionsRaw = this.profile?.opencode?.instructions
 		const profileInstructions: string[] = Array.isArray(profileInstructionsRaw)
-			? profileInstructionsRaw
+			? profileInstructionsRaw.filter((x): x is string => typeof x === "string")
 			: []
 
 		return [...projectInstructions, ...profileInstructions]
@@ -512,7 +597,7 @@ export class ConfigResolver {
 	// =========================================================================
 
 	/**
-	 * Get merged registries from all sources.
+	 * Get registries from active scope (isolated, not merged).
 	 */
 	getRegistries(): Record<string, RegistryConfig> {
 		return this.resolve().registries

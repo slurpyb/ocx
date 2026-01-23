@@ -179,38 +179,173 @@ describe("ConfigResolver", () => {
 			expect(nested.shared).toBe("local-value") // Local wins
 			expect(config.opencode.topLevel).toBe("local") // Local wins
 		})
+	})
 
-		it("merges registries from profile and local (local overrides)", async () => {
+	// =============================================================================
+	// REGISTRY SCOPE ISOLATION TESTS
+	// =============================================================================
+
+	describe("registry scope isolation", () => {
+		let originalXdgConfigHome: string | undefined
+		let originalOcxProfile: string | undefined
+		let xdgDir: string
+
+		beforeEach(async () => {
+			xdgDir = path.join(os.tmpdir(), `ocx-test-xdg-${Math.random().toString(36).slice(2)}`)
+			await fs.mkdir(xdgDir, { recursive: true })
+
+			originalXdgConfigHome = process.env.XDG_CONFIG_HOME
+			originalOcxProfile = process.env.OCX_PROFILE
+			process.env.XDG_CONFIG_HOME = xdgDir
+			delete process.env.OCX_PROFILE
+		})
+
+		afterEach(async () => {
+			if (originalXdgConfigHome === undefined) {
+				delete process.env.XDG_CONFIG_HOME
+			} else {
+				process.env.XDG_CONFIG_HOME = originalXdgConfigHome
+			}
+			if (originalOcxProfile === undefined) {
+				delete process.env.OCX_PROFILE
+			} else {
+				process.env.OCX_PROFILE = originalOcxProfile
+			}
+			await fs.rm(xdgDir, { recursive: true, force: true })
+		})
+
+		it("isolates registries - profile active uses only profile registries", async () => {
+			// Setup: profile with registries + local with DIFFERENT registries
+			// + include pattern to make shouldLoadLocal=true
 			await using tmp = await tmpdir({
 				git: true,
 				profile: {
-					name: "default",
+					name: "work",
 					ocxConfig: {
 						registries: {
-							shadcn: { url: "https://ui.shadcn.com" },
-							profile: { url: "https://profile.example.com" },
+							"profile-only": { url: "https://profile.example/registry" },
 						},
-						exclude: [],
-						include: [],
+						exclude: ["**/.opencode/**"],
+						include: ["./.opencode/**"], // Forces shouldLoadLocal=true
 					},
+					opencodeConfig: { profileSentinel: "loaded" },
 				},
 				ocxConfig: {
 					registries: {
-						shadcn: { url: "https://custom.shadcn.com" }, // Override
-						local: { url: "https://local.example.com" }, // New
+						"local-only": { url: "https://local.example/registry" },
+					},
+				},
+				opencodeConfig: { localSentinel: "loaded" },
+			})
+
+			const resolver = await ConfigResolver.create(tmp.path, { profile: "work" })
+			const config = resolver.resolve()
+
+			// Verify profile was used
+			expect(config.profileName).toBe("work")
+
+			// KEY: Verify opencode config merged (proves shouldLoadLocal=true)
+			expect(config.opencode.localSentinel).toBe("loaded")
+			expect(config.opencode.profileSentinel).toBe("loaded")
+
+			// KEY: Verify registries are ISOLATED (profile only, no local)
+			expect(config.registries["profile-only"]).toBeDefined()
+			expect(config.registries["profile-only"].url).toBe("https://profile.example/registry")
+			expect(config.registries["local-only"]).toBeUndefined()
+			expect(Object.keys(config.registries)).toEqual(["profile-only"])
+		})
+
+		it("no profile uses local registries only", async () => {
+			await using tmp = await tmpdir({
+				git: true,
+				// No profile!
+				ocxConfig: {
+					registries: {
+						"local-only": { url: "https://local.example/registry" },
 					},
 				},
 			})
 
-			const resolver = await ConfigResolver.create(tmp.path)
+			const resolver = await ConfigResolver.create(tmp.path) // No profile option
 			const config = resolver.resolve()
 
-			// Local overrides profile for "shadcn"
-			expect(config.registries.shadcn?.url).toBe("https://custom.shadcn.com")
-			// Profile's "profile" registry preserved
-			expect(config.registries.profile?.url).toBe("https://profile.example.com")
-			// Local's "local" registry added
-			expect(config.registries.local?.url).toBe("https://local.example.com")
+			expect(config.profileName).toBeNull()
+			expect(config.registries["local-only"]).toBeDefined()
+			expect(config.registries["local-only"].url).toBe("https://local.example/registry")
+			expect(Object.keys(config.registries).sort()).toEqual(["local-only"])
+		})
+
+		it("profile with no registries returns empty - no fallback to local", async () => {
+			await using tmp = await tmpdir({
+				git: true,
+				profile: {
+					name: "empty",
+					ocxConfig: {
+						registries: {}, // Empty!
+						exclude: ["**/.opencode/**"],
+						include: ["./.opencode/**"],
+					},
+					opencodeConfig: { profileSentinel: "loaded" },
+				},
+				ocxConfig: {
+					registries: {
+						"local-only": { url: "https://local.example/registry" },
+					},
+				},
+				opencodeConfig: { localSentinel: "loaded" },
+			})
+
+			const resolver = await ConfigResolver.create(tmp.path, { profile: "empty" })
+			const config = resolver.resolve()
+
+			expect(config.profileName).toBe("empty")
+			// Verify local WAS allowed to load (sentinel proves shouldLoadLocal=true)
+			expect(config.opencode.localSentinel).toBe("loaded")
+			// But registries are EMPTY - no fallback to local
+			expect(Object.keys(config.registries)).toHaveLength(0)
+			expect(config.registries["local-only"]).toBeUndefined()
+		})
+
+		it("opencode config merges while registries remain isolated", async () => {
+			await using tmp = await tmpdir({
+				git: true,
+				profile: {
+					name: "work",
+					ocxConfig: {
+						registries: {
+							"profile-reg": { url: "https://profile.example/registry" },
+						},
+						exclude: ["**/.opencode/**"],
+						include: ["./.opencode/**"],
+					},
+					opencodeConfig: {
+						model: "profile-model",
+						nested: { fromProfile: true },
+					},
+				},
+				ocxConfig: {
+					registries: {
+						"local-reg": { url: "https://local.example/registry" },
+					},
+				},
+				opencodeConfig: {
+					theme: "local-theme",
+					nested: { fromLocal: true },
+				},
+			})
+
+			const resolver = await ConfigResolver.create(tmp.path, { profile: "work" })
+			const config = resolver.resolve()
+
+			// OpenCode config MERGED (deep merge)
+			expect(config.opencode.model).toBe("profile-model")
+			expect(config.opencode.theme).toBe("local-theme")
+			expect(config.opencode.nested?.fromProfile).toBe(true)
+			expect(config.opencode.nested?.fromLocal).toBe(true)
+
+			// Registries ISOLATED (profile only)
+			expect(config.registries["profile-reg"]).toBeDefined()
+			expect(config.registries["local-reg"]).toBeUndefined()
 		})
 	})
 })

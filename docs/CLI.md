@@ -859,7 +859,7 @@ OpenCode-specific configuration (optional):
 
 #### ~/.config/opencode/ocx.jsonc
 
-Global base configuration applied to all projects:
+Global base configuration for downloading profiles and global settings only:
 
 ```jsonc
 {
@@ -1203,7 +1203,7 @@ View and edit OCX configuration files.
 
 ### ocx config show
 
-Show merged configuration for the current directory.
+Show active configuration for the current directory.
 
 #### Usage
 
@@ -1222,7 +1222,7 @@ ocx config show [options]
 #### Examples
 
 ```bash
-# Show merged config
+# Show active config
 ocx config show
 
 # Show config with sources
@@ -1239,7 +1239,7 @@ ocx config show --json
 
 ```bash
 $ ocx config show
-Merged configuration:
+Active configuration:
   Registries: kdco
   Component path: .opencode
 
@@ -1351,7 +1351,7 @@ ocx oc -p personal
 ### How It Works
 
 1. **Profile Resolution**: Resolves profile using priority order
-2. **Config Merging**: Merges global config, profile configs, and local configs
+2. **Config Isolation**: Selects appropriate registry scope and OpenCode config
 3. **Instruction Discovery**: Walks up from project directory to git root
 4. **Pattern Filtering**: Applies exclude/include patterns from profile's `ocx.jsonc`
 5. **Window Naming** (optional): Sets terminal/tmux window name
@@ -1372,15 +1372,22 @@ To use a custom OpenCode binary (e.g., development build), set the `bin` option 
 2. `OPENCODE_BIN` environment variable
 3. `opencode` (system PATH)
 
-### Configuration Cascade
+### Configuration Isolation
 
-Configurations are merged in this order (later sources override earlier ones):
+OCX uses a **scope-isolated** configuration model for security.
 
-1. Global `ocx.jsonc`
-2. Profile's `ocx.jsonc` and `opencode.jsonc`
-3. Apply exclude/include patterns
-4. Local `.opencode/ocx.jsonc` (if not excluded)
-5. Local `.opencode/opencode.jsonc` (if not excluded)
+**Registry Isolation (ocx.jsonc):**
+Registries are isolated per scope and NEVER merged across scopes:
+1. **Profile registries** — Only available when using that profile
+2. **Local registries** — Only available when NOT using a profile
+3. **Global registries** — Only for `--global` commands and profile downloads
+
+This prevents registry injection across scopes (security).
+
+**OpenCode Config Merging (opencode.jsonc):**
+OpenCode configuration files DO merge (profile → local), controlled by exclude/include patterns:
+1. Profile's `opencode.jsonc` applied first
+2. Local `.opencode/opencode.jsonc` merged on top (if not excluded)
 
 ### Instruction File Discovery
 

@@ -74,7 +74,7 @@ See [examples/registry-starter](./examples/registry-starter) for the full templa
 
 - **npm Dependencies** — Plugins need packages? Installed automatically. No manual `package.json` editing.
 - **MCP Servers** — Registered to your config with one command. No manual JSON.
-- **Config Merging** — Components bring settings that merge safely with yours.
+- **Config Merging** — Components bring settings that merge safely with yours. Registries are isolated per scope for security.
 - **Lockfiles** — Track versions, verify integrity with SHA-256 hashes.
 - **Dependency Resolution** — Component A needs B? Both installed in correct order.
 - **Own Your Code** — Everything lives in `.opencode/`. Customize freely.
@@ -179,7 +179,7 @@ Profiles keep your configurations isolated and portable:
 
 | Command | Description |
 |---------|-------------|
-| `ocx config show` | Show merged configuration |
+| `ocx config show` | Show active configuration |
 | `ocx config show --origin` | Show config with source annotations |
 | `ocx config edit` | Edit local .opencode/ocx.jsonc |
 | `ocx config edit --global` | Edit global ocx.jsonc |
@@ -199,10 +199,10 @@ Profiles keep your configurations isolated and portable:
 | `ocx init --global` | Initialize global profiles directory |
 
 > **How it works:** The profile system provides configuration isolation:
-> - Global profiles override local project configs by default
-> - Uses `exclude`/`include` patterns to control which project instruction files are visible
-> - Profile instructions take priority over project files
-> - Configuration cascades from global → profile → local (with filtering)
+> - Registries are isolated per scope (never merged) for security
+> - OpenCode config DOES merge (profile → local) controlled by exclude/include patterns
+> - Global registries are only for `--global` commands and profile downloads
+> - This prevents registry injection across scopes
 
 #### Config Location
 
