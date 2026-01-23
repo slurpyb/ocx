@@ -8,11 +8,19 @@ import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import type { Command } from "commander"
 import { OCX_SCHEMA_URL } from "../constants"
-import { ProfileManager } from "../profile/manager"
-import { getProfileOcxConfig, getProfilesDir } from "../profile/paths"
+import { atomicWrite } from "../profile/atomic"
+import { DEFAULT_OCX_CONFIG } from "../profile/manager"
+import {
+	getGlobalConfig,
+	getProfileAgents,
+	getProfileDir,
+	getProfileOcxConfig,
+	getProfileOpencodeConfig,
+	getProfilesDir,
+} from "../profile/paths"
 import { findOcxConfig, ocxConfigSchema } from "../schemas/config"
 import { ensureOpencodeConfig } from "../updaters/update-opencode-config"
-import { ConflictError, NetworkError, ProfileExistsError, ValidationError } from "../utils/errors"
+import { ConflictError, NetworkError, ValidationError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
 
 const TEMPLATE_REPO = "kdcokenny/ocx"
@@ -128,24 +136,67 @@ async function runInit(options: InitOptions): Promise<void> {
 }
 
 async function runInitGlobal(options: InitOptions): Promise<void> {
-	const manager = ProfileManager.create()
-
-	// Guard: Check if already initialized (Law 1: Early Exit)
-	if (await manager.isInitialized()) {
-		const profilesDir = getProfilesDir()
-		throw new ProfileExistsError(`Global profiles already initialized at ${profilesDir}`)
-	}
-
 	const spin = options.quiet ? null : createSpinner({ text: "Initializing global profiles..." })
 	spin?.start()
 
 	try {
-		// Initialize profiles directory with default profile
-		await manager.initialize()
+		const created: string[] = []
+		const existed: string[] = []
 
-		// Get paths for output
+		// 1. Create global base config (create-if-missing)
+		const globalConfigPath = getGlobalConfig()
+		if (existsSync(globalConfigPath)) {
+			existed.push("globalConfig")
+		} else {
+			await mkdir(dirname(globalConfigPath), { recursive: true, mode: 0o700 })
+			await atomicWrite(globalConfigPath, {
+				$schema: OCX_SCHEMA_URL,
+				registries: {},
+			})
+			created.push("globalConfig")
+		}
+
+		// 2. Create profiles directory (create-if-missing)
 		const profilesDir = getProfilesDir()
-		const ocxConfigPath = getProfileOcxConfig("default")
+		if (!existsSync(profilesDir)) {
+			await mkdir(profilesDir, { recursive: true, mode: 0o700 })
+		}
+
+		// 3. Create default profile directory (create-if-missing)
+		const profileDir = getProfileDir("default")
+		if (!existsSync(profileDir)) {
+			await mkdir(profileDir, { recursive: true, mode: 0o700 })
+		}
+
+		// 4. Check/create each profile file individually
+		const ocxPath = getProfileOcxConfig("default")
+		if (existsSync(ocxPath)) {
+			existed.push("profileOcx")
+		} else {
+			await atomicWrite(ocxPath, DEFAULT_OCX_CONFIG)
+			created.push("profileOcx")
+		}
+
+		const opencodePath = getProfileOpencodeConfig("default")
+		if (existsSync(opencodePath)) {
+			existed.push("profileOpencode")
+		} else {
+			await atomicWrite(opencodePath, {})
+			created.push("profileOpencode")
+		}
+
+		const agentsPath = getProfileAgents("default")
+		if (existsSync(agentsPath)) {
+			existed.push("profileAgents")
+		} else {
+			const agentsContent = `# Profile Instructions
+
+<!-- Add your custom instructions for this profile here -->
+<!-- These will be included when running \`ocx opencode -p default\` -->
+`
+			await Bun.write(agentsPath, agentsContent, { mode: 0o600 })
+			created.push("profileAgents")
+		}
 
 		spin?.succeed("Initialized global profiles")
 
@@ -153,20 +204,34 @@ async function runInitGlobal(options: InitOptions): Promise<void> {
 			console.log(
 				JSON.stringify({
 					success: true,
-					profilesDir,
-					defaultProfile: "default",
-					ocxConfigPath,
+					files: {
+						globalConfig: globalConfigPath,
+						profileOcx: ocxPath,
+						profileOpencode: opencodePath,
+						profileAgents: agentsPath,
+					},
+					created,
+					existed,
 				}),
 			)
 		} else if (!options.quiet) {
-			logger.info(`Created ${profilesDir}`)
-			logger.info(`Created profile "default"`)
-			logger.info("")
-			logger.info("Next steps:")
-			logger.info("  1. Edit your profile config: ocx profile config")
-			logger.info("  2. Add registries: ocx registry add <url> --profile default")
-			logger.info("  3. Launch OpenCode: ocx opencode")
-			logger.info("  4. Create more profiles: ocx profile add <name>")
+			if (created.length > 0) {
+				for (const key of created) {
+					if (key === "globalConfig") logger.info(`Created global config: ${globalConfigPath}`)
+					if (key === "profileOcx") logger.info(`Created profile config: ${ocxPath}`)
+					if (key === "profileOpencode")
+						logger.info(`Created profile opencode config: ${opencodePath}`)
+					if (key === "profileAgents") logger.info(`Created profile instructions: ${agentsPath}`)
+				}
+				logger.info("")
+				logger.info("Next steps:")
+				logger.info("  1. Edit your profile config: ocx profile config")
+				logger.info("  2. Add registries: ocx registry add <url> --name <name> --global")
+				logger.info("  3. Launch OpenCode: ocx opencode")
+				logger.info("  4. Create more profiles: ocx profile add <name>")
+			} else {
+				logger.info("Global profiles already initialized (all files exist)")
+			}
 		}
 	} catch (error) {
 		spin?.fail("Failed to initialize")

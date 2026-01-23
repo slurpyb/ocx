@@ -129,7 +129,7 @@ async function requireGlobalRegistry(
 		throw new ConfigError(
 			`Registry "${namespace}" is not configured globally.\n\n` +
 				`Profile installation requires global registry configuration.\n` +
-				`Run: ocx registry add ${namespace} <url> --global`,
+				`Run: ocx registry add <url> --name ${namespace} --global`,
 		)
 	}
 
@@ -139,7 +139,7 @@ async function requireGlobalRegistry(
 		throw new ConfigError(
 			`Registry "${namespace}" is not configured globally.\n\n` +
 				`Profile installation requires global registry configuration.\n` +
-				`Run: ocx registry add ${namespace} <url> --global`,
+				`Run: ocx registry add <url> --name ${namespace} --global`,
 		)
 	}
 

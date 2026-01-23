@@ -284,13 +284,14 @@ describe("ProfileManager.get", () => {
 		expect(profile.hasAgents).toBe(true)
 	})
 
-	it("should detect hasAgents correctly when AGENTS.md does not exist", async () => {
+	it("should detect hasAgents correctly when AGENTS.md exists (created by default)", async () => {
 		const manager = ProfileManager.create()
 		await manager.initialize()
 
 		const profile = await manager.get("default")
 
-		expect(profile.hasAgents).toBe(false)
+		// AGENTS.md is now created by default in new profiles
+		expect(profile.hasAgents).toBe(true)
 	})
 
 	it("should load opencode.jsonc when present", async () => {

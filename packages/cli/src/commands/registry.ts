@@ -147,7 +147,7 @@ export function registerRegistryCommand(program: Command): void {
 					configPath = found.path
 					const cfg = await readOcxConfig(configDir)
 					if (!cfg) {
-						logger.error("Global config not found. Run 'opencode' once to initialize.")
+						logger.error("Global config not found. Run 'ocx init --global' first.")
 						process.exit(1)
 					}
 					return cfg
@@ -217,7 +217,7 @@ export function registerRegistryCommand(program: Command): void {
 					configPath = found.path
 					const cfg = await readOcxConfig(configDir)
 					if (!cfg) {
-						logger.error("Global config not found. Run 'opencode' once to initialize.")
+						logger.error("Global config not found. Run 'ocx init --global' first.")
 						process.exit(1)
 					}
 					return cfg
@@ -277,7 +277,7 @@ export function registerRegistryCommand(program: Command): void {
 					configDir = getGlobalConfigPath()
 					const cfg = await readOcxConfig(configDir)
 					if (!cfg) {
-						logger.warn("Global config not found. Run 'opencode' once to initialize.")
+						logger.warn("Global config not found. Run 'ocx init --global' first.")
 						return null
 					}
 					return cfg

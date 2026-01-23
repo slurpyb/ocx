@@ -23,7 +23,7 @@ import { profileNameSchema } from "./schema"
 /**
  * Default ocx.jsonc template for new profiles.
  */
-const DEFAULT_OCX_CONFIG: ProfileOcxConfig = {
+export const DEFAULT_OCX_CONFIG: ProfileOcxConfig = {
 	$schema: "https://ocx.kdco.dev/schemas/ocx.json",
 	registries: {},
 	renameWindow: true,
@@ -180,9 +180,31 @@ export class ProfileManager {
 		const dir = getProfileDir(name)
 		await mkdir(dir, { recursive: true, mode: 0o700 })
 
-		// Create ocx.jsonc with default template
+		// Create ocx.jsonc with create-if-missing
 		const ocxPath = getProfileOcxConfig(name)
-		await atomicWrite(ocxPath, DEFAULT_OCX_CONFIG)
+		const ocxFile = Bun.file(ocxPath)
+		if (!(await ocxFile.exists())) {
+			await atomicWrite(ocxPath, DEFAULT_OCX_CONFIG)
+		}
+
+		// Create opencode.jsonc with create-if-missing
+		const opencodePath = getProfileOpencodeConfig(name)
+		const opencodeFile = Bun.file(opencodePath)
+		if (!(await opencodeFile.exists())) {
+			await atomicWrite(opencodePath, {})
+		}
+
+		// Create AGENTS.md with create-if-missing
+		const agentsPath = getProfileAgents(name)
+		const agentsFile = Bun.file(agentsPath)
+		if (!(await agentsFile.exists())) {
+			const agentsContent = `# Profile Instructions
+
+<!-- Add your custom instructions for this profile here -->
+<!-- These will be included when running \`ocx opencode -p ${name}\` -->
+`
+			await Bun.write(agentsPath, agentsContent, { mode: 0o600 })
+		}
 	}
 
 	/**
@@ -240,7 +262,7 @@ export class ProfileManager {
 
 	/**
 	 * Initialize profiles with a default profile.
-	 * Called by `ocx profile add default`.
+	 * Called by `ocx init --global`.
 	 */
 	async initialize(): Promise<void> {
 		// Create profiles directory

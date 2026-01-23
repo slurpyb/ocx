@@ -114,9 +114,7 @@ export class GlobalConfigProvider implements ConfigProvider {
 
 		// Guard: Global directory must exist (Law 1: Early Exit)
 		if (!(await globalDirectoryExists())) {
-			throw new ConfigError(
-				"Global config not found. Run 'opencode' once to initialize, then retry.",
-			)
+			throw new ConfigError("Global config not found. Run 'ocx init --global' first.")
 		}
 
 		// Load ocx.jsonc if it exists (returns null if not found)

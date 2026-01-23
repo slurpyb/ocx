@@ -123,7 +123,7 @@ export class InvalidProfileNameError extends OCXError {
 export class ProfilesNotInitializedError extends OCXError {
 	constructor() {
 		super(
-			"Profiles not initialized. Run 'ocx profile add default' first.",
+			"Profiles not initialized. Run 'ocx init --global' first.",
 			"NOT_FOUND",
 			EXIT_CODES.NOT_FOUND,
 		)

@@ -1042,7 +1042,7 @@ ocx profile add work
 ocx profile add client-x --from work
 
 # Install from registry (requires global registry config)
-ocx registry add kdco https://registry.kdco.dev --global
+ocx registry add https://registry.kdco.dev --name kdco --global
 ocx profile add minimal --from kdco/minimal
 
 # Force overwrite existing profile

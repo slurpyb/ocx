@@ -412,7 +412,7 @@ ocx profile add work
 ocx profile config work  # Edit settings
 
 # Install profile from registry (requires global registry config)
-ocx registry add kdco https://registry.kdco.dev --global
+ocx registry add https://registry.kdco.dev --name kdco --global
 ocx profile add minimal --from kdco/minimal
 
 # Force overwrite existing profile

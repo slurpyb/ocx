@@ -128,7 +128,7 @@ ocx profile add work        # Create a work profile
 ocx profile config work     # Edit your profile settings
 
 # Install pre-configured profile from registry (optional)
-ocx registry add kdco https://registry.kdco.dev --global
+ocx registry add https://registry.kdco.dev --name kdco --global
 ocx profile add minimal --from kdco/minimal
 
 # Use in any repo (without touching it)

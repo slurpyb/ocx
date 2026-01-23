@@ -45,8 +45,7 @@ async function runConfigEdit(options: ConfigEditOptions): Promise<void> {
 		configPath = getGlobalConfig()
 		if (!existsSync(configPath)) {
 			throw new ConfigError(
-				`Global config not found at ${configPath}.\n` +
-					"Run 'opencode' once to initialize, then retry.",
+				`Global config not found at ${configPath}.\nRun 'ocx init --global' first.`,
 			)
 		}
 	} else {
