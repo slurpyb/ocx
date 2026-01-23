@@ -255,7 +255,7 @@ OCX provides a global profile system for managing multiple OpenCode configuratio
 | `ConfigProvider` | `src/config/provider.ts` | Provides config from a single isolated scope |
 | Profile commands | `src/commands/profile/` | list, add, remove, show, config |
 | Config commands | `src/commands/config/` | show, edit |
-| OpenCode commands | `src/commands/opencode/` | Launch OpenCode with merged config |
+| OpenCode commands | `src/commands/opencode/` | Launch OpenCode with profile config |
 | Init commands | `src/commands/init/` | Initialize global/local configs |
 | Ghost commands | `src/commands/ghost/` | [TEMPORARY] Migration utilities |
 
@@ -313,7 +313,7 @@ This prevents global registries from injecting components into all projects.
    - Filters by `exclude`/`include` patterns from profile's `ocx.jsonc`
    - Include patterns override exclude patterns (TypeScript/Vite style)
 4. **Window naming** (optional): Sets terminal/tmux window name to `[profile]:repo/branch` for session identification
-5. **Spawn OpenCode**: Launches OpenCode with merged configuration and discovered instructions
+5. **Spawn OpenCode**: Launches OpenCode with isolated OCX registries and merged OpenCode settings, plus discovered instructions
 6. **Working directory**: OpenCode runs directly in the project directory
 
 ### Instruction File Discovery
@@ -411,7 +411,7 @@ ocx init --global
 
 # Create and use a work profile
 ocx profile add work
-ocx config edit -p work  # Edit settings
+ocx config edit -p work  # Edit profile settings
 
 # Install profile from registry (requires global registry config)
 ocx registry add https://registry.kdco.dev --name kdco --global

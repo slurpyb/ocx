@@ -359,7 +359,6 @@ ocx diff [component] [options]
 | Option | Description |
 |--------|-------------|
 | `--cwd <path>` | Working directory (default: current directory) |
-| `-p, --profile <name>` | Use specific global profile for registry resolution |
 | `--json` | Output as JSON |
 | `-q, --quiet` | Suppress output |
 
