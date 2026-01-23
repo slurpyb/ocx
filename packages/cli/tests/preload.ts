@@ -1,8 +1,8 @@
-import os from "os"
-import path from "path"
-import fs from "fs/promises"
-import fsSync from "fs"
 import { afterAll } from "bun:test"
+import fsSync from "node:fs"
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 
 const dir = path.join(os.tmpdir(), "ocx-test-data-" + process.pid)
 await fs.mkdir(dir, { recursive: true })

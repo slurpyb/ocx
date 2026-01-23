@@ -1,7 +1,7 @@
+import * as fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 import { $ } from "bun"
-import * as fs from "fs/promises"
-import os from "os"
-import path from "path"
 
 type TmpDirOptions<T> = {
 	/** Create .git directory (or run git init for full repo) */
