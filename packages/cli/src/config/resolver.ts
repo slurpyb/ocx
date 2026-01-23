@@ -22,7 +22,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
 import { Glob } from "bun"
-import { parse as parseJsonc } from "jsonc-parser"
+import { type ParseError, parse as parseJsonc } from "jsonc-parser"
 import { ProfileManager } from "../profile/manager"
 import {
 	findLocalConfigDir,
@@ -482,24 +482,26 @@ export class ConfigResolver {
 		const configPath = join(this.localConfigDir, OCX_CONFIG_FILE)
 		if (!existsSync(configPath)) return null
 
-		try {
-			const text = readFileSync(configPath, "utf8")
-			const parsed = parseJsonc(text)
-			if (!this.isPlainObject(parsed)) {
-				throw new Error(`Invalid ocx.jsonc: expected object, got ${typeof parsed}`)
-			}
-			const registries = parsed.registries
-			if (registries !== undefined && !this.isPlainObject(registries)) {
-				throw new Error(`Invalid ocx.jsonc: registries must be an object`)
-			}
-			return {
-				registries: (registries as Record<string, RegistryConfig>) ?? {},
-			}
-		} catch (error) {
-			if (error instanceof SyntaxError || (error as Error).message?.includes("Invalid")) {
-				throw new Error(`Failed to parse ${configPath}: ${(error as Error).message}`)
-			}
-			throw error
+		const text = readFileSync(configPath, "utf8")
+		const errors: ParseError[] = []
+		const parsed = parseJsonc(text, errors)
+
+		if (errors.length > 0) {
+			const firstError = errors[0]!
+			throw new Error(`Failed to parse ${configPath}: syntax error at offset ${firstError.offset}`)
+		}
+
+		if (!this.isPlainObject(parsed)) {
+			throw new Error(`Invalid ${configPath}: expected object, got ${typeof parsed}`)
+		}
+
+		const registries = parsed.registries
+		if (registries !== undefined && !this.isPlainObject(registries)) {
+			throw new Error(`Invalid ${configPath}: registries must be an object`)
+		}
+
+		return {
+			registries: (registries as Record<string, RegistryConfig>) ?? {},
 		}
 	}
 
@@ -514,19 +516,20 @@ export class ConfigResolver {
 		const configPath = join(this.localConfigDir, OPENCODE_CONFIG_FILE)
 		if (!existsSync(configPath)) return null
 
-		try {
-			const text = readFileSync(configPath, "utf8")
-			const parsed = parseJsonc(text)
-			if (!this.isPlainObject(parsed)) {
-				throw new Error(`Invalid opencode.jsonc: expected object, got ${typeof parsed}`)
-			}
-			return parsed
-		} catch (error) {
-			if (error instanceof SyntaxError || (error as Error).message?.includes("Invalid")) {
-				throw new Error(`Failed to parse ${configPath}: ${(error as Error).message}`)
-			}
-			throw error
+		const text = readFileSync(configPath, "utf8")
+		const errors: ParseError[] = []
+		const parsed = parseJsonc(text, errors)
+
+		if (errors.length > 0) {
+			const firstError = errors[0]!
+			throw new Error(`Failed to parse ${configPath}: syntax error at offset ${firstError.offset}`)
 		}
+
+		if (!this.isPlainObject(parsed)) {
+			throw new Error(`Invalid ${configPath}: expected object, got ${typeof parsed}`)
+		}
+
+		return parsed
 	}
 
 	/**

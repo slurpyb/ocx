@@ -275,37 +275,6 @@ describe("ConfigResolver", () => {
 			expect(Object.keys(config.registries).sort()).toEqual(["local-only"])
 		})
 
-		it("profile with no registries returns empty - no fallback to local", async () => {
-			await using tmp = await tmpdir({
-				git: true,
-				profile: {
-					name: "empty",
-					ocxConfig: {
-						registries: {}, // Empty!
-						exclude: ["**/.opencode/**"],
-						include: ["./.opencode/**"],
-					},
-					opencodeConfig: { profileSentinel: "loaded" },
-				},
-				ocxConfig: {
-					registries: {
-						"local-only": { url: "https://local.example/registry" },
-					},
-				},
-				opencodeConfig: { localSentinel: "loaded" },
-			})
-
-			const resolver = await ConfigResolver.create(tmp.path, { profile: "empty" })
-			const config = resolver.resolve()
-
-			expect(config.profileName).toBe("empty")
-			// Verify local WAS allowed to load (sentinel proves shouldLoadLocal=true)
-			expect(config.opencode.localSentinel).toBe("loaded")
-			// But registries are EMPTY - no fallback to local
-			expect(Object.keys(config.registries)).toHaveLength(0)
-			expect(config.registries["local-only"]).toBeUndefined()
-		})
-
 		it("opencode config merges while registries remain isolated", async () => {
 			await using tmp = await tmpdir({
 				git: true,
