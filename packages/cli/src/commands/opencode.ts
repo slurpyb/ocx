@@ -29,6 +29,43 @@ interface OpencodeOptions {
 	json?: boolean
 }
 
+/**
+ * Resolves which opencode binary to use.
+ * Priority: configBin > envBin > "opencode"
+ *
+ * Uses nullish coalescing (??) to preserve original behavior:
+ * - Empty string "" is passed through (will cause spawn error, but that's intentional)
+ * - Only undefined/null falls through to the next option
+ */
+export function resolveOpenCodeBinary(opts: { configBin?: string; envBin?: string }): string {
+	return opts.configBin ?? opts.envBin ?? "opencode"
+}
+
+/**
+ * Builds environment variables to pass to the opencode process.
+ * Returns a NEW object - does not mutate baseEnv.
+ *
+ * Behavior:
+ * - Preserves all keys from baseEnv
+ * - Overwrites OCX_PROFILE, OPENCODE_* keys with new values
+ * - OPENCODE_DISABLE_PROJECT_CONFIG always set to "true" when disableProjectConfig is true
+ */
+export function buildOpenCodeEnv(opts: {
+	baseEnv: Record<string, string | undefined>
+	profileDir?: string
+	profileName?: string
+	mergedConfig?: object
+	disableProjectConfig: boolean
+}): Record<string, string | undefined> {
+	return {
+		...opts.baseEnv,
+		...(opts.disableProjectConfig && { OPENCODE_DISABLE_PROJECT_CONFIG: "true" }),
+		...(opts.profileDir && { OPENCODE_CONFIG_DIR: opts.profileDir }),
+		...(opts.mergedConfig && { OPENCODE_CONFIG_CONTENT: JSON.stringify(opts.mergedConfig) }),
+		...(opts.profileName && { OCX_PROFILE: opts.profileName }),
+	}
+}
+
 export function registerOpencodeCommand(program: Command): void {
 	program
 		.command("opencode [path]")
@@ -129,19 +166,22 @@ async function runOpencode(
 	}
 
 	// Determine OpenCode binary
-	const bin = ocxConfig?.bin ?? process.env.OPENCODE_BIN ?? "opencode"
+	const bin = resolveOpenCodeBinary({
+		configBin: ocxConfig?.bin,
+		envBin: process.env.OPENCODE_BIN,
+	})
 
 	// Spawn OpenCode directly in the project directory with config via environment
 	proc = Bun.spawn({
 		cmd: [bin, ...args],
 		cwd: projectDir,
-		env: {
-			...process.env,
-			OPENCODE_DISABLE_PROJECT_CONFIG: "true",
-			...(profileDir && { OPENCODE_CONFIG_DIR: profileDir }),
-			...(configToPass && { OPENCODE_CONFIG_CONTENT: JSON.stringify(configToPass) }),
-			...(config.profileName && { OCX_PROFILE: config.profileName }),
-		},
+		env: buildOpenCodeEnv({
+			baseEnv: process.env as Record<string, string | undefined>,
+			profileDir,
+			profileName: config.profileName ?? undefined,
+			mergedConfig: configToPass,
+			disableProjectConfig: true,
+		}),
 		stdin: "inherit",
 		stdout: "inherit",
 		stderr: "inherit",
