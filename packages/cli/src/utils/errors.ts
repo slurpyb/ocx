@@ -64,7 +64,7 @@ export class ValidationError extends OCXError {
 
 export class ConflictError extends OCXError {
 	constructor(message: string) {
-		super(message, "CONFLICT", EXIT_CODES.GENERAL)
+		super(message, "CONFLICT", EXIT_CODES.CONFLICT)
 		this.name = "ConflictError"
 	}
 }
@@ -109,7 +109,11 @@ export class ProfileNotFoundError extends OCXError {
 
 export class ProfileExistsError extends OCXError {
 	constructor(name: string) {
-		super(`Profile "${name}" already exists`, "CONFLICT", EXIT_CODES.GENERAL)
+		super(
+			`Profile "${name}" already exists. Use --force to overwrite.`,
+			"CONFLICT",
+			EXIT_CODES.CONFLICT,
+		)
 		this.name = "ProfileExistsError"
 	}
 }
@@ -119,8 +123,15 @@ export class RegistryExistsError extends OCXError {
 		public readonly registryName: string,
 		public readonly existingUrl: string,
 		public readonly newUrl: string,
+		public readonly targetLabel?: string,
 	) {
-		super(`Registry "${registryName}" already exists`, "CONFLICT", EXIT_CODES.CONFLICT)
+		const target = targetLabel ? ` in ${targetLabel}` : ""
+		const message =
+			`Registry "${registryName}" already exists${target}.\n` +
+			`  Current: ${existingUrl}\n` +
+			`  New:     ${newUrl}\n\n` +
+			`Use --force to overwrite.`
+		super(message, "CONFLICT", EXIT_CODES.CONFLICT)
 		this.name = "RegistryExistsError"
 	}
 }

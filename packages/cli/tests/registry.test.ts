@@ -106,7 +106,7 @@ describe("registry add --force", () => {
 		// Try to add again without --force
 		const result = await runCLI(["registry", "add", "https://new.com", "--name", "test"], testDir)
 
-		expect(result.exitCode).not.toBe(0)
+		expect(result.exitCode).toBe(6)
 		expect(result.stderr).toContain("already exists")
 		expect(result.stderr).toContain("--force")
 	})
@@ -138,6 +138,42 @@ describe("registry add --force", () => {
 
 		expect(result.stderr).toContain("https://current.com")
 		expect(result.stderr).toContain("https://new.com")
+	})
+
+	it("should output structured JSON for conflict with --json flag", async () => {
+		await runCLI(["registry", "add", "https://old.com", "--name", "test"], testDir)
+
+		const result = await runCLI(
+			["registry", "add", "https://new.com", "--name", "test", "--json"],
+			testDir,
+		)
+
+		expect(result.exitCode).toBe(6)
+		const output = JSON.parse(result.stdout || result.stderr)
+		expect(output.success).toBe(false)
+		expect(output.error.code).toBe("CONFLICT")
+		expect(output.error.details.registryName).toBe("test")
+		expect(output.error.details.existingUrl).toBe("https://old.com")
+		expect(output.error.details.newUrl).toBe("https://new.com")
+		expect(output.meta.timestamp).toBeDefined()
+	})
+
+	it("should error for empty URL", async () => {
+		const result = await runCLI(["registry", "add", ""], testDir)
+		expect(result.exitCode).not.toBe(0)
+		expect(result.stderr).toContain("Registry URL is required")
+	})
+
+	it("should error for whitespace-only URL", async () => {
+		const result = await runCLI(["registry", "add", "   "], testDir)
+		expect(result.exitCode).not.toBe(0)
+		expect(result.stderr).toContain("Registry URL is required")
+	})
+
+	it("should error for invalid protocol", async () => {
+		const result = await runCLI(["registry", "add", "ftp://example.com", "--name", "test"], testDir)
+		expect(result.exitCode).not.toBe(0)
+		expect(result.stderr).toContain("must use http or https")
 	})
 })
 

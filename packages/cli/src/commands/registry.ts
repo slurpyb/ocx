@@ -13,7 +13,6 @@ import { getProfileOcxConfig } from "../profile/paths"
 import type { RegistryConfig } from "../schemas/config"
 import { findOcxConfig, readOcxConfig, writeOcxConfig } from "../schemas/config"
 import {
-	EXIT_CODES,
 	OcxConfigError,
 	ProfileNotFoundError,
 	RegistryExistsError,
@@ -66,22 +65,37 @@ export async function runRegistryAddCore(
 		throw new Error("Registries are locked. Cannot add.")
 	}
 
-	// Derive name from URL if not provided
-	const name = options.name || new URL(url).hostname.replace(/\./g, "-")
+	// Validate and parse URL
+	const trimmedUrl = url.trim()
+	if (!trimmedUrl) {
+		throw new ValidationError("Registry URL is required")
+	}
+	let derivedName: string
+	try {
+		const parsed = new URL(trimmedUrl)
+		if (!["http:", "https:"].includes(parsed.protocol)) {
+			throw new ValidationError(`Invalid registry URL: ${trimmedUrl} (must use http or https)`)
+		}
+		derivedName = options.name || parsed.hostname.replace(/\./g, "-")
+	} catch (error) {
+		if (error instanceof ValidationError) throw error
+		throw new ValidationError(`Invalid registry URL: ${trimmedUrl}`)
+	}
 
+	const name = derivedName
 	const registries = callbacks.getRegistries()
 	const existingRegistry = registries[name]
 	if (existingRegistry && !options.force) {
-		throw new RegistryExistsError(name, existingRegistry.url, url)
+		throw new RegistryExistsError(name, existingRegistry.url, trimmedUrl)
 	}
 	const isUpdate = name in registries
 
 	await callbacks.setRegistry(name, {
-		url,
+		url: trimmedUrl,
 		version: options.version,
 	})
 
-	return { name, url, updated: isUpdate }
+	return { name, url: trimmedUrl, updated: isUpdate }
 }
 
 /**
@@ -270,14 +284,14 @@ export function registerRegistryCommand(program: Command): void {
 				}
 			}
 		} catch (error) {
-			if (error instanceof RegistryExistsError) {
-				const targetLabel = target?.targetLabel ?? "config"
-				logger.error(`✗ Registry "${error.registryName}" already exists in ${targetLabel}`)
-				logger.error(`  Current: ${error.existingUrl}`)
-				logger.error(`  New:     ${error.newUrl}`)
-				logger.error("")
-				logger.error("Use --force to overwrite.")
-				process.exit(EXIT_CODES.CONFLICT)
+			if (error instanceof RegistryExistsError && !error.targetLabel) {
+				const enrichedError = new RegistryExistsError(
+					error.registryName,
+					error.existingUrl,
+					error.newUrl,
+					target?.targetLabel ?? "config",
+				)
+				handleError(enrichedError, { json: options.json })
 			}
 			handleError(error, { json: options.json })
 		}

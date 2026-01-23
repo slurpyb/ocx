@@ -5,7 +5,7 @@
 
 import { ZodError } from "zod"
 
-import { EXIT_CODES, OCXError } from "./errors"
+import { EXIT_CODES, OCXError, RegistryExistsError } from "./errors"
 import { logger } from "./logger"
 
 export interface HandleErrorOptions {
@@ -58,6 +58,7 @@ interface JsonErrorOutput {
 	error: {
 		code: string
 		message: string
+		details?: Record<string, unknown>
 	}
 	exitCode: number
 	meta: {
@@ -89,6 +90,26 @@ export function wrapAction<T extends unknown[]>(
 }
 
 function formatErrorAsJson(error: unknown): JsonErrorOutput {
+	if (error instanceof RegistryExistsError) {
+		return {
+			success: false,
+			error: {
+				code: error.code,
+				message: error.message,
+				details: {
+					registryName: error.registryName,
+					existingUrl: error.existingUrl,
+					newUrl: error.newUrl,
+					...(error.targetLabel && { targetLabel: error.targetLabel }),
+				},
+			},
+			exitCode: error.exitCode,
+			meta: {
+				timestamp: new Date().toISOString(),
+			},
+		}
+	}
+
 	if (error instanceof OCXError) {
 		return {
 			success: false,

@@ -285,7 +285,7 @@ describe("ocx profile add (conflict detection)", () => {
 
 		const { exitCode, output } = await runCLI(["profile", "add", "existing-profile"], workDir)
 
-		expect(exitCode).not.toBe(0)
+		expect(exitCode).toBe(6)
 		// Verify error message contains key information for user action
 		expect(output).toContain("already exists")
 		expect(output).toContain("--force")
