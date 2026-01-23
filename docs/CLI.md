@@ -1068,8 +1068,8 @@ Delete a global profile.
 #### Usage
 
 ```bash
-ocx profile remove <name> [options]
-ocx p rm <name> [options]  # alias
+ocx profile remove <name>
+ocx p rm <name>  # alias
 ```
 
 #### Arguments
@@ -1078,26 +1078,17 @@ ocx p rm <name> [options]  # alias
 |----------|-------------|
 | `name` | Profile name to delete (required) |
 
-#### Options
-
-| Option | Description |
-|--------|-------------|
-| `-f, --force` | Skip confirmation prompt |
-
 #### Examples
 
 ```bash
-# Remove profile (prompts for confirmation)
+# Remove a profile
 ocx profile remove old-profile
-
-# Force remove without confirmation
-ocx p rm old-profile --force
 ```
 
 #### Notes
 
+- Deletion is immediate (Cargo-style, no confirmation prompt)
 - Cannot delete the last remaining profile
-- Prompts for confirmation unless `--force` is used
 
 ---
 
@@ -1108,15 +1099,15 @@ Display profile configuration and contents.
 #### Usage
 
 ```bash
-ocx profile show <name> [options]
-ocx p show <name> [options]  # alias
+ocx profile show [name] [options]
+ocx p show [name] [options]  # alias
 ```
 
 #### Arguments
 
 | Argument | Description |
 |----------|-------------|
-| `name` | Profile name (required) |
+| `name` | Profile name (optional, defaults to resolved profile) |
 
 #### Options
 
@@ -1127,6 +1118,9 @@ ocx p show <name> [options]  # alias
 #### Examples
 
 ```bash
+# Show current profile (uses resolved profile)
+ocx profile show
+
 # Show work profile config
 ocx profile show work
 
@@ -1161,15 +1155,15 @@ Edit a profile's ocx.jsonc configuration file in `$EDITOR`.
 #### Usage
 
 ```bash
-ocx profile config <name>
-ocx p config <name>  # alias
+ocx profile config [name]
+ocx p config [name]  # alias
 ```
 
 #### Arguments
 
 | Argument | Description |
 |----------|-------------|
-| `name` | Profile name (required) |
+| `name` | Profile name (optional, defaults to resolved profile) |
 
 #### Environment
 
@@ -1179,6 +1173,9 @@ ocx p config <name>  # alias
 #### Examples
 
 ```bash
+# Edit current profile config (uses resolved profile)
+ocx profile config
+
 # Edit work profile config
 ocx profile config work
 
