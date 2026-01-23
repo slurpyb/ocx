@@ -3,6 +3,7 @@
  *
  * Open configuration file in the user's preferred editor.
  * --global: edit global ocx.jsonc
+ * --profile: edit profile ocx.jsonc
  * default: edit local .opencode/ocx.jsonc
  */
 
@@ -13,49 +14,70 @@ import type { Command } from "commander"
 import {
 	findLocalConfigDir,
 	getGlobalConfig,
+	getProfileDir,
 	LOCAL_CONFIG_DIR,
 	OCX_CONFIG_FILE,
 } from "../../profile/paths"
 import { ConfigError } from "../../utils/errors"
 import { handleError, logger } from "../../utils/index"
+import { resolveTargetScope } from "../../utils/scope"
+import { addCommonOptions, addProfileOption } from "../../utils/shared-options"
 
 interface ConfigEditOptions {
 	global?: boolean
+	profile?: string
+	cwd?: string
 }
 
 export function registerConfigEditCommand(parent: Command): void {
-	parent
-		.command("edit")
-		.description("Open configuration file in editor")
-		.option("-g, --global", "Edit global ocx.jsonc")
-		.action(async (options: ConfigEditOptions) => {
-			try {
-				await runConfigEdit(options)
-			} catch (error) {
-				handleError(error)
-			}
-		})
+	const cmd = parent.command("edit").description("Open configuration file in editor")
+
+	addProfileOption(cmd)
+	addCommonOptions(cmd)
+	cmd.option("-g, --global", "Edit global ocx.jsonc")
+
+	cmd.action(async (options: ConfigEditOptions, command: Command) => {
+		try {
+			const isCwdExplicit = command.getOptionValueSource("cwd") === "cli"
+			await runConfigEdit(options, isCwdExplicit)
+		} catch (error) {
+			handleError(error)
+		}
+	})
 }
 
-async function runConfigEdit(options: ConfigEditOptions): Promise<void> {
+async function runConfigEdit(options: ConfigEditOptions, isCwdExplicit: boolean): Promise<void> {
+	const { global: isGlobal, profile } = options
+
+	// Validate mutual exclusivity using scope helper (throws on conflict)
+	resolveTargetScope({ ...options, isCwdExplicit })
+
 	let configPath: string
 
-	if (options.global) {
-		// Edit global config
+	if (isGlobal) {
+		// Edit global config - must exist
 		configPath = getGlobalConfig()
 		if (!existsSync(configPath)) {
 			throw new ConfigError(
 				`Global config not found at ${configPath}.\nRun 'ocx init --global' first.`,
 			)
 		}
+	} else if (profile) {
+		// Edit profile config - must exist (don't auto-create profiles via config edit)
+		configPath = join(getProfileDir(profile), OCX_CONFIG_FILE)
+		if (!existsSync(configPath)) {
+			throw new ConfigError(
+				`Profile '${profile}' config not found.\nRun 'ocx profile add ${profile}' first.`,
+			)
+		}
 	} else {
-		// Edit local config
-		const localConfigDir = findLocalConfigDir(process.cwd())
+		// Edit local config - create if doesn't exist
+		const localConfigDir = findLocalConfigDir(options.cwd || process.cwd())
 		if (localConfigDir) {
 			configPath = join(localConfigDir, OCX_CONFIG_FILE)
 		} else {
 			// Create .opencode directory if it doesn't exist
-			const newConfigDir = join(process.cwd(), LOCAL_CONFIG_DIR)
+			const newConfigDir = join(options.cwd || process.cwd(), LOCAL_CONFIG_DIR)
 			await mkdir(newConfigDir, { recursive: true })
 			configPath = join(newConfigDir, OCX_CONFIG_FILE)
 

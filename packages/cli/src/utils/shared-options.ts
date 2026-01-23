@@ -34,6 +34,9 @@ export const sharedOptions = {
 
 	/** Install to global OpenCode config */
 	global: new Option("-g, --global", "Install to global OpenCode config (~/.config/opencode)"),
+
+	/** Target a specific profile */
+	profile: () => new Option("-p, --profile <name>", "Target a specific profile"),
 }
 
 // =============================================================================
@@ -106,4 +109,18 @@ export function addOutputOptions<T extends { addOption: (opt: Option) => T }>(cm
  */
 export function addGlobalOption<T extends { addOption: (opt: Option) => T }>(cmd: T): T {
 	return cmd.addOption(sharedOptions.global)
+}
+
+/**
+ * Adds the --profile option to a command.
+ *
+ * @example
+ * ```typescript
+ * const cmd = program.command("add")
+ * addProfileOption(cmd)
+ *   .action(handler)
+ * ```
+ */
+export function addProfileOption<T extends { addOption: (opt: Option) => T }>(cmd: T): T {
+	return cmd.addOption(sharedOptions.profile())
 }
