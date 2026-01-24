@@ -1079,7 +1079,7 @@ ocx p add <name> [options]  # alias
 
 | Option | Description |
 |--------|-------------|
-| `--from <source>` | Clone from existing profile or install from registry (e.g., kdco/minimal) |
+| `--from <source>` | Clone from existing profile or install from registry (e.g., kit/ws) |
 | `-f, --force` | Overwrite existing profile |
 
 #### Examples
@@ -1092,11 +1092,11 @@ ocx profile add work
 ocx profile add client-x --from work
 
 # Install from registry (requires global registry config)
-ocx registry add https://registry.kdco.dev --name kdco --global
-ocx profile add minimal --from kdco/minimal
+ocx registry add https://ocx-kit.kdco.dev --name kit --global
+ocx profile add ws --from kit/ws
 
 # Force overwrite existing profile
-ocx profile add minimal --from kdco/minimal --force
+ocx profile add ws --from kit/ws --force
 
 # Using alias
 ocx p add personal

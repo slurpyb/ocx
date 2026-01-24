@@ -1,0 +1,22 @@
+{
+	"$schema": "https://ocx.kdco.dev/schemas/ocx.json",
+
+	// Registries for component updates
+	"registries": {
+		"kit": { "url": "https://ocx-kit.kdco.dev" },
+		"kdco": { "url": "https://registry.kdco.dev" }
+	},
+
+	// Rename terminal window to [ws]:repo/branch
+	"renameWindow": true,
+
+	// Exclude project instruction files - profile provides its own
+	"exclude": [
+		"**/AGENTS.md",
+		"**/CLAUDE.md",
+		"**/CONTEXT.md",
+		"**/.opencode/**",
+		"**/opencode.jsonc",
+		"**/opencode.json"
+	]
+}

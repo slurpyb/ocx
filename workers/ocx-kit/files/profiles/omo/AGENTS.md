@@ -1,6 +1,6 @@
 # OMO Starter Profile
 
-This profile uses [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) with OpenCodeZen free models.
+This profile uses [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) with [OpenCode Zen](https://opencode.ai/docs/zen/) free models.
 
 ## Models
 

@@ -137,14 +137,15 @@ ocx profile add work
 **Install profile from registry:**
 
 ```bash
-# First, add a global registry
+# First, add global registries
+ocx registry add https://ocx-kit.kdco.dev --name kit --global
 ocx registry add https://registry.kdco.dev --name kdco --global
 
 # Then install the profile
-ocx profile add minimal --from kdco/minimal
+ocx profile add ws --from kit/ws
 
 # Force overwrite existing profile
-ocx profile add minimal --from kdco/minimal --force
+ocx profile add ws --from kit/ws --force
 ```
 
 **Clone from existing profile:**

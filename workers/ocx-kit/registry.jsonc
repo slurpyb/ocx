@@ -16,6 +16,17 @@
 				{ "path": "profiles/omo/AGENTS.md", "target": "AGENTS.md" }
 			],
 			"dependencies": []
+		},
+		{
+			"name": "ws",
+			"type": "ocx:profile",
+			"description": "KDCO Workspace profile with free OpenCode Zen models",
+			"files": [
+				{ "path": "profiles/ws/ocx.jsonc", "target": "ocx.jsonc" },
+				{ "path": "profiles/ws/opencode.jsonc", "target": "opencode.jsonc" },
+				{ "path": "profiles/ws/AGENTS.md", "target": "AGENTS.md" }
+			],
+			"dependencies": ["kdco/workspace"]
 		}
 	]
 }

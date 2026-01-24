@@ -24,7 +24,7 @@ ocx profile add omo --from kit/omo
 ocx oc -p omo
 ```
 
-That's it! The profile comes pre-configured with free OpenCodeZen models.
+That's it! The profile comes pre-configured with free [OpenCode Zen](https://opencode.ai/docs/zen/) models.
 
 ## What's Included
 
