@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { existsSync, realpathSync } from "node:fs"
 import { mkdir, readFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
+import { getReleaseTag, getTemplateUrl, TEMPLATE_REPO } from "../src/commands/init"
 import { cleanupTempDir, createTempDir, parseJsonc, runCLI } from "./helpers"
 
 /** Path to the registry-template test fixture */
@@ -229,12 +230,14 @@ describe("init --global", () => {
 		await Bun.write(agentsPath, sentinelAgents)
 
 		// Run init --global TWICE
-		await runCLI(["init", "--global"], testDir, {
+		const result1 = await runCLI(["init", "--global"], testDir, {
 			env: { XDG_CONFIG_HOME: testDir },
 		})
-		await runCLI(["init", "--global"], testDir, {
+		expect(result1.exitCode).toBe(0)
+		const result2 = await runCLI(["init", "--global"], testDir, {
 			env: { XDG_CONFIG_HOME: testDir },
 		})
+		expect(result2.exitCode).toBe(0)
 
 		// Verify all files are BYTE-FOR-BYTE unchanged
 		expect(await Bun.file(globalConfigPath).text()).toBe(JSON.stringify(sentinelGlobal, null, 2))
@@ -367,5 +370,38 @@ describe("init --global", () => {
 		// Verify paths start with XDG_CONFIG_HOME
 		expect(realpathSync(globalConfigPath).startsWith(realpathSync(testDir))).toBe(true)
 		expect(realpathSync(profileOcxPath).startsWith(realpathSync(testDir))).toBe(true)
+	})
+})
+
+describe("getReleaseTag", () => {
+	it("should throw ValidationError in development mode (when __VERSION__ is undefined)", () => {
+		// In source/test mode, __VERSION__ is not defined, so this should throw
+		expect(() => getReleaseTag()).toThrow("Cannot fetch release template in development mode")
+	})
+
+	it("should provide helpful guidance in error message", () => {
+		try {
+			getReleaseTag()
+			expect.unreachable("Should have thrown")
+		} catch (error) {
+			expect((error as Error).message).toContain("--canary")
+		}
+	})
+})
+
+describe("getTemplateUrl", () => {
+	it("should use heads/main ref for canary", () => {
+		const url = getTemplateUrl("main")
+		expect(url).toBe(`https://github.com/${TEMPLATE_REPO}/archive/refs/heads/main.tar.gz`)
+	})
+
+	it("should use tags ref for release version", () => {
+		const url = getTemplateUrl("v1.4.1")
+		expect(url).toBe(`https://github.com/${TEMPLATE_REPO}/archive/refs/tags/v1.4.1.tar.gz`)
+	})
+
+	it("should handle pre-release versions", () => {
+		const url = getTemplateUrl("v2.0.0-beta.1")
+		expect(url).toBe(`https://github.com/${TEMPLATE_REPO}/archive/refs/tags/v2.0.0-beta.1.tar.gz`)
 	})
 })

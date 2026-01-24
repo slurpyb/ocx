@@ -23,7 +23,9 @@ import { ensureOpencodeConfig } from "../updaters/update-opencode-config"
 import { ConflictError, NetworkError, ValidationError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
 
-const TEMPLATE_REPO = "kdcokenny/ocx"
+declare const __VERSION__: string | undefined
+
+export const TEMPLATE_REPO = "kdcokenny/ocx"
 const TEMPLATE_PATH = "examples/registry-starter"
 
 interface InitOptions {
@@ -272,7 +274,7 @@ async function runInitRegistry(directory: string | undefined, options: InitOptio
 			await copyDir(options.local, cwd)
 		} else {
 			// Fetch from GitHub
-			const version = options.canary ? "main" : await getLatestVersion()
+			const version = options.canary ? "main" : getReleaseTag()
 			await fetchAndExtractTemplate(cwd, version, options.verbose)
 		}
 
@@ -307,11 +309,26 @@ async function copyDir(src: string, dest: string): Promise<void> {
 	await cp(src, dest, { recursive: true })
 }
 
-async function getLatestVersion(): Promise<string> {
-	const pkgPath = new URL("../../package.json", import.meta.url)
-	const pkgContent = await readFile(pkgPath)
-	const pkg = JSON.parse(pkgContent.toString())
-	return `v${pkg.version}`
+/**
+ * Returns the release tag for template fetching.
+ * Throws in development mode - use --canary flag instead.
+ */
+export function getReleaseTag(): string {
+	if (typeof __VERSION__ === "undefined") {
+		throw new ValidationError(
+			"Cannot fetch release template in development mode. Run with --canary flag to use the latest development template.",
+		)
+	}
+	return `v${__VERSION__}`
+}
+
+/**
+ * Constructs the GitHub tarball URL for a given version.
+ * @param version - Either "main" for canary or "vX.Y.Z" for release
+ */
+export function getTemplateUrl(version: string): string {
+	const ref = version === "main" ? "heads/main" : `tags/${version}`
+	return `https://github.com/${TEMPLATE_REPO}/archive/refs/${ref}.tar.gz`
 }
 
 async function fetchAndExtractTemplate(
@@ -319,8 +336,7 @@ async function fetchAndExtractTemplate(
 	version: string,
 	verbose?: boolean,
 ): Promise<void> {
-	const ref = version === "main" ? "heads/main" : `tags/${version}`
-	const tarballUrl = `https://github.com/${TEMPLATE_REPO}/archive/refs/${ref}.tar.gz`
+	const tarballUrl = getTemplateUrl(version)
 
 	if (verbose) {
 		logger.info(`Fetching ${tarballUrl}`)
