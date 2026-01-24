@@ -49,7 +49,6 @@
 			"type": "array",
 			"items": { "type": "string", "minLength": 1 },
 			"default": [
-				"**/AGENTS.md",
 				"**/CLAUDE.md",
 				"**/CONTEXT.md",
 				"**/.opencode/**",

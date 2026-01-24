@@ -22,14 +22,14 @@ import type { Profile } from "./schema"
 import { profileNameSchema } from "./schema"
 
 /**
- * Default ocx.jsonc template for new profiles.
+ * Default ocx.jsonc config for new profiles (programmatic use).
+ * Note: AGENTS.md is NOT excluded by default - it's commented out in the template.
  */
 export const DEFAULT_OCX_CONFIG: ProfileOcxConfig = {
 	$schema: "https://ocx.kdco.dev/schemas/ocx.json",
 	registries: {},
 	renameWindow: true,
 	exclude: [
-		"**/AGENTS.md",
 		"**/CLAUDE.md",
 		"**/CONTEXT.md",
 		"**/.opencode/**",
@@ -38,6 +38,26 @@ export const DEFAULT_OCX_CONFIG: ProfileOcxConfig = {
 	],
 	include: [],
 }
+
+/**
+ * Default ocx.jsonc JSONC template for new profiles.
+ * Includes commented-out AGENTS.md line so users can easily enable exclusion.
+ */
+export const DEFAULT_OCX_CONFIG_TEMPLATE = `{
+  "$schema": "https://ocx.kdco.dev/schemas/ocx.json",
+  "registries": {},
+  "renameWindow": true,
+  "exclude": [
+    // "**/AGENTS.md",
+    "**/CLAUDE.md",
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
+  ],
+  "include": []
+}
+`
 
 /**
  * Manages OCX profiles.
@@ -181,11 +201,11 @@ export class ProfileManager {
 		const dir = getProfileDir(name)
 		await mkdir(dir, { recursive: true, mode: 0o700 })
 
-		// Create ocx.jsonc with create-if-missing
+		// Create ocx.jsonc with create-if-missing (uses JSONC template with commented AGENTS.md)
 		const ocxPath = getProfileOcxConfig(name)
 		const ocxFile = Bun.file(ocxPath)
 		if (!(await ocxFile.exists())) {
-			await atomicWrite(ocxPath, DEFAULT_OCX_CONFIG)
+			await Bun.write(ocxPath, DEFAULT_OCX_CONFIG_TEMPLATE, { mode: 0o600 })
 		}
 
 		// Create opencode.jsonc with create-if-missing

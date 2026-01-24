@@ -70,11 +70,11 @@ export const profileOcxConfigSchema = z.object({
 	/**
 	 * Glob patterns for project files to exclude from OpenCode discovery.
 	 * Prevents OCX profiles from loading project-local configuration files.
+	 * Note: AGENTS.md is NOT excluded by default - uncomment in ocx.jsonc to exclude.
 	 */
 	exclude: z
 		.array(globPatternSchema)
 		.default([
-			"**/AGENTS.md",
 			"**/CLAUDE.md",
 			"**/CONTEXT.md",
 			"**/.opencode/**",
