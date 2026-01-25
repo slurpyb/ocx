@@ -16,7 +16,7 @@ ocx profile add ws --from kit/ws
 ocx oc -p ws
 ```
 
-See the [full installation guide](../../docs/guides/workspace-profile.md) for customization options.
+See the [full installation guide](../../docs/guides/kdco-workspace.md) for customization options.
 
 ## What This Is
 
