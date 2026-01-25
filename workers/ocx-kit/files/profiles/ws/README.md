@@ -14,6 +14,19 @@ Multi-agent orchestration harness with free [OpenCode Zen](https://opencode.ai/d
 | `scribe`     | GPT-5 Nano | Documentation         |
 | `reviewer`   | GPT-5 Nano | Code review           |
 
+## Recommended Models
+
+When customizing with your own providers, use these model classes:
+
+| Role                                      | Recommended       | Why                          |
+| ----------------------------------------- | ----------------- | ---------------------------- |
+| Orchestrators (plan, build)               | Claude Opus 4.5   | Heavy reasoning for planning |
+| Implementation (coder)                    | Claude Opus 4.5   | Precision, complex tasks     |
+| Specialists (explore, researcher, scribe) | Claude Sonnet 4.5 | Fast, capable                |
+| Review (reviewer)                         | GPT 5.2           | Deterministic analysis       |
+
+The default profile uses [OpenCode Zen](https://opencode.ai/docs/zen/) free models.
+
 ## Customize
 
 Edit your profile's config:
