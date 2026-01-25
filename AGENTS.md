@@ -478,6 +478,50 @@ bun run format         # Fix formatting
 bun test packages/cli/tests/add.test.ts
 ```
 
+## Test Isolation
+
+The test helper `runCLI` provides **isolation by default** to prevent flaky tests from host environment leakage.
+
+### How It Works
+
+Each `runCLI` call creates a unique temporary directory with:
+- `HOME` → temp directory (prevents `~/.config` leakage)
+- `XDG_CONFIG_HOME` → `$HOME/.config`
+- `XDG_DATA_HOME` → `$HOME/.local/share`
+- `XDG_CACHE_HOME` → `$HOME/.cache`
+
+Environment variables are **allowlisted** (only safe vars pass through):
+- `PATH`, `TMPDIR`, `TERM`
+- `BUN_INSTALL`, `BUNV_DIR`
+- `NO_COLOR=1`, `FORCE_COLOR=0` (forced)
+- `LANG=C`, `LC_ALL=C` (forced for deterministic output)
+
+### Usage Patterns
+
+```typescript
+// Default: fully isolated (recommended)
+await runCLI(["profile", "list"], testDir)
+
+// With shared config directory (for multi-call tests)
+await runCLI(["profile", "add", "work"], testDir, {
+  env: { XDG_CONFIG_HOME: testDir }
+})
+
+// Escape hatch: inherit host environment (rare, for debugging)
+await runCLI(["--version"], testDir, { inheritHostEnv: true })
+```
+
+### When to Override XDG_CONFIG_HOME
+
+Pass `env: { XDG_CONFIG_HOME: testDir }` when:
+- Multiple CLI calls need to share the same config state
+- Test sets up config files before running CLI
+- Testing global profile/config operations
+
+### Cleanup
+
+Temp directories are cleaned up automatically in a `finally` block after each call.
+
 ## Schema Synchronization
 
 OCX schemas mirror OpenCode's configuration format. To update schemas when OpenCode releases new config options:

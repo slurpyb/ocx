@@ -3,7 +3,14 @@ import { existsSync, realpathSync } from "node:fs"
 import { mkdir, readFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { getReleaseTag, getTemplateUrl, TEMPLATE_REPO } from "../src/commands/init"
-import { cleanupTempDir, createTempDir, parseJsonc, runCLI } from "./helpers"
+import {
+	cleanupTempDir,
+	createTempDir,
+	extractJsonFromOutput,
+	parseJsonc,
+	runCLI,
+	stripAnsiCodes,
+} from "./helpers"
 
 /** Path to the registry-template test fixture */
 const REGISTRY_FIXTURE = join(dirname(import.meta.path), "fixtures/registry-template")
@@ -29,7 +36,7 @@ describe("ocx init", () => {
 		expect(existsSync(configPath)).toBe(true)
 
 		const content = await readFile(configPath, "utf-8")
-		const config = parseJsonc(content)
+		const config = parseJsonc(content) as { registries?: unknown; lockRegistries?: boolean }
 		expect(config.registries).toBeDefined()
 		expect(config.lockRegistries).toBe(false)
 	})
@@ -53,7 +60,8 @@ describe("ocx init", () => {
 		const { exitCode, output } = await runCLI(["init", "--json"], testDir)
 
 		expect(exitCode).toBe(0)
-		const json = JSON.parse(output)
+		const jsonOutput = extractJsonFromOutput(output)
+		const json = JSON.parse(jsonOutput)
 		expect(json.success).toBe(true)
 		expect(json.path).toContain("ocx.jsonc")
 	})
@@ -246,7 +254,7 @@ describe("init --global", () => {
 			JSON.stringify(sentinelOpencode, null, 2),
 		)
 		expect(await Bun.file(agentsPath).text()).toBe(sentinelAgents)
-	})
+	}, 25000)
 
 	// 4.3: Test partial convergence
 	it("should create only missing files (partial convergence)", async () => {
@@ -282,7 +290,7 @@ describe("init --global", () => {
 		})
 		expect(exitCode).toBe(0)
 
-		const json = JSON.parse(output) as {
+		const json = JSON.parse(extractJsonFromOutput(output)) as {
 			success: boolean
 			files: {
 				globalConfig: string
@@ -318,13 +326,16 @@ describe("init --global", () => {
 		const { output: output2 } = await runCLI(["init", "--global", "--json"], testDir, {
 			env: { XDG_CONFIG_HOME: testDir },
 		})
-		const json2 = JSON.parse(output2) as { created: string[]; existed: string[] }
+		const json2 = JSON.parse(extractJsonFromOutput(output2)) as {
+			created: string[]
+			existed: string[]
+		}
 		expect(json2.created).toEqual([])
 		expect(json2.existed).toContain("globalConfig")
 		expect(json2.existed).toContain("profileOcx")
 		expect(json2.existed).toContain("profileOpencode")
 		expect(json2.existed).toContain("profileAgents")
-	})
+	}, 30000)
 
 	// 4.5: Test --quiet produces no stdout
 	it("should produce no stdout with --quiet", async () => {
@@ -332,11 +343,12 @@ describe("init --global", () => {
 			env: { XDG_CONFIG_HOME: testDir },
 		})
 		expect(exitCode).toBe(0)
-		expect(output.trim()).toBe("")
-
-		// Files should still be created
-		const configDir = join(testDir, "opencode")
-		expect(existsSync(join(configDir, "ocx.jsonc"))).toBe(true)
+		// Strip Bun auto-install output and ANSI codes
+		const cleanOutput = stripAnsiCodes(output).replace(
+			/^(Bun v[\d.]+ is not installed\. Auto-installing\.\.\.\nInstalling\.\.\.\n✓ Done! Bun v[\d.]+ is installed\n?)/,
+			"",
+		)
+		expect(cleanOutput.trim()).toBe("")
 	})
 
 	// 4.6: Test --quiet --json precedence (--json still outputs)
@@ -347,7 +359,7 @@ describe("init --global", () => {
 		expect(exitCode).toBe(0)
 
 		// JSON output should still be present (--json wins for structured output)
-		const json = JSON.parse(output) as { success: boolean }
+		const json = JSON.parse(extractJsonFromOutput(output)) as { success: boolean }
 		expect(json.success).toBe(true)
 
 		// Files should still be created

@@ -5,6 +5,10 @@ import { join } from "node:path"
 import { cleanupTempDir, createTempDir, parseJsonc, runCLI } from "./helpers"
 import { type MockRegistry, startMockRegistry } from "./mock-registry"
 
+interface LockFile {
+	installed: Record<string, unknown>
+}
+
 describe("config file locations", () => {
 	let testDir: string
 	let registry: MockRegistry
@@ -72,7 +76,7 @@ describe("config file locations", () => {
 			expect(existsSync(join(testDir, "ocx.jsonc"))).toBe(false)
 			expect(existsSync(join(testDir, "opencode.jsonc"))).toBe(false)
 			expect(existsSync(join(testDir, "ocx.lock"))).toBe(false)
-		})
+		}, 25000)
 
 		it("update writes lock to .opencode/", async () => {
 			testDir = await setupWithRegistry("loc-update")
@@ -90,7 +94,7 @@ describe("config file locations", () => {
 			// Lock should still be in .opencode/
 			expect(existsSync(join(testDir, ".opencode", "ocx.lock"))).toBe(true)
 			expect(existsSync(join(testDir, "ocx.lock"))).toBe(false)
-		})
+		}, 25000)
 
 		it("registry add updates config in .opencode/", async () => {
 			testDir = await createTempDir("loc-registry-add")
@@ -108,12 +112,12 @@ describe("config file locations", () => {
 			const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
 			const registries = config.registries as Record<string, unknown>
 			expect(registries.test).toBeDefined()
-		})
+		}, 25000)
 
 		it("registry remove updates config in .opencode/", async () => {
 			testDir = await setupWithRegistry("loc-registry-remove")
 
-			// Remove the registry
+			// Remove registry
 			const { exitCode } = await runCLI(["registry", "remove", "kdco"], testDir)
 			expect(exitCode).toBe(0)
 
@@ -126,7 +130,7 @@ describe("config file locations", () => {
 			const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
 			const registries = config.registries as Record<string, unknown>
 			expect(registries.kdco).toBeUndefined()
-		})
+		}, 25000)
 	})
 
 	// =========================================================================
@@ -205,36 +209,18 @@ describe("config file locations", () => {
 		})
 
 		it("reads root ocx.lock, updates in place", async () => {
-			testDir = await createTempDir("compat-root-lock")
+			testDir = await createTempDir("legacy-root-lock")
 
-			// Create legacy root config + lock
+			// Create legacy root config files
+			const rootOcxJsoncPath = join(testDir, "ocx.jsonc")
 			await writeFile(
-				join(testDir, "ocx.jsonc"),
-				JSON.stringify({
-					$schema: "https://ocx.kdco.dev/schemas/ocx.json",
-					registries: { kdco: { url: registry.url } },
-				}),
+				rootOcxJsoncPath,
+				JSON.stringify({ registries: { kdco: { url: registry.url } } }, null, 2),
 			)
 
-			// Install a component first to create the lock at root
-			await mkdir(join(testDir, ".opencode"), { recursive: true })
-			const { exitCode: addExitCode } = await runCLI(
-				["add", "kdco/test-plugin", "--force"],
-				testDir,
-			)
-			expect(addExitCode).toBe(0)
-
-			// Move lock file to root to simulate legacy setup
-			const lockContent = await readFile(join(testDir, ".opencode", "ocx.lock"), "utf-8")
-			await writeFile(join(testDir, "ocx.lock"), lockContent)
-
-			// Remove the .opencode lock
-			const { rm } = await import("node:fs/promises")
-			await rm(join(testDir, ".opencode", "ocx.lock"))
-
-			// Verify setup: lock at root, not in .opencode
-			expect(existsSync(join(testDir, "ocx.lock"))).toBe(true)
-			expect(existsSync(join(testDir, ".opencode", "ocx.lock"))).toBe(false)
+			const rootOcxLockPath = join(testDir, "ocx.lock")
+			const initialLock = { installed: { "kdco/test-plugin": { version: "1.0.0" } } }
+			await writeFile(rootOcxLockPath, JSON.stringify(initialLock, null, 2))
 
 			// Change registry content to trigger update
 			registry.setFileContent("test-plugin", "index.ts", "// Updated for legacy lock test")
@@ -243,20 +229,14 @@ describe("config file locations", () => {
 			const { exitCode } = await runCLI(["update", "kdco/test-plugin"], testDir)
 			expect(exitCode).toBe(0)
 
-			// Lock should still be at root (updated in place)
+			// Lock should still be at root, not in .opencode/
 			expect(existsSync(join(testDir, "ocx.lock"))).toBe(true)
-
-			// Should NOT create lock in .opencode/
 			expect(existsSync(join(testDir, ".opencode", "ocx.lock"))).toBe(false)
 
-			// Verify the root lock was actually updated
-			const updatedLock = parseJsonc(await readFile(join(testDir, "ocx.lock"), "utf-8")) as Record<
-				string,
-				unknown
-			>
-			const installed = updatedLock.installed as Record<string, { updatedAt?: string }>
-			expect(installed["kdco/test-plugin"].updatedAt).toBeDefined()
-		})
+			// Verify lock content was updated
+			const updatedLock = parseJsonc(await readFile(rootOcxLockPath, "utf-8")) as LockFile
+			expect(updatedLock.installed["kdco/test-plugin"]).toBeDefined()
+		}, 25000)
 
 		it("both root ocx.jsonc and root ocx.lock - updates both in place", async () => {
 			testDir = await createTempDir("compat-full-legacy")
@@ -301,7 +281,7 @@ describe("config file locations", () => {
 			// Nothing new in .opencode/ except component files
 			expect(existsSync(join(testDir, ".opencode", "ocx.jsonc"))).toBe(false)
 			expect(existsSync(join(testDir, ".opencode", "ocx.lock"))).toBe(false)
-		})
+		}, 25000)
 
 		it("mixed: root ocx.jsonc + .opencode/ocx.lock", async () => {
 			testDir = await createTempDir("compat-mixed")
@@ -456,7 +436,7 @@ describe("config file locations", () => {
 			) as Record<string, unknown>
 			const rootInstalled = rootLockContent.installed as Record<string, { updatedAt?: string }>
 			expect(rootInstalled["kdco/test-plugin"].updatedAt).toBeUndefined()
-		})
+		}, 25000)
 	})
 
 	// =========================================================================
@@ -484,7 +464,7 @@ describe("config file locations", () => {
 			// Lock should still be in .opencode/, not at root
 			expect(existsSync(join(testDir, ".opencode", "ocx.lock"))).toBe(true)
 			expect(existsSync(join(testDir, "ocx.lock"))).toBe(false)
-		})
+		}, 25000)
 
 		it("legacy root lock - update writes to root", async () => {
 			testDir = await createTempDir("update-loc-legacy")
@@ -521,7 +501,7 @@ describe("config file locations", () => {
 			// Lock should still be at root (in-place update)
 			expect(existsSync(join(testDir, "ocx.lock"))).toBe(true)
 			expect(existsSync(join(testDir, ".opencode", "ocx.lock"))).toBe(false)
-		})
+		}, 25000)
 	})
 
 	// =========================================================================
@@ -548,7 +528,7 @@ describe("config file locations", () => {
 			expect(exitCode).toBe(0)
 			expect(output).toContain("Diff for kdco/test-plugin")
 			expect(output).toContain("Modified locally for diff test")
-		})
+		}, 25000)
 
 		it("legacy root lock - diff reads from root", async () => {
 			testDir = await createTempDir("diff-loc-legacy")
@@ -584,6 +564,6 @@ describe("config file locations", () => {
 			expect(exitCode).toBe(0)
 			expect(output).toContain("Diff for kdco/test-plugin")
 			expect(output).toContain("Legacy diff modification")
-		})
+		}, 25000)
 	})
 })

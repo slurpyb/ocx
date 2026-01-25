@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs"
 import { rm } from "node:fs/promises"
 import { join } from "node:path"
-import { cleanupTempDir, createTempDir, runCLI, runCLIIsolated } from "./helpers"
+import { cleanupTempDir, createTempDir, runCLI } from "./helpers"
 
 // =============================================================================
 // Test Setup Helpers
@@ -118,7 +118,7 @@ describe("ocx self uninstall --dry-run", () => {
 	it("shows root directory removal note (if empty)", async () => {
 		createMockGlobalConfig(testDir)
 
-		const { exitCode, stdout } = await runCLIIsolated(["self", "uninstall", "--dry-run"], testDir)
+		const { exitCode, stdout } = await runCLI(["self", "uninstall", "--dry-run"], testDir)
 
 		expect(exitCode).toBe(0)
 		// Root is shown with "(if empty)" note
@@ -216,7 +216,7 @@ describe("ocx self uninstall (config removal)", () => {
 		const unexpectedInRoot = join(root, "custom-settings.json")
 		writeFileSync(unexpectedInRoot, JSON.stringify({ custom: true }))
 
-		await runCLIIsolated(["self", "uninstall"], testDir)
+		await runCLI(["self", "uninstall"], testDir)
 
 		// Known OCX items should be removed
 		expect(existsSync(profilesDir)).toBe(false)
@@ -245,8 +245,8 @@ describe("ocx self uninstall (missing paths)", () => {
 	it("exits 0 with 'Nothing to remove' when no global config exists", async () => {
 		// Don't create any config structure
 
-		const { exitCode, output } = await runCLIIsolated(["self", "uninstall"], testDir, {
-			XDG_CONFIG_HOME: testDir,
+		const { exitCode, output } = await runCLI(["self", "uninstall"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
 		})
 
 		expect(exitCode).toBe(0)
@@ -260,8 +260,8 @@ describe("ocx self uninstall (missing paths)", () => {
 		writeFileSync(join(profilesDir, "ocx.jsonc"), "{}")
 		// Note: no ocx.jsonc at root level
 
-		const { exitCode, output } = await runCLIIsolated(["self", "uninstall"], testDir, {
-			XDG_CONFIG_HOME: testDir,
+		const { exitCode, output } = await runCLI(["self", "uninstall"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
 		})
 
 		expect(exitCode).toBe(0)
@@ -271,13 +271,13 @@ describe("ocx self uninstall (missing paths)", () => {
 
 	it("handles partially missing files gracefully (only ocx.jsonc)", async () => {
 		const root = join(testDir, "opencode")
-		mkdirSync(root, { recursive: true })
 		const ocxConfig = join(root, "ocx.jsonc")
+		mkdirSync(join(root, "profiles"), { recursive: true })
 		writeFileSync(ocxConfig, JSON.stringify({ registries: {} }))
 		// Note: no profiles/ directory
 
-		const { exitCode, output } = await runCLIIsolated(["self", "uninstall"], testDir, {
-			XDG_CONFIG_HOME: testDir,
+		const { exitCode, output } = await runCLI(["self", "uninstall"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
 		})
 
 		expect(exitCode).toBe(0)
@@ -293,8 +293,8 @@ describe("ocx self uninstall (missing paths)", () => {
 		// Precondition
 		expect(existsSync(root)).toBe(true)
 
-		const { exitCode, output } = await runCLIIsolated(["self", "uninstall"], testDir, {
-			XDG_CONFIG_HOME: testDir,
+		const { exitCode, output } = await runCLI(["self", "uninstall"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
 		})
 
 		expect(exitCode).toBe(0)
@@ -447,9 +447,7 @@ describe("ocx self uninstall (output messages)", () => {
 	})
 
 	it("verifies 'Nothing to remove' message format", async () => {
-		const { exitCode, output } = await runCLIIsolated(["self", "uninstall"], testDir, {
-			XDG_CONFIG_HOME: testDir,
-		})
+		const { exitCode, output } = await runCLI(["self", "uninstall"], testDir)
 
 		expect(exitCode).toBe(0)
 		expect(output).toContain("Nothing to remove")
@@ -459,9 +457,7 @@ describe("ocx self uninstall (output messages)", () => {
 	it("verifies success message format for removed files", async () => {
 		createMockGlobalConfig(testDir)
 
-		const { exitCode, output } = await runCLIIsolated(["self", "uninstall"], testDir, {
-			XDG_CONFIG_HOME: testDir,
-		})
+		const { exitCode, output } = await runCLI(["self", "uninstall"], testDir)
 
 		expect(exitCode).toBe(0)
 		// Check for success indicators
@@ -514,8 +510,11 @@ describe("ocx self uninstall (package-managed)", () => {
 	it("shows package manager removal command in dry-run", async () => {
 		const { profilesDir, ocxConfig } = createMockGlobalConfig(testDir)
 
-		const { exitCode, output } = await runCLIIsolated(["self", "uninstall", "--dry-run"], testDir, {
-			npm_config_user_agent: "pnpm/8.0.0 node/v20.0.0",
+		const { exitCode, output } = await runCLI(["self", "uninstall", "--dry-run"], testDir, {
+			env: {
+				XDG_CONFIG_HOME: testDir,
+				npm_config_user_agent: "pnpm/8.0.0 node/v20.0.0",
+			},
 		})
 
 		expect(exitCode).toBe(0)
@@ -529,8 +528,11 @@ describe("ocx self uninstall (package-managed)", () => {
 	it("prints removal instructions for package-managed installs", async () => {
 		const { profilesDir, ocxConfig } = createMockGlobalConfig(testDir)
 
-		const { exitCode, output } = await runCLIIsolated(["self", "uninstall"], testDir, {
-			npm_config_user_agent: "npm/9.0.0 node/v20.0.0 darwin arm64",
+		const { exitCode, output } = await runCLI(["self", "uninstall"], testDir, {
+			env: {
+				XDG_CONFIG_HOME: testDir,
+				npm_config_user_agent: "npm/9.0.0 node/v20.0.0 darwin arm64",
+			},
 		})
 
 		expect(exitCode).toBe(1)
@@ -548,8 +550,11 @@ describe("ocx self uninstall (package-managed)", () => {
 		expect(existsSync(profilesDir)).toBe(true)
 		expect(existsSync(ocxConfig)).toBe(true)
 
-		await runCLIIsolated(["self", "uninstall"], testDir, {
-			npm_config_user_agent: "npm/9.0.0 node/v20.0.0",
+		await runCLI(["self", "uninstall"], testDir, {
+			env: {
+				XDG_CONFIG_HOME: testDir,
+				npm_config_user_agent: "npm/9.0.0 node/v20.0.0",
+			},
 		})
 
 		// Config files should be removed regardless of install method
@@ -569,8 +574,11 @@ describe("ocx self uninstall (package-managed)", () => {
 			it(`prints correct uninstall command for ${method}`, async () => {
 				createMockGlobalConfig(testDir)
 
-				const { exitCode, output } = await runCLIIsolated(["self", "uninstall"], testDir, {
-					npm_config_user_agent: userAgent,
+				const { exitCode, output } = await runCLI(["self", "uninstall"], testDir, {
+					env: {
+						XDG_CONFIG_HOME: testDir,
+						npm_config_user_agent: userAgent,
+					},
 				})
 
 				expect(exitCode).toBe(1)
@@ -598,8 +606,10 @@ describe("ocx self uninstall (exit codes)", () => {
 	it("exits 0 on successful config removal (curl install)", async () => {
 		createMockGlobalConfig(testDir)
 
-		const { exitCode } = await runCLIIsolated(["self", "uninstall"], testDir)
-		// runCLIIsolated defaults npm_config_user_agent to "" (curl)
+		const { exitCode } = await runCLI(["self", "uninstall"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
+		// runCLI defaults npm_config_user_agent to "" (curl)
 
 		expect(exitCode).toBe(0)
 	})
@@ -607,8 +617,11 @@ describe("ocx self uninstall (exit codes)", () => {
 	it("exits 1 on config removal when package-managed", async () => {
 		createMockGlobalConfig(testDir)
 
-		const { exitCode, output } = await runCLIIsolated(["self", "uninstall"], testDir, {
-			npm_config_user_agent: "npm/9.0.0 node/v20.0.0",
+		const { exitCode, output } = await runCLI(["self", "uninstall"], testDir, {
+			env: {
+				XDG_CONFIG_HOME: testDir,
+				npm_config_user_agent: "npm/9.0.0 node/v20.0.0",
+			},
 		})
 
 		expect(exitCode).toBe(1)
@@ -616,7 +629,9 @@ describe("ocx self uninstall (exit codes)", () => {
 	})
 
 	it("exits 0 when nothing to remove", async () => {
-		const { exitCode } = await runCLIIsolated(["self", "uninstall"], testDir)
+		const { exitCode } = await runCLI(["self", "uninstall"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		expect(exitCode).toBe(0)
 	})
@@ -626,7 +641,9 @@ describe("ocx self uninstall (exit codes)", () => {
 		mkdirSync(realDir, { recursive: true })
 		symlinkSync(realDir, join(testDir, "opencode"))
 
-		const { exitCode } = await runCLIIsolated(["self", "uninstall"], testDir)
+		const { exitCode } = await runCLI(["self", "uninstall"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		expect(exitCode).toBe(2)
 	})
@@ -634,7 +651,9 @@ describe("ocx self uninstall (exit codes)", () => {
 	it("exits 0 in dry-run mode with existing config", async () => {
 		createMockGlobalConfig(testDir)
 
-		const { exitCode } = await runCLIIsolated(["self", "uninstall", "--dry-run"], testDir)
+		const { exitCode } = await runCLI(["self", "uninstall", "--dry-run"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		expect(exitCode).toBe(0)
 	})
@@ -659,16 +678,22 @@ describe("ocx self uninstall (idempotency)", () => {
 		createMockGlobalConfig(testDir)
 
 		// First run - removes config (curl install)
-		const result1 = await runCLIIsolated(["self", "uninstall"], testDir)
+		const result1 = await runCLI(["self", "uninstall"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 		expect(result1.exitCode).toBe(0)
 
 		// Second run - nothing to remove
-		const result2 = await runCLIIsolated(["self", "uninstall"], testDir)
+		const result2 = await runCLI(["self", "uninstall"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 		expect(result2.exitCode).toBe(0)
 		expect(result2.output).toContain("Nothing to remove")
 
 		// Third run - still safe
-		const result3 = await runCLIIsolated(["self", "uninstall"], testDir)
+		const result3 = await runCLI(["self", "uninstall"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 		expect(result3.exitCode).toBe(0)
 	})
 
@@ -676,8 +701,10 @@ describe("ocx self uninstall (idempotency)", () => {
 		createMockGlobalConfig(testDir)
 
 		// Even if host has npm_config_user_agent set, isolated mode ignores it
-		// runCLIIsolated defaults npm_config_user_agent to "" (curl behavior)
-		const { exitCode } = await runCLIIsolated(["self", "uninstall"], testDir)
+		// runCLI defaults npm_config_user_agent to "" (curl behavior)
+		const { exitCode } = await runCLI(["self", "uninstall"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		// Should exit 0 (curl behavior), proving isolation works
 		expect(exitCode).toBe(0)

@@ -101,7 +101,6 @@ describe("Path security", () => {
 describe("ocx profile add --from (global registry requirement)", () => {
 	let testDir: string
 	let registry: MockRegistry
-	const originalXdgConfigHome = process.env.XDG_CONFIG_HOME
 
 	beforeAll(() => {
 		registry = startMockRegistry()
@@ -113,15 +112,9 @@ describe("ocx profile add --from (global registry requirement)", () => {
 
 	beforeEach(async () => {
 		testDir = await createTempDir("profile-registry")
-		process.env.XDG_CONFIG_HOME = testDir
 	})
 
 	afterEach(async () => {
-		if (originalXdgConfigHome === undefined) {
-			delete process.env.XDG_CONFIG_HOME
-		} else {
-			process.env.XDG_CONFIG_HOME = originalXdgConfigHome
-		}
 		if (testDir) {
 			await cleanupTempDir(testDir)
 		}
@@ -146,6 +139,7 @@ describe("ocx profile add --from (global registry requirement)", () => {
 		const { exitCode, output } = await runCLI(
 			["profile", "add", "test-profile", "--from", "kdco/minimal"],
 			workDir,
+			{ env: { XDG_CONFIG_HOME: testDir } },
 		)
 
 		expect(exitCode).not.toBe(0)
@@ -194,7 +188,6 @@ describe("ocx profile add --from (global registry requirement)", () => {
 describe("ocx profile add (conflict detection)", () => {
 	let testDir: string
 	let registry: MockRegistry
-	const originalXdgConfigHome = process.env.XDG_CONFIG_HOME
 
 	beforeAll(() => {
 		registry = startMockRegistry()
@@ -206,15 +199,9 @@ describe("ocx profile add (conflict detection)", () => {
 
 	beforeEach(async () => {
 		testDir = await createTempDir("profile-conflict")
-		process.env.XDG_CONFIG_HOME = testDir
 	})
 
 	afterEach(async () => {
-		if (originalXdgConfigHome === undefined) {
-			delete process.env.XDG_CONFIG_HOME
-		} else {
-			process.env.XDG_CONFIG_HOME = originalXdgConfigHome
-		}
 		if (testDir) {
 			await cleanupTempDir(testDir)
 		}
@@ -238,7 +225,9 @@ describe("ocx profile add (conflict detection)", () => {
 		await mkdir(workDir, { recursive: true })
 
 		// Create a new empty profile (not from registry)
-		const { exitCode } = await runCLI(["profile", "add", "new-profile"], workDir)
+		const { exitCode } = await runCLI(["profile", "add", "new-profile"], workDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		expect(exitCode).toBe(0)
 		expect(existsSync(join(profilesDir, "new-profile"))).toBe(true)
@@ -268,7 +257,9 @@ describe("ocx profile add (conflict detection)", () => {
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
 
-		const { exitCode, output } = await runCLI(["profile", "add", "existing-profile"], workDir)
+		const { exitCode, output } = await runCLI(["profile", "add", "existing-profile"], workDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		expect(exitCode).toBe(6)
 		// Verify error message contains key information for user action
@@ -302,11 +293,15 @@ describe("ocx profile add (conflict detection)", () => {
 		await mkdir(workDir, { recursive: true })
 
 		// First remove the profile
-		const { exitCode: rmExitCode } = await runCLI(["profile", "rm", "existing-profile"], workDir)
+		const { exitCode: rmExitCode } = await runCLI(["profile", "rm", "existing-profile"], workDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 		expect(rmExitCode).toBe(0)
 
 		// Then add the profile fresh
-		const { exitCode } = await runCLI(["profile", "add", "existing-profile"], workDir)
+		const { exitCode } = await runCLI(["profile", "add", "existing-profile"], workDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		expect(exitCode).toBe(0)
 
@@ -323,7 +318,6 @@ describe("ocx profile add (conflict detection)", () => {
 describe("ocx profile add --from (type validation)", () => {
 	let testDir: string
 	let registry: MockRegistry
-	const originalXdgConfigHome = process.env.XDG_CONFIG_HOME
 
 	beforeAll(() => {
 		registry = startMockRegistry()
@@ -335,15 +329,9 @@ describe("ocx profile add --from (type validation)", () => {
 
 	beforeEach(async () => {
 		testDir = await createTempDir("profile-type")
-		process.env.XDG_CONFIG_HOME = testDir
 	})
 
 	afterEach(async () => {
-		if (originalXdgConfigHome === undefined) {
-			delete process.env.XDG_CONFIG_HOME
-		} else {
-			process.env.XDG_CONFIG_HOME = originalXdgConfigHome
-		}
 		if (testDir) {
 			await cleanupTempDir(testDir)
 		}
@@ -370,6 +358,7 @@ describe("ocx profile add --from (type validation)", () => {
 		const { exitCode, output } = await runCLI(
 			["profile", "add", "agent-as-profile", "--from", "kdco/test-agent"],
 			workDir,
+			{ env: { XDG_CONFIG_HOME: testDir } },
 		)
 
 		expect(exitCode).not.toBe(0)
@@ -398,6 +387,7 @@ describe("ocx profile add --from (type validation)", () => {
 		const { exitCode, output } = await runCLI(
 			["profile", "add", "plugin-as-profile", "--from", "kdco/test-plugin"],
 			workDir,
+			{ env: { XDG_CONFIG_HOME: testDir } },
 		)
 
 		expect(exitCode).not.toBe(0)
@@ -412,19 +402,12 @@ describe("ocx profile add --from (type validation)", () => {
 
 describe("ocx profile add --from (local profile cloning)", () => {
 	let testDir: string
-	const originalXdgConfigHome = process.env.XDG_CONFIG_HOME
 
 	beforeEach(async () => {
 		testDir = await createTempDir("profile-clone")
-		process.env.XDG_CONFIG_HOME = testDir
 	})
 
 	afterEach(async () => {
-		if (originalXdgConfigHome === undefined) {
-			delete process.env.XDG_CONFIG_HOME
-		} else {
-			process.env.XDG_CONFIG_HOME = originalXdgConfigHome
-		}
 		if (testDir) {
 			await cleanupTempDir(testDir)
 		}
@@ -459,6 +442,7 @@ describe("ocx profile add --from (local profile cloning)", () => {
 		const { exitCode, output } = await runCLI(
 			["profile", "add", "cloned-profile", "--from", "source-profile"],
 			workDir,
+			{ env: { XDG_CONFIG_HOME: testDir } },
 		)
 
 		expect(exitCode).toBe(0)
@@ -491,6 +475,7 @@ describe("ocx profile add --from (local profile cloning)", () => {
 		const { exitCode, output } = await runCLI(
 			["profile", "add", "new-profile", "--from", "nonexistent-profile"],
 			workDir,
+			{ env: { XDG_CONFIG_HOME: testDir } },
 		)
 
 		expect(exitCode).not.toBe(0)
@@ -505,7 +490,6 @@ describe("ocx profile add --from (local profile cloning)", () => {
 describe("ocx profile add --from (registry installation)", () => {
 	let testDir: string
 	let registry: MockRegistry
-	const originalXdgConfigHome = process.env.XDG_CONFIG_HOME
 
 	beforeAll(() => {
 		registry = startMockRegistry()
@@ -517,15 +501,9 @@ describe("ocx profile add --from (registry installation)", () => {
 
 	beforeEach(async () => {
 		testDir = await createTempDir("profile-registry-install")
-		process.env.XDG_CONFIG_HOME = testDir
 	})
 
 	afterEach(async () => {
-		if (originalXdgConfigHome === undefined) {
-			delete process.env.XDG_CONFIG_HOME
-		} else {
-			process.env.XDG_CONFIG_HOME = originalXdgConfigHome
-		}
 		if (testDir) {
 			await cleanupTempDir(testDir)
 		}
@@ -552,6 +530,7 @@ describe("ocx profile add --from (registry installation)", () => {
 		const { exitCode, output } = await runCLI(
 			["profile", "add", "work", "--from", "kdco/test-profile"],
 			workDir,
+			{ env: { XDG_CONFIG_HOME: testDir } },
 		)
 
 		if (exitCode !== 0) {
@@ -595,6 +574,7 @@ describe("ocx profile add --from (registry installation)", () => {
 		const { exitCode, output } = await runCLI(
 			["profile", "add", "test-with-deps", "--from", "kdco/test-profile-with-deps"],
 			workDir,
+			{ env: { XDG_CONFIG_HOME: testDir } },
 		)
 
 		if (exitCode !== 0) {
@@ -636,19 +616,12 @@ describe("ocx profile add --from (registry installation)", () => {
 
 describe("ocx profile add (global config edge cases)", () => {
 	let testDir: string
-	const originalXdgConfigHome = process.env.XDG_CONFIG_HOME
 
 	beforeEach(async () => {
 		testDir = await createTempDir("profile-global-config")
-		process.env.XDG_CONFIG_HOME = testDir
 	})
 
 	afterEach(async () => {
-		if (originalXdgConfigHome === undefined) {
-			delete process.env.XDG_CONFIG_HOME
-		} else {
-			process.env.XDG_CONFIG_HOME = originalXdgConfigHome
-		}
 		if (testDir) {
 			await cleanupTempDir(testDir)
 		}
@@ -660,7 +633,9 @@ describe("ocx profile add (global config edge cases)", () => {
 		await mkdir(workDir, { recursive: true })
 
 		// Try to add a profile - should fail gracefully with clear error
-		const { exitCode, output } = await runCLI(["profile", "add", "new-profile"], workDir)
+		const { exitCode, output } = await runCLI(["profile", "add", "new-profile"], workDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		// Should fail but with a clear, actionable error message
 		expect(exitCode).not.toBe(0)

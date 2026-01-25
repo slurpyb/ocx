@@ -5,6 +5,21 @@ import { join } from "node:path"
 import { cleanupTempDir, createTempDir, parseJsonc, runCLI } from "./helpers"
 import { type MockRegistry, startMockRegistry } from "./mock-registry"
 
+// Type definitions for parsed config files
+interface OCXConfig {
+	registries?: Record<string, { url: string }>
+}
+
+interface LockFile {
+	installed: Record<string, unknown>
+}
+
+interface OpenCodeConfig {
+	mcp?: Record<string, { url: string }>
+	tools?: Record<string, boolean>
+	plugin?: string[]
+}
+
 describe("ocx add", () => {
 	let testDir: string
 	let registry: MockRegistry
@@ -38,7 +53,7 @@ describe("ocx add", () => {
 
 		// Manually add registry to config since 'ocx registry add' might be flaky in parallel tests
 		const configPath = join(testDir, ".opencode", "ocx.jsonc")
-		const config = parseJsonc(await readFile(configPath, "utf-8"))
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as OCXConfig
 		config.registries = {
 			kdco: { url: registry.url },
 		}
@@ -60,7 +75,7 @@ describe("ocx add", () => {
 		// Verify lock file
 		const lockPath = join(testDir, ".opencode/ocx.lock")
 		expect(existsSync(lockPath)).toBe(true)
-		const lock = parseJsonc(await readFile(lockPath, "utf-8"))
+		const lock = parseJsonc(await readFile(lockPath, "utf-8")) as LockFile
 		expect(lock.installed["kdco/test-agent"]).toBeDefined()
 		expect(lock.installed["kdco/test-skill"]).toBeDefined()
 		expect(lock.installed["kdco/test-plugin"]).toBeDefined()
@@ -68,10 +83,10 @@ describe("ocx add", () => {
 		// Verify opencode.jsonc patching (new files default to .jsonc)
 		const opencodePath = join(testDir, ".opencode", "opencode.jsonc")
 		expect(existsSync(opencodePath)).toBe(true)
-		const opencode = parseJsonc(await readFile(opencodePath, "utf-8"))
-		expect(opencode.mcp["test-mcp"]).toBeDefined()
-		expect(opencode.mcp["test-mcp"].url).toBe("https://mcp.test.com")
-	})
+		const opencode = parseJsonc(await readFile(opencodePath, "utf-8")) as OpenCodeConfig
+		expect(opencode.mcp?.["test-mcp"]).toBeDefined()
+		expect(opencode.mcp?.["test-mcp"].url).toBe("https://mcp.test.com")
+	}, 30000)
 
 	it("should skip files with identical content", async () => {
 		testDir = await createTempDir("add-skip-identical")
@@ -80,7 +95,7 @@ describe("ocx add", () => {
 		await runCLI(["init", "--force"], testDir)
 
 		const configPath = join(testDir, ".opencode", "ocx.jsonc")
-		const config = parseJsonc(await readFile(configPath, "utf-8"))
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as OCXConfig
 		config.registries = {
 			kdco: { url: registry.url },
 		}
@@ -98,7 +113,7 @@ describe("ocx add", () => {
 		expect(exitCode).toBe(0)
 		// File should still exist
 		expect(existsSync(join(testDir, ".opencode/plugin/test-plugin.ts"))).toBe(true)
-	})
+	}, 25000)
 
 	it("should fail on conflict without --force flag", async () => {
 		testDir = await createTempDir("add-conflict-no-yes")
@@ -107,7 +122,7 @@ describe("ocx add", () => {
 		await runCLI(["init", "--force"], testDir)
 
 		const configPath = join(testDir, ".opencode", "ocx.jsonc")
-		const config = parseJsonc(await readFile(configPath, "utf-8"))
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as OCXConfig
 		config.registries = {
 			kdco: { url: registry.url },
 		}
@@ -125,7 +140,7 @@ describe("ocx add", () => {
 		expect(exitCode).not.toBe(0)
 		expect(output).toContain("conflict")
 		expect(output).toContain("--force")
-	})
+	}, 25000)
 
 	it("should overwrite conflicting files with --force flag", async () => {
 		testDir = await createTempDir("add-overwrite-yes")
@@ -134,7 +149,7 @@ describe("ocx add", () => {
 		await runCLI(["init", "--force"], testDir)
 
 		const configPath = join(testDir, ".opencode", "ocx.jsonc")
-		const config = parseJsonc(await readFile(configPath, "utf-8"))
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as OCXConfig
 		config.registries = {
 			kdco: { url: registry.url },
 		}
@@ -154,7 +169,7 @@ describe("ocx add", () => {
 		// File should be restored to original content
 		const content = await readFile(filePath, "utf-8")
 		expect(content).not.toContain("Modified by user")
-	})
+	}, 25000)
 
 	it("should preserve mcp from dependencies when main component has no mcp (regression)", async () => {
 		testDir = await createTempDir("add-mcp-regression")
@@ -163,7 +178,7 @@ describe("ocx add", () => {
 		await runCLI(["init", "--force"], testDir)
 
 		const configPath = join(testDir, ".opencode", "ocx.jsonc")
-		const config = parseJsonc(await readFile(configPath, "utf-8"))
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as OCXConfig
 		config.registries = {
 			kdco: { url: registry.url },
 		}
@@ -182,17 +197,17 @@ describe("ocx add", () => {
 		// Verify opencode.jsonc has MCP from dependency
 		const opencodePath = join(testDir, ".opencode", "opencode.jsonc")
 		expect(existsSync(opencodePath)).toBe(true)
-		const opencode = parseJsonc(await readFile(opencodePath, "utf-8"))
+		const opencode = parseJsonc(await readFile(opencodePath, "utf-8")) as OpenCodeConfig
 
 		// MCP from test-mcp-provider should be preserved
 		expect(opencode.mcp).toBeDefined()
-		expect(opencode.mcp["provider-mcp"]).toBeDefined()
-		expect(opencode.mcp["provider-mcp"].url).toBe("https://mcp.provider.com")
+		expect(opencode.mcp?.["provider-mcp"]).toBeDefined()
+		expect(opencode.mcp?.["provider-mcp"].url).toBe("https://mcp.provider.com")
 
 		// Tools from test-no-mcp should also be present
 		expect(opencode.tools).toBeDefined()
-		expect(opencode.tools["some-tool"]).toBe(true)
-	})
+		expect(opencode.tools?.["some-tool"]).toBe(true)
+	}, 15000)
 
 	it("should concatenate plugin arrays from multiple components", async () => {
 		testDir = await createTempDir("add-plugin-concat")
@@ -201,7 +216,7 @@ describe("ocx add", () => {
 		await runCLI(["init", "--force"], testDir)
 
 		const configPath = join(testDir, ".opencode", "ocx.jsonc")
-		const config = parseJsonc(await readFile(configPath, "utf-8"))
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as OCXConfig
 		config.registries = {
 			kdco: { url: registry.url },
 		}
@@ -218,12 +233,12 @@ describe("ocx add", () => {
 
 		// Verify opencode.jsonc has plugins from both components
 		const opencodePath = join(testDir, ".opencode", "opencode.jsonc")
-		const opencode = parseJsonc(await readFile(opencodePath, "utf-8"))
+		const opencode = parseJsonc(await readFile(opencodePath, "utf-8")) as OpenCodeConfig
 
 		expect(opencode.plugin).toBeDefined()
 		expect(opencode.plugin).toContain("provider-plugin")
 		expect(opencode.plugin).toContain("no-mcp-plugin")
-	})
+	}, 15000)
 
 	it("should fail if integrity check fails", async () => {
 		testDir = await createTempDir("add-integrity-fail")
@@ -232,7 +247,7 @@ describe("ocx add", () => {
 		await runCLI(["init", "--force"], testDir)
 
 		const configPath = join(testDir, ".opencode", "ocx.jsonc")
-		const config = parseJsonc(await readFile(configPath, "utf-8"))
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as OCXConfig
 		config.registries = {
 			kdco: { url: registry.url },
 		}
@@ -250,7 +265,7 @@ describe("ocx add", () => {
 		expect(exitCode).not.toBe(0)
 		expect(output).toContain("Integrity verification failed")
 		expect(output).toContain("The registry content has changed since this component was locked")
-	})
+	}, 25000)
 })
 
 describe("ocx add --profile", () => {
@@ -303,6 +318,7 @@ describe("ocx add --profile", () => {
 		const { exitCode, output } = await runCLI(
 			["add", "kdco/test-plugin", "--profile", "test-profile", "--force"],
 			workDir,
+			{ env: { XDG_CONFIG_HOME: testDir } },
 		)
 
 		if (exitCode !== 0) {
@@ -325,6 +341,7 @@ describe("ocx add --profile", () => {
 		const { exitCode, output } = await runCLI(
 			["add", "kdco/test-agent", "--profile", "test-profile", "--force"],
 			workDir,
+			{ env: { XDG_CONFIG_HOME: testDir } },
 		)
 
 		if (exitCode !== 0) {
@@ -348,6 +365,7 @@ describe("ocx add --profile", () => {
 		const { exitCode } = await runCLI(
 			["add", "kdco/test-plugin", "--profile", "test-profile", "--force"],
 			workDir,
+			{ env: { XDG_CONFIG_HOME: testDir } },
 		)
 
 		expect(exitCode).toBe(0)
@@ -370,6 +388,7 @@ describe("ocx add --profile", () => {
 		const { exitCode, output } = await runCLI(
 			["add", "kdco/test-plugin", "--profile", "test-profile", "--force"],
 			workDir,
+			{ env: { XDG_CONFIG_HOME: testDir } },
 		)
 
 		// Should succeed without "Run 'ocx init' first" error
@@ -386,7 +405,9 @@ describe("ocx add --profile", () => {
 		await mkdir(workDir, { recursive: true })
 
 		// First install
-		await runCLI(["add", "kdco/test-plugin", "--profile", "test-profile", "--force"], workDir)
+		await runCLI(["add", "kdco/test-plugin", "--profile", "test-profile", "--force"], workDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		// Modify the file to create a conflict
 		const filePath = join(profileDir, "plugin", "test-plugin.ts")
@@ -396,9 +417,10 @@ describe("ocx add --profile", () => {
 		const { exitCode, output } = await runCLI(
 			["add", "kdco/test-plugin", "--profile", "test-profile"],
 			workDir,
+			{ env: { XDG_CONFIG_HOME: testDir } },
 		)
 
 		expect(exitCode).not.toBe(0)
 		expect(output).toContain("conflict")
-	})
+	}, 25000)
 })

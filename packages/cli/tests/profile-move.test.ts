@@ -16,18 +16,10 @@ const FOO_CONTENT = '{ "componentPath": "SENTINEL_FOO" }'
 const BAR_CONTENT = '{ "componentPath": "SENTINEL_BAR" }'
 const DEFAULT_CONTENT = '{ "componentPath": "SENTINEL_DEFAULT" }'
 
-// Snapshot only the keys we touch
-const ENV_KEYS = ["XDG_CONFIG_HOME", "OCX_PROFILE"] as const
-let envSnapshot: Map<string, string | undefined>
 let testDir: string
 
 beforeEach(async () => {
-	// Snapshot env state
-	envSnapshot = new Map(ENV_KEYS.map((k) => [k, process.env[k]]))
-
 	testDir = await createTempDir("profile-move")
-	process.env.XDG_CONFIG_HOME = testDir
-	delete process.env.OCX_PROFILE
 
 	// Create fixture structure
 	const configDir = join(testDir, "opencode")
@@ -43,14 +35,6 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
-	// Restore env: delete if was unset, otherwise restore value
-	for (const [key, value] of envSnapshot) {
-		if (value === undefined) {
-			delete process.env[key]
-		} else {
-			process.env[key] = value
-		}
-	}
 	await cleanupTempDir(testDir)
 })
 
@@ -68,7 +52,9 @@ describe("ocx profile move", () => {
 		expect(existsSync(oldDir)).toBe(true)
 		expect(existsSync(newDir)).toBe(false)
 
-		const { exitCode, output } = await runCLI(["profile", "move", "foo", "bar"], testDir)
+		const { exitCode, output } = await runCLI(["profile", "move", "foo", "bar"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		// Exact exit code assertion
 		expect(exitCode).toBe(0)
@@ -91,7 +77,9 @@ describe("ocx profile move", () => {
 	})
 
 	it("should fail with invalid old name containing path traversal", async () => {
-		const { exitCode, output } = await runCLI(["profile", "move", "../evil", "bar"], testDir)
+		const { exitCode, output } = await runCLI(["profile", "move", "../evil", "bar"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		// Invalid name = validation error = exit 1
 		expect(exitCode).toBe(1)
@@ -99,7 +87,9 @@ describe("ocx profile move", () => {
 	})
 
 	it("should fail with invalid new name containing path separator", async () => {
-		const { exitCode, output } = await runCLI(["profile", "move", "foo", "bad/path"], testDir)
+		const { exitCode, output } = await runCLI(["profile", "move", "foo", "bad/path"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		// Invalid name = validation error = exit 1
 		expect(exitCode).toBe(1)
@@ -107,7 +97,9 @@ describe("ocx profile move", () => {
 	})
 
 	it("should fail when source profile not found", async () => {
-		const { exitCode, output } = await runCLI(["profile", "move", "nonexistent", "bar"], testDir)
+		const { exitCode, output } = await runCLI(["profile", "move", "nonexistent", "bar"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		// Not found = exit 66
 		expect(exitCode).toBe(66)
@@ -122,7 +114,9 @@ describe("ocx profile move", () => {
 		await mkdir(barDir, { recursive: true })
 		await Bun.write(join(barDir, "ocx.jsonc"), BAR_CONTENT)
 
-		const { exitCode, output } = await runCLI(["profile", "move", "foo", "bar"], testDir)
+		const { exitCode, output } = await runCLI(["profile", "move", "foo", "bar"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		// Conflict = exit 6
 		expect(exitCode).toBe(6)
@@ -145,7 +139,9 @@ describe("ocx profile move", () => {
 		// Precondition: source exists
 		expect(existsSync(oldDir)).toBe(true)
 
-		const { exitCode, output } = await runCLI(["p", "mv", "foo", "renamed"], testDir)
+		const { exitCode, output } = await runCLI(["p", "mv", "foo", "renamed"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		expect(exitCode).toBe(0)
 		expect(output).toContain("Moved")
@@ -162,7 +158,9 @@ describe("ocx profile move", () => {
 		// Precondition: profile exists
 		expect(existsSync(profileDir)).toBe(true)
 
-		const { exitCode, output } = await runCLI(["profile", "move", "foo", "foo"], testDir)
+		const { exitCode, output } = await runCLI(["profile", "move", "foo", "foo"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		// Exact exit code: success
 		expect(exitCode).toBe(0)
@@ -181,6 +179,7 @@ describe("ocx profile move", () => {
 		const { exitCode, output } = await runCLI(
 			["profile", "move", "nonexistent", "nonexistent"],
 			testDir,
+			{ env: { XDG_CONFIG_HOME: testDir } },
 		)
 
 		// Not found = exit 66 (source checked before self-move optimization)
@@ -196,7 +195,9 @@ describe("ocx profile move", () => {
 		// Precondition: default exists
 		expect(existsSync(oldDir)).toBe(true)
 
-		const { exitCode, output } = await runCLI(["profile", "move", "default", "primary"], testDir)
+		const { exitCode, output } = await runCLI(["profile", "move", "default", "primary"], testDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+		})
 
 		// Exact exit code
 		expect(exitCode).toBe(0)
@@ -218,7 +219,7 @@ describe("ocx profile move", () => {
 		const newDir = join(configDir, "profiles", "bar")
 
 		const { exitCode, output } = await runCLI(["profile", "move", "foo", "bar"], testDir, {
-			env: { OCX_PROFILE: "foo" },
+			env: { XDG_CONFIG_HOME: testDir, OCX_PROFILE: "foo" },
 		})
 
 		expect(exitCode).toBe(0)
@@ -238,31 +239,41 @@ describe("ocx profile move", () => {
 	describe("boundary conditions", () => {
 		// Path traversal - old name
 		it("should reject path traversal in old name (../)", async () => {
-			const { exitCode, output } = await runCLI(["profile", "move", "../evil", "bar"], testDir)
+			const { exitCode, output } = await runCLI(["profile", "move", "../evil", "bar"], testDir, {
+				env: { XDG_CONFIG_HOME: testDir },
+			})
 			expect(exitCode).toBe(1)
 			expect(output).toContain('Invalid profile name "../evil"')
 		})
 
 		it("should reject dotdot as old name", async () => {
-			const { exitCode, output } = await runCLI(["profile", "move", "..", "bar"], testDir)
+			const { exitCode, output } = await runCLI(["profile", "move", "..", "bar"], testDir, {
+				env: { XDG_CONFIG_HOME: testDir },
+			})
 			expect(exitCode).toBe(1)
 			expect(output).toContain('Invalid profile name ".."')
 		})
 
 		it("should reject dot as old name", async () => {
-			const { exitCode, output } = await runCLI(["profile", "move", ".", "bar"], testDir)
+			const { exitCode, output } = await runCLI(["profile", "move", ".", "bar"], testDir, {
+				env: { XDG_CONFIG_HOME: testDir },
+			})
 			expect(exitCode).toBe(1)
 			expect(output).toContain('Invalid profile name "."')
 		})
 
 		it("should reject forward slash in name", async () => {
-			const { exitCode, output } = await runCLI(["profile", "move", "a/b", "bar"], testDir)
+			const { exitCode, output } = await runCLI(["profile", "move", "a/b", "bar"], testDir, {
+				env: { XDG_CONFIG_HOME: testDir },
+			})
 			expect(exitCode).toBe(1)
 			expect(output).toContain('Invalid profile name "a/b"')
 		})
 
 		it("should reject backslash in name", async () => {
-			const { exitCode, output } = await runCLI(["profile", "move", "a\\b", "bar"], testDir)
+			const { exitCode, output } = await runCLI(["profile", "move", "a\\b", "bar"], testDir, {
+				env: { XDG_CONFIG_HOME: testDir },
+			})
 			expect(exitCode).toBe(1)
 			expect(output).toContain("Invalid profile name")
 		})
@@ -275,7 +286,9 @@ describe("ocx profile move", () => {
 			await mkdir(profileDir, { recursive: true })
 			await Bun.write(join(profileDir, "ocx.jsonc"), "{}")
 
-			const { exitCode } = await runCLI(["profile", "move", "x", "y"], testDir)
+			const { exitCode } = await runCLI(["profile", "move", "x", "y"], testDir, {
+				env: { XDG_CONFIG_HOME: testDir },
+			})
 			expect(exitCode).toBe(0)
 		})
 
@@ -286,13 +299,17 @@ describe("ocx profile move", () => {
 			await mkdir(profileDir, { recursive: true })
 			await Bun.write(join(profileDir, "ocx.jsonc"), "{}")
 
-			const { exitCode } = await runCLI(["profile", "move", "src", longName], testDir)
+			const { exitCode } = await runCLI(["profile", "move", "src", longName], testDir, {
+				env: { XDG_CONFIG_HOME: testDir },
+			})
 			expect(exitCode).toBe(0)
 		})
 
 		it("should reject name over 32 chars", async () => {
 			const tooLong = "a".repeat(33)
-			const { exitCode, output } = await runCLI(["profile", "move", "foo", tooLong], testDir)
+			const { exitCode, output } = await runCLI(["profile", "move", "foo", tooLong], testDir, {
+				env: { XDG_CONFIG_HOME: testDir },
+			})
 			expect(exitCode).toBe(1)
 			expect(output).toContain("Invalid profile name")
 		})
@@ -304,18 +321,24 @@ describe("ocx profile move", () => {
 			await mkdir(profileDir, { recursive: true })
 			await Bun.write(join(profileDir, "ocx.jsonc"), "{}")
 
-			const { exitCode } = await runCLI(["profile", "move", "src", "a.b_c-d"], testDir)
+			const { exitCode } = await runCLI(["profile", "move", "src", "a.b_c-d"], testDir, {
+				env: { XDG_CONFIG_HOME: testDir },
+			})
 			expect(exitCode).toBe(0)
 		})
 
 		it("should reject name starting with number", async () => {
-			const { exitCode, output } = await runCLI(["profile", "move", "foo", "1abc"], testDir)
+			const { exitCode, output } = await runCLI(["profile", "move", "foo", "1abc"], testDir, {
+				env: { XDG_CONFIG_HOME: testDir },
+			})
 			expect(exitCode).toBe(1)
 			expect(output).toContain("Invalid profile name")
 		})
 
 		it("should reject name with space", async () => {
-			const { exitCode, output } = await runCLI(["profile", "move", "foo", "a b"], testDir)
+			const { exitCode, output } = await runCLI(["profile", "move", "foo", "a b"], testDir, {
+				env: { XDG_CONFIG_HOME: testDir },
+			})
 			expect(exitCode).toBe(1)
 			expect(output).toContain("Invalid profile name")
 		})

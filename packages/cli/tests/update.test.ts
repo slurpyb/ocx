@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { existsSync } from "node:fs"
 import { readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import { cleanupTempDir, createTempDir, parseJsonc, runCLI } from "./helpers"
+import { cleanupTempDir, createTempDir, extractJsonFromOutput, parseJsonc, runCLI } from "./helpers"
 import { type MockRegistry, startMockRegistry } from "./mock-registry"
 
 describe("ocx update", () => {
@@ -210,7 +210,7 @@ describe("ocx update", () => {
 
 		expect(exitCode).toBe(0)
 
-		const json = JSON.parse(output)
+		const json = JSON.parse(extractJsonFromOutput(output))
 		expect(json.dryRun).toBe(true)
 		expect(json.wouldUpdate).toBeDefined()
 		expect(json.wouldUpdate.length).toBeGreaterThan(0)
@@ -466,7 +466,7 @@ describe("ocx update", () => {
 
 		expect(exitCode).toBe(0)
 
-		const json = JSON.parse(output)
+		const json = JSON.parse(extractJsonFromOutput(output))
 		expect(json.success).toBe(true)
 		expect(json.updated).toBeDefined()
 		expect(json.upToDate).toBeDefined()

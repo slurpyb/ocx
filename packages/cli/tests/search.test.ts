@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
-import { cleanupTempDir, createTempDir, runCLI } from "./helpers"
+import { cleanupTempDir, createTempDir, extractJsonFromOutput, runCLI } from "./helpers"
 import { type MockRegistry, startMockRegistry } from "./mock-registry"
 
 describe("ocx search", () => {
@@ -56,7 +56,7 @@ describe("ocx search", () => {
 		const { exitCode, output } = await runCLI(["search", "test", "--json"], testDir)
 
 		expect(exitCode).toBe(0)
-		const json = JSON.parse(output)
+		const json = JSON.parse(extractJsonFromOutput(output))
 		expect(json.success).toBe(true)
 		expect(json.data.components).toBeDefined()
 		expect(json.data.components.length).toBeGreaterThan(0)
