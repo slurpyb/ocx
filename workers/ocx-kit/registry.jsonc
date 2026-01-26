@@ -27,6 +27,225 @@
 				{ "path": "profiles/ws/README.md", "target": "README.md" }
 			],
 			"dependencies": ["kdco/workspace"]
+		},
+		{
+			"name": "cliproxy",
+			"type": "ocx:bundle",
+			"description": "CLIProxyAPI provider configuration for Anthropic, Google, and OpenAI",
+			"files": [
+				{ "path": "bundles/cliproxy/README.md", "target": ".opencode/tool/cliproxy/README.md" }
+			],
+			"dependencies": [],
+			"opencode": {
+				"provider": {
+					"cliproxy-anthropic": {
+						"name": "CLIProxy Anthropic",
+						"npm": "@ai-sdk/anthropic",
+						"options": {
+							"apiKey": "${CLIPROXY_API_KEY}",
+							"baseURL": "http://127.0.0.1:18317/v1"
+						},
+						"models": {
+							"claude-opus-4-5-20251101": {
+								"name": "Claude 4.5 Opus",
+								"limit": { "context": 200000, "output": 64000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "thinking": { "budgetTokens": 10000, "type": "enabled" } },
+								"reasoning": true
+							},
+							"claude-sonnet-4-5-20250929": {
+								"name": "Claude 4.5 Sonnet",
+								"limit": { "context": 200000, "output": 64000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "thinking": { "budgetTokens": 10000, "type": "enabled" } },
+								"reasoning": true
+							},
+							"claude-haiku-4-5-20251001": {
+								"name": "Claude 4.5 Haiku",
+								"limit": { "context": 200000, "output": 64000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
+							},
+							"claude-opus-4-1-20250805": {
+								"name": "Claude 4.1 Opus",
+								"limit": { "context": 200000, "output": 32000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "thinking": { "budgetTokens": 10000, "type": "enabled" } },
+								"reasoning": true
+							},
+							"claude-opus-4-20250514": {
+								"name": "Claude 4 Opus",
+								"limit": { "context": 200000, "output": 32000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "thinking": { "budgetTokens": 10000, "type": "enabled" } },
+								"reasoning": true
+							},
+							"claude-sonnet-4-20250514": {
+								"name": "Claude 4 Sonnet",
+								"limit": { "context": 200000, "output": 64000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "thinking": { "budgetTokens": 10000, "type": "enabled" } },
+								"reasoning": true
+							},
+							"claude-3-7-sonnet-20250219": {
+								"name": "Claude 3.7 Sonnet",
+								"limit": { "context": 128000, "output": 8192 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "thinking": { "budgetTokens": 10000, "type": "enabled" } },
+								"reasoning": true
+							},
+							"claude-3-5-haiku-20241022": {
+								"name": "Claude 3.5 Haiku",
+								"limit": { "context": 128000, "output": 8192 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
+							},
+							"gemini-claude-opus-4-5-thinking": {
+								"name": "Claude Opus 4.5 Thinking (Antigravity)",
+								"limit": { "context": 200000, "output": 64000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "thinking": { "budgetTokens": 10000, "type": "enabled" } },
+								"reasoning": true
+							},
+							"gemini-claude-sonnet-4-5": {
+								"name": "Claude Sonnet 4.5 (Antigravity)",
+								"limit": { "context": 200000, "output": 64000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] }
+							},
+							"gemini-claude-sonnet-4-5-thinking": {
+								"name": "Claude Sonnet 4.5 Thinking (Antigravity)",
+								"limit": { "context": 200000, "output": 64000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "thinking": { "budgetTokens": 10000, "type": "enabled" } },
+								"reasoning": true
+							}
+						}
+					},
+					"cliproxy-google": {
+						"name": "CLIProxy Google",
+						"npm": "@ai-sdk/google",
+						"options": {
+							"apiKey": "${CLIPROXY_API_KEY}",
+							"baseURL": "http://127.0.0.1:18317/v1beta"
+						},
+						"models": {
+							"gemini-2.5-pro": {
+								"name": "Gemini 2.5 Pro",
+								"limit": { "context": 1048576, "output": 65536 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "thinking": { "budgetTokens": 16000, "type": "enabled" } },
+								"reasoning": true
+							},
+							"gemini-2.5-flash": {
+								"name": "Gemini 2.5 Flash",
+								"limit": { "context": 1048576, "output": 65536 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "thinking": { "budgetTokens": 8000, "type": "enabled" } },
+								"reasoning": true
+							},
+							"gemini-2.5-flash-lite": {
+								"name": "Gemini 2.5 Flash Lite",
+								"limit": { "context": 1048576, "output": 65536 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "thinking": { "budgetTokens": 8000, "type": "enabled" } },
+								"reasoning": true
+							},
+							"gemini-3-pro-preview": {
+								"name": "Gemini 3 Pro Preview",
+								"limit": { "context": 1048576, "output": 65536 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "thinking": { "budgetTokens": 16000, "type": "enabled" } },
+								"reasoning": true
+							},
+							"gemini-3-flash-preview": {
+								"name": "Gemini 3 Flash Preview",
+								"limit": { "context": 1048576, "output": 65536 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "thinking": { "budgetTokens": 16000, "type": "enabled" } },
+								"reasoning": true
+							},
+							"gemini-3-pro-image-preview": {
+								"name": "Gemini 3 Pro Image Preview",
+								"limit": { "context": 1048576, "output": 65536 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text", "image"] },
+								"options": { "thinking": { "budgetTokens": 16000, "type": "enabled" } },
+								"reasoning": true
+							}
+						}
+					},
+					"cliproxy-openai": {
+						"name": "CLIProxy OpenAI",
+						"npm": "@ai-sdk/openai-compatible",
+						"options": {
+							"apiKey": "${CLIPROXY_API_KEY}",
+							"baseURL": "http://127.0.0.1:18317/v1"
+						},
+						"models": {
+							"gpt-5": {
+								"name": "GPT 5",
+								"limit": { "context": 400000, "output": 128000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "reasoning": { "effort": "medium" } },
+								"reasoning": true
+							},
+							"gpt-5-codex": {
+								"name": "GPT 5 Codex",
+								"limit": { "context": 400000, "output": 128000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "reasoning": { "effort": "medium" } },
+								"reasoning": true
+							},
+							"gpt-5-codex-mini": {
+								"name": "GPT 5 Codex Mini",
+								"limit": { "context": 400000, "output": 128000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "reasoning": { "effort": "low" } },
+								"reasoning": true
+							},
+							"gpt-5.1": {
+								"name": "GPT 5.1",
+								"limit": { "context": 400000, "output": 128000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "reasoning": { "effort": "medium" } },
+								"reasoning": true
+							},
+							"gpt-5.1-codex": {
+								"name": "GPT 5.1 Codex",
+								"limit": { "context": 400000, "output": 128000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "reasoning": { "effort": "medium" } },
+								"reasoning": true
+							},
+							"gpt-5.1-codex-mini": {
+								"name": "GPT 5.1 Codex Mini",
+								"limit": { "context": 400000, "output": 128000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "reasoning": { "effort": "low" } },
+								"reasoning": true
+							},
+							"gpt-5.1-codex-max": {
+								"name": "GPT 5.1 Codex Max",
+								"limit": { "context": 400000, "output": 128000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "reasoning": { "effort": "high" } },
+								"reasoning": true
+							},
+							"gpt-5.2": {
+								"name": "GPT 5.2",
+								"limit": { "context": 400000, "output": 128000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "reasoning": { "effort": "medium" } },
+								"reasoning": true
+							},
+							"gpt-5.2-codex": {
+								"name": "GPT 5.2 Codex",
+								"limit": { "context": 400000, "output": 128000 },
+								"modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
+								"options": { "reasoning": { "effort": "medium" } },
+								"reasoning": true
+							}
+						}
+					}
+				}
+			}
 		}
 	]
 }
