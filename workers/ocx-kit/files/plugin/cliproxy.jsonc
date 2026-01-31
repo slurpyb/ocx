@@ -1,0 +1,15 @@
+{
+	// CLIProxy server URL
+	"url": "http://localhost:8317",
+
+	// API key - optional for unsecured local proxies
+	// Supports:
+	//   Raw string:   "your-api-key-here"
+	//   Env variable: "{env:CLIPROXY_API_KEY}"
+	//   File path:    "{file:~/.secrets/cliproxy-key}"
+	//   Empty/omit:   "" or remove this line entirely
+	"apiKey": "",
+
+	// Optional: prefix for provider names (default: "cliproxy")
+	"prefix": "cliproxy"
+}

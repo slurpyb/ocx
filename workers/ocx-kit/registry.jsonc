@@ -27,6 +27,16 @@
 				{ "path": "profiles/ws/README.md", "target": "README.md" }
 			],
 			"dependencies": ["kdco/workspace"]
+		},
+		{
+			"name": "cliproxy",
+			"type": "ocx:plugin",
+			"description": "CLIProxyAPI plugin with dynamic model discovery and /connect auth",
+			"files": [
+				"plugin/cliproxy.ts",
+				{ "path": "plugin/cliproxy.jsonc", "target": ".opencode/plugin/cliproxy.jsonc" }
+			],
+			"dependencies": []
 		}
 	]
 }
