@@ -17,34 +17,34 @@
 		// ============================================================================
 		{
 			"name": "kdco-primitives",
-			"type": "ocx:plugin",
+			"type": "plugin",
 			"description": "Shared utility primitives for KDCO plugins",
 			"files": [
-				"plugin/kdco-primitives/get-project-id.ts",
-				"plugin/kdco-primitives/with-timeout.ts",
-				"plugin/kdco-primitives/log-warn.ts",
-				"plugin/kdco-primitives/types.ts",
-				"plugin/kdco-primitives/mutex.ts",
-				"plugin/kdco-primitives/shell.ts",
-				"plugin/kdco-primitives/temp.ts",
-				"plugin/kdco-primitives/terminal-detect.ts",
-				"plugin/kdco-primitives/index.ts"
+				"plugins/kdco-primitives/get-project-id.ts",
+				"plugins/kdco-primitives/with-timeout.ts",
+				"plugins/kdco-primitives/log-warn.ts",
+				"plugins/kdco-primitives/types.ts",
+				"plugins/kdco-primitives/mutex.ts",
+				"plugins/kdco-primitives/shell.ts",
+				"plugins/kdco-primitives/temp.ts",
+				"plugins/kdco-primitives/terminal-detect.ts",
+				"plugins/kdco-primitives/index.ts"
 			],
 			"dependencies": []
 		},
 		{
 			"name": "workspace-plugin",
-			"type": "ocx:plugin",
+			"type": "plugin",
 			"description": "Plan management and rule injection for workspace workflows",
-			"files": ["plugin/workspace-plugin.ts"],
+			"files": ["plugins/workspace-plugin.ts"],
 			"dependencies": ["background-agents", "kdco-primitives"],
 			"npmDevDependencies": ["zod@4.3.5"]
 		},
 		{
 			"name": "background-agents",
-			"type": "ocx:plugin",
+			"type": "plugin",
 			"description": "Background agent execution - run async tasks while you work",
-			"files": ["plugin/background-agents.ts"],
+			"files": ["plugins/background-agents.ts"],
 			"dependencies": ["kdco-primitives"],
 			"npmDevDependencies": ["unique-names-generator@4.7.1"],
 			"opencode": {
@@ -56,17 +56,17 @@
 		},
 		{
 			"name": "notify",
-			"type": "ocx:plugin",
+			"type": "plugin",
 			"description": "Native OS notifications - get notified when tasks complete",
-			"files": ["plugin/notify.ts"],
+			"files": ["plugins/notify.ts"],
 			"dependencies": ["kdco-primitives"],
 			"npmDevDependencies": ["node-notifier@10.0.1", "detect-terminal@2.0.0"]
 		},
 		{
 			"name": "worktree",
-			"type": "ocx:plugin",
+			"type": "plugin",
 			"description": "Auto-manages Git worktrees for isolated AI sessions with seamless terminal spawning",
-			"files": ["plugin/worktree.ts", "plugin/worktree/state.ts", "plugin/worktree/terminal.ts"],
+			"files": ["plugins/worktree.ts", "plugins/worktree/state.ts", "plugins/worktree/terminal.ts"],
 			"dependencies": ["kdco-primitives"],
 			"npmDevDependencies": ["jsonc-parser@3.3.1", "zod@4.3.5"]
 		},
@@ -77,35 +77,35 @@
 		// ============================================================================
 		{
 			"name": "plan-protocol",
-			"type": "ocx:skill",
+			"type": "skill",
 			"description": "Guidelines for using the plan system",
 			"files": ["skills/plan-protocol/SKILL.md"],
 			"dependencies": ["workspace-plugin"]
 		},
 		{
 			"name": "code-philosophy",
-			"type": "ocx:skill",
+			"type": "skill",
 			"description": "The 5 Laws of Elegant Defense",
 			"files": ["skills/code-philosophy/SKILL.md"],
 			"dependencies": []
 		},
 		{
 			"name": "frontend-philosophy",
-			"type": "ocx:skill",
+			"type": "skill",
 			"description": "The 5 Pillars of Intentional UI",
 			"files": ["skills/frontend-philosophy/SKILL.md"],
 			"dependencies": []
 		},
 		{
 			"name": "code-review",
-			"type": "ocx:skill",
+			"type": "skill",
 			"description": "Structured code review methodology with severity levels and categories",
 			"files": ["skills/code-review/SKILL.md"],
 			"dependencies": []
 		},
 		{
 			"name": "plan-review",
-			"type": "ocx:skill",
+			"type": "skill",
 			"description": "Criteria for reviewing implementation plans",
 			"files": ["skills/plan-review/SKILL.md"],
 			"dependencies": []
@@ -117,9 +117,9 @@
 		// ============================================================================
 		{
 			"name": "researcher",
-			"type": "ocx:agent",
+			"type": "agent",
 			"description": "Knowledge architect for external research",
-			"files": ["agent/researcher.md"],
+			"files": ["agents/researcher.md"],
 			"dependencies": ["background-agents"],
 			"opencode": {
 				// MCP servers for external research capabilities
@@ -200,9 +200,9 @@
 		},
 		{
 			"name": "scribe",
-			"type": "ocx:agent",
+			"type": "agent",
 			"description": "Human-facing content specialist",
-			"files": ["agent/scribe.md"],
+			"files": ["agents/scribe.md"],
 			"dependencies": [],
 			"opencode": {
 				"agent": {
@@ -224,9 +224,9 @@
 		},
 		{
 			"name": "coder",
-			"type": "ocx:agent",
+			"type": "agent",
 			"description": "Technical implementation specialist for writing and modifying code",
-			"files": ["agent/coder.md"],
+			"files": ["agents/coder.md"],
 			"dependencies": ["background-agents"],
 			"opencode": {
 				"agent": {
@@ -253,9 +253,9 @@
 		},
 		{
 			"name": "reviewer",
-			"type": "ocx:agent",
+			"type": "agent",
 			"description": "Code review specialist that analyzes code for issues and improvements",
-			"files": ["agent/reviewer.md"],
+			"files": ["agents/reviewer.md"],
 			"dependencies": ["code-review", "plan-review"],
 			"opencode": {
 				"agent": {
@@ -291,9 +291,9 @@
 		// ============================================================================
 		{
 			"name": "review",
-			"type": "ocx:command",
+			"type": "command",
 			"description": "Trigger code review on files or git diffs",
-			"files": ["command/review.md"],
+			"files": ["commands/review.md"],
 			"dependencies": ["reviewer"]
 		},
 
@@ -303,7 +303,7 @@
 		// ============================================================================
 		{
 			"name": "workspace",
-			"type": "ocx:bundle",
+			"type": "bundle",
 			"description": "Full KDCO Workspace experience",
 			"files": [],
 			"dependencies": [
@@ -392,9 +392,9 @@
 		},
 		{
 			"name": "philosophy",
-			"type": "ocx:bundle",
+			"type": "bundle",
 			"description": "Full KDCO Philosophy enforcement",
-			"files": ["philosophy/AGENTS.md"],
+			"files": ["AGENTS.md"],
 			"dependencies": ["code-philosophy", "frontend-philosophy"]
 		}
 	]

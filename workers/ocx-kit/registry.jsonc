@@ -7,24 +7,21 @@
 	"components": [
 		{
 			"name": "omo",
-			"type": "ocx:profile",
+			"type": "profile",
 			"description": "Oh-My-OpenCode starter profile with free models",
 			"files": [
 				{ "path": "profiles/omo/ocx.jsonc", "target": "ocx.jsonc" },
-				{ "path": "profiles/omo/opencode.jsonc", "target": "opencode.jsonc" },
-				{ "path": "profiles/omo/oh-my-opencode.json", "target": "oh-my-opencode.json" },
-				{ "path": "profiles/omo/README.md", "target": "README.md" }
+				{ "path": "profiles/omo/opencode.jsonc", "target": "opencode.jsonc" }
 			],
 			"dependencies": []
 		},
 		{
 			"name": "ws",
-			"type": "ocx:profile",
+			"type": "profile",
 			"description": "KDCO Workspace profile with free OpenCode Zen models",
 			"files": [
 				{ "path": "profiles/ws/ocx.jsonc", "target": "ocx.jsonc" },
-				{ "path": "profiles/ws/opencode.jsonc", "target": "opencode.jsonc" },
-				{ "path": "profiles/ws/README.md", "target": "README.md" }
+				{ "path": "profiles/ws/opencode.jsonc", "target": "opencode.jsonc" }
 			],
 			"dependencies": ["kdco/workspace"]
 		}

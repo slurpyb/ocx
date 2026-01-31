@@ -31,10 +31,10 @@ export async function globalDirectoryExists(): Promise<boolean> {
  * V2 always uses root-relative paths - NO .opencode/ prefix.
  *
  * @param target - Root-relative target path from registry (e.g., "plugins/foo.ts")
- * @param isFlattened - Kept for backward compatibility but ignored in V2
+ * @param _isFlattened - Kept for backward compatibility but ignored in V2
  * @returns The install path: "plugins/foo.ts" (always root-relative)
  */
-export function resolveTargetPath(target: string, isFlattened: boolean): string {
+export function resolveTargetPath(target: string, _isFlattened: boolean): string {
 	// V2: Always use root-relative paths
 	return target
 }
