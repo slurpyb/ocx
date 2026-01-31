@@ -18,15 +18,16 @@
 	"components": [
 		// Add your components here
 		// Supported types:
-		//   - ocx:skill     - Knowledge modules (markdown files)
-		//   - ocx:agent     - AI personas with custom prompts
-		//   - ocx:plugin    - TypeScript plugins that extend functionality
-		//   - ocx:command   - User-invokable commands
-		//   - ocx:bundle    - Collections of related components
-		//   - ocx:profile   - Shareable profile configuration
+		//   - skill     - Knowledge modules (markdown files)
+		//   - agent     - AI personas with custom prompts
+		//   - plugin    - TypeScript plugins that extend functionality
+		//   - command   - User-invokable commands
+		//   - tool      - Custom tool implementations
+		//   - bundle    - Collections of related components
+		//   - profile   - Shareable profile configuration
 		{
 			"name": "hello-world",
-			"type": "ocx:skill",
+			"type": "skill",
 			"description": "An example skill to get you started",
 			"files": ["skills/hello-world/SKILL.md"]
 		}

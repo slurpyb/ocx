@@ -50,7 +50,7 @@ import { z } from "zod"
 
 const ComponentSchema = z.object({
   name: z.string(),
-  type: z.enum(["ocx:skill", "ocx:plugin", "ocx:agent", "ocx:bundle"]),
+  type: z.enum(["skill", "plugin", "agent", "bundle"]),
 })
 
 // Parse once at the boundary
@@ -138,7 +138,7 @@ The registry manifest defines your components:
   "components": [
     {
       "name": "my-skill",
-      "type": "ocx:skill",
+      "type": "skill",
       "description": "A helpful skill",
       "files": ["skills/my-skill/SKILL.md"]
     }
@@ -154,13 +154,13 @@ OCX supports the following component types:
 
 | Type | Purpose | File Format |
 |------|---------|-------------|
-| `ocx:skill` | Instructions for AI behavior | Markdown (SKILL.md) |
-| `ocx:plugin` | Code that extends OpenCode | TypeScript |
-| `ocx:agent` | Agent role definitions | Markdown |
-| `ocx:bundle` | Collection of components | JSON manifest |
-| `ocx:profile` | Shareable profile configuration | JSON |
+| `skill` | Instructions for AI behavior | Markdown (SKILL.md) |
+| `plugin` | Code that extends OpenCode | TypeScript |
+| `agent` | Agent role definitions | Markdown |
+| `bundle` | Collection of components | JSON manifest |
+| `profile` | Shareable profile configuration | JSON |
 
-### Skills (ocx:skill)
+### Skills (skill)
 
 Skills teach AI assistants how to perform specific tasks.
 
@@ -203,7 +203,7 @@ Show good and bad examples...
 - Anti-pattern 2
 ```
 
-### Plugins (ocx:plugin)
+### Plugins (plugin)
 
 Plugins add functionality to OpenCode through hooks and tools.
 
@@ -294,7 +294,7 @@ interface PluginContext {
 }
 ```
 
-### Agents (ocx:agent)
+### Agents (agent)
 
 Agents define specialized AI roles with specific permissions and behaviors.
 
@@ -339,14 +339,14 @@ Brief overview of the code quality
 Prioritized list of improvements
 ```
 
-### Bundles (ocx:bundle)
+### Bundles (bundle)
 
 Bundles aggregate multiple components for easy installation.
 
 ```json
 {
   "name": "starter-kit",
-  "type": "ocx:bundle",
+  "type": "bundle",
   "description": "Everything you need to get started",
   "dependencies": [
     "my-skill",
@@ -579,7 +579,7 @@ touch files/agent/my-agent.md
     // ... existing components
     {
       "name": "my-new-skill",
-      "type": "ocx:skill",
+      "type": "skill",
       "description": "Description of what it does",
       "files": ["skills/my-new-skill/SKILL.md"]
     }

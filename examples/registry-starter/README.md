@@ -92,7 +92,7 @@ touch files/agent/my-agent.md
   "components": [
     {
       "name": "my-skill",
-      "type": "ocx:skill",
+      "type": "skill",
       "description": "What it does",
       "files": ["skills/my-skill/SKILL.md"]
     }
@@ -110,13 +110,13 @@ bun run build && bun run deploy
 
 | Type | Purpose | Format |
 |------|---------|--------|
-| `ocx:skill` | AI behavior instructions | Markdown |
-| `ocx:plugin` | OpenCode extensions | TypeScript |
-| `ocx:agent` | Agent role definitions | Markdown |
-| `ocx:command` | Custom TUI commands | Markdown |
-| `ocx:tool` | Custom tool implementations | TypeScript |
-| `ocx:bundle` | Component collections | JSON |
-| `ocx:profile` | Shareable profile configuration | JSON |
+| `skill` | AI behavior instructions | Markdown |
+| `plugin` | OpenCode extensions | TypeScript |
+| `agent` | Agent role definitions | Markdown |
+| `command` | Custom TUI commands | Markdown |
+| `tool` | Custom tool implementations | TypeScript |
+| `bundle` | Component collections | JSON |
+| `profile` | Shareable profile configuration | JSON |
 
 See [AGENTS.md](./AGENTS.md) for detailed documentation on each type.
 
