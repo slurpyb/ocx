@@ -226,7 +226,6 @@ packages/cli/          # Main CLI tool (@ocx/cli)
       update.ts        # Update components
       build.ts         # Build components
       diff.ts          # Component diff
-      ghost/           # [TEMPORARY] Ghost mode migration
     config/            # Config providers and resolution
     profile/           # Profile management (manager, paths)
     registry/          # Registry fetching/resolution
@@ -257,7 +256,6 @@ OCX provides a global profile system for managing multiple OpenCode configuratio
 | Config commands | `src/commands/config/` | show, edit |
 | OpenCode commands | `src/commands/opencode/` | Launch OpenCode with profile config |
 | Init commands | `src/commands/init/` | Initialize global/local configs |
-| Ghost commands | `src/commands/ghost/` | [TEMPORARY] Migration utilities |
 
 ### Directory Structure
 
@@ -394,15 +392,6 @@ Use profile commands to manage multiple configurations:
 |---------|-------|-------------|
 | `ocx init` | - | Initialize local .opencode/ |
 | `ocx init --global` | - | Initialize global profiles |
-
-#### Ghost Commands (TEMPORARY)
-
-| Command | Alias | Description |
-|---------|-------|-------------|
-| `ocx ghost migrate` | - | Migrate ghost.jsonc to ocx.jsonc in profiles |
-| `ocx ghost migrate --dry-run` | - | Preview migration without making changes |
-
-**Note:** The ghost command group is temporary and will be removed in the next minor version. It helps users migrate from the legacy "ghost mode" configuration format (`ghost.jsonc`) to the unified profile system (`ocx.jsonc`).
 
 #### Self Commands
 

@@ -20,7 +20,7 @@ export const LOCAL_CONFIG_DIR = ".opencode"
 // =============================================================================
 
 /**
- * Get the profiles directory path.
+ * Get the global profiles directory path.
  * Respects XDG_CONFIG_HOME if set.
  * @returns Absolute path to ~/.config/opencode/profiles/
  */
@@ -30,12 +30,35 @@ export function getProfilesDir(): string {
 }
 
 /**
- * Get a specific profile's directory path.
+ * Get the local profiles directory path (within project).
+ * @param cwd - Working directory (defaults to process.cwd())
+ * @returns Absolute path to .opencode/profiles/
+ */
+export function getLocalProfilesDir(cwd = process.cwd()): string {
+	const localConfigDir = findLocalConfigDir(cwd)
+	if (localConfigDir) {
+		return path.join(localConfigDir, "profiles")
+	}
+	return path.join(cwd, LOCAL_CONFIG_DIR, "profiles")
+}
+
+/**
+ * Get a specific global profile's directory path.
  * @param name - Profile name
- * @returns Absolute path to the profile directory
+ * @returns Absolute path to the global profile directory
  */
 export function getProfileDir(name: string): string {
 	return path.join(getProfilesDir(), name)
+}
+
+/**
+ * Get a specific local profile's directory path.
+ * @param name - Profile name
+ * @param cwd - Working directory (defaults to process.cwd())
+ * @returns Absolute path to the local profile directory
+ */
+export function getLocalProfileDir(name: string, cwd = process.cwd()): string {
+	return path.join(getLocalProfilesDir(cwd), name)
 }
 
 /**
@@ -48,6 +71,16 @@ export function getProfileOcxConfig(name: string): string {
 }
 
 /**
+ * Get the path to a local profile's ocx.jsonc file.
+ * @param name - Profile name
+ * @param cwd - Working directory (defaults to process.cwd())
+ * @returns Absolute path to ocx.jsonc
+ */
+export function getLocalProfileOcxConfig(name: string, cwd = process.cwd()): string {
+	return path.join(getLocalProfileDir(name, cwd), "ocx.jsonc")
+}
+
+/**
  * Get the path to a profile's opencode.jsonc file.
  * @param name - Profile name
  * @returns Absolute path to opencode.jsonc
@@ -57,12 +90,32 @@ export function getProfileOpencodeConfig(name: string): string {
 }
 
 /**
+ * Get the path to a local profile's opencode.jsonc file.
+ * @param name - Profile name
+ * @param cwd - Working directory (defaults to process.cwd())
+ * @returns Absolute path to opencode.jsonc
+ */
+export function getLocalProfileOpencodeConfig(name: string, cwd = process.cwd()): string {
+	return path.join(getLocalProfileDir(name, cwd), "opencode.jsonc")
+}
+
+/**
  * Get the path to a profile's AGENTS.md file.
  * @param name - Profile name
  * @returns Absolute path to AGENTS.md
  */
 export function getProfileAgents(name: string): string {
 	return path.join(getProfileDir(name), "AGENTS.md")
+}
+
+/**
+ * Get the path to a local profile's AGENTS.md file.
+ * @param name - Profile name
+ * @param cwd - Working directory (defaults to process.cwd())
+ * @returns Absolute path to AGENTS.md
+ */
+export function getLocalProfileAgents(name: string, cwd = process.cwd()): string {
+	return path.join(getLocalProfileDir(name, cwd), "AGENTS.md")
 }
 
 // =============================================================================

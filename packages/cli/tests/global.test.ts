@@ -67,24 +67,24 @@ describe("global utilities", () => {
 	})
 
 	describe("resolveTargetPath", () => {
-		it("strips .opencode/ prefix when isFlattened is true", () => {
-			const result = resolveTargetPath(".opencode/plugin/foo.ts", true)
-			expect(result).toBe("plugin/foo.ts")
+		it("V2: always uses root-relative paths (flattened mode)", () => {
+			const result = resolveTargetPath("plugins/foo.ts", true)
+			expect(result).toBe("plugins/foo.ts")
 		})
 
-		it("preserves .opencode/ prefix when isFlattened is false", () => {
-			const result = resolveTargetPath(".opencode/plugin/foo.ts", false)
-			expect(result).toBe(".opencode/plugin/foo.ts")
+		it("V2: always uses root-relative paths (local mode - no .opencode/ prefix)", () => {
+			const result = resolveTargetPath("plugins/foo.ts", false)
+			expect(result).toBe("plugins/foo.ts")
 		})
 
-		it("preserves path without .opencode/ prefix even when isFlattened", () => {
-			const result = resolveTargetPath("other/path.ts", true)
-			expect(result).toBe("other/path.ts")
+		it("V2: handles nested paths correctly when flattened", () => {
+			const result = resolveTargetPath("agents/researcher/index.ts", true)
+			expect(result).toBe("agents/researcher/index.ts")
 		})
 
-		it("handles nested paths correctly when isFlattened", () => {
-			const result = resolveTargetPath(".opencode/components/ui/button.tsx", true)
-			expect(result).toBe("components/ui/button.tsx")
+		it("V2: handles nested paths correctly when local (no .opencode/ prefix)", () => {
+			const result = resolveTargetPath("agents/researcher/index.ts", false)
+			expect(result).toBe("agents/researcher/index.ts")
 		})
 	})
 })

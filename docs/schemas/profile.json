@@ -2,7 +2,7 @@
 	"$schema": "http://json-schema.org/draft-07/schema#",
 	"$id": "https://ocx.kdco.dev/schemas/profile.json",
 	"title": "OCX Profile Configuration",
-	"description": "Configuration schema for OCX profile files stored at ~/.config/opencode/profiles/<name>/ocx.jsonc",
+	"description": "Configuration schema for OCX profile files stored at ~/.config/opencode/profiles/<name>/ocx.jsonc (OCX V2)",
 	"type": "object",
 	"additionalProperties": false,
 	"properties": {
@@ -42,20 +42,21 @@
 		},
 		"componentPath": {
 			"type": "string",
-			"pattern": "^(?!/)(?![A-Za-z]:)(?!\\\\\\\\)(?!.*\\.\\.)[^\\0]+$",
+			"pattern": "^(?!/)(?![A-Za-z]:)(?!\\\\)(?!.*\\.\\.)[^\\0]+$",
 			"description": "Relative path for component installation (no .. or absolute paths)"
 		},
 		"exclude": {
 			"type": "array",
 			"items": { "type": "string", "minLength": 1 },
 			"default": [
+				"**/AGENTS.md",
 				"**/CLAUDE.md",
 				"**/CONTEXT.md",
 				"**/.opencode/**",
 				"**/opencode.jsonc",
 				"**/opencode.json"
 			],
-			"description": "Glob patterns for project files to exclude from OpenCode discovery"
+			"description": "Glob patterns for project files to exclude from OpenCode discovery (secure by default)"
 		},
 		"include": {
 			"type": "array",

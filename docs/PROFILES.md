@@ -30,9 +30,49 @@ Each profile lives in `~/.config/opencode/profiles/<name>/` and contains:
 3. **Context switching** - Maintain separate configs for work, personal, clients
 4. **Zero footprint** - No `.opencode/` directory pollution in projects
 
+## Profile Layering
+
+OCX V2 introduces profile layering: global base + local overlay. When a profile name is specified in `.opencode/ocx.jsonc`, the local overlay takes precedence over the global base profile of the same name.
+
+### Profile Selection Priority
+
+Profiles are resolved in this order:
+
+1. `--profile <name>` / `-p <name>` flag (explicit override)
+2. `OCX_PROFILE` environment variable
+3. `profile` field in `.opencode/ocx.jsonc` (project-specific profile)
+4. `default` profile (if it exists)
+5. No profile (base configs only)
+
+### Layering Behavior
+
+When a profile is active:
+
+- **Global base profile** (`~/.config/opencode/profiles/<name>/`): Provides default settings
+- **Local overlay** (`.opencode/profiles/<name>/` or via `profile` field): Overrides base settings
+- **Local wins**: Any setting in the local overlay takes precedence
+
+**Example:**
+
+```bash
+# ~/.config/opencode/profiles/work/ocx.jsonc (global base)
+{
+  "exclude": ["**/CLAUDE.md"],
+  "registries": { "kdco": { "url": "https://registry.kdco.dev" } }
+}
+
+# .opencode/ocx.jsonc (local overlay selection)
+{
+  "profile": "work",
+  "exclude": ["**/CLAUDE.md", "**/AGENTS.md"]
+}
+```
+
+The local `exclude` array completely replaces the base profile's `exclude` array.
+
 ## Controlling What OpenCode Sees
 
-By default, OpenCode sees everything in your project. Profiles let you filter visibility using exclude/include patterns.
+By default, profiles exclude all project instruction files for maximum security. You control visibility using exclude/include patterns in your profile's `ocx.jsonc`.
 
 **This is the key power feature.** Use it to protect yourself from untrusted repositories or to curate exactly what context OpenCode receives.
 
@@ -45,27 +85,9 @@ By default, OpenCode sees everything in your project. Profiles let you filter vi
 
 Patterns follow glob syntax (`**/*.md`, `src/**`, etc.). Include patterns always override exclude patterns, following the same semantics as TypeScript/Vite config.
 
-### Default Configuration
+### Default Configuration (Secure by Default)
 
-The default profile includes project `AGENTS.md` files while excluding other config files:
-
-```jsonc
-{
-  "exclude": [
-    // "**/AGENTS.md",  // Uncomment to hide project instructions
-    "**/CLAUDE.md",
-    "**/CONTEXT.md",
-    "**/.opencode/**",
-    "**/opencode.jsonc",
-    "**/opencode.json"
-  ],
-  "include": []
-}
-```
-
-### Lock Down Recipe
-
-For maximum isolation (untrusted repos), exclude everything:
+The default profile excludes all project instruction files:
 
 ```jsonc
 {
@@ -76,9 +98,33 @@ For maximum isolation (untrusted repos), exclude everything:
     "**/.opencode/**",
     "**/opencode.jsonc",
     "**/opencode.json"
+  ],
+  "include": []
+}
+```
+
+### Trusting Project Files
+
+For trusted repositories, include specific project files:
+
+```jsonc
+{
+  "exclude": [
+    "**/CLAUDE.md",
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
+  ],
+  "include": [
+    "**/AGENTS.md"  // Allow project AGENTS.md files
   ]
 }
 ```
+
+### Lock Down Recipe
+
+For maximum isolation (untrusted repos), the default already excludes everything. No changes needed.
 
 ### How Discovery Works
 
@@ -98,8 +144,9 @@ Profiles are resolved in this order:
 
 1. `--profile <name>` / `-p <name>` flag (explicit override)
 2. `OCX_PROFILE` environment variable
-3. `default` profile (if it exists)
-4. No profile (base configs only)
+3. `profile` field in `.opencode/ocx.jsonc`
+4. `default` profile (if it exists)
+5. No profile (base configs only)
 
 **Examples:**
 
@@ -109,6 +156,9 @@ ocx opencode -p work
 
 # Environment variable
 OCX_PROFILE=work ocx opencode
+
+# Project-specific profile (from .opencode/ocx.jsonc)
+ocx opencode  # Uses profile specified in local config
 
 # Falls back to default profile
 ocx opencode  # Uses ~/.config/opencode/profiles/default/ if exists
@@ -137,11 +187,11 @@ ocx profile add work
 **Install profile from registry:**
 
 ```bash
-# First, add global registries
-ocx registry add https://ocx-kit.kdco.dev --name kit --global
-ocx registry add https://registry.kdco.dev --name kdco --global
+# Install directly from registry (one-command, ephemeral)
+ocx profile add ws --from https://ocx-kit.kdco.dev/ws
 
-# Then install the profile
+# Or first add global registry, then install
+ocx registry add https://ocx-kit.kdco.dev --name kit --global
 ocx profile add ws --from kit/ws
 
 # Force overwrite existing profile
@@ -218,17 +268,17 @@ ocx config show -p work
 
 | Command | Description |
 |---------|-------------|
-| `ocx config edit` | Edit local `.opencode/ocx.jsonc` |
+| `ocx config edit` | Edit local `.opencode/ocx.jsonc` (local-first) |
 | `ocx config edit --global` | Edit global `~/.config/opencode/ocx.jsonc` |
 | `ocx config edit -p <name>` | Edit profile config |
 
 **Examples:**
 
 ```bash
-# Edit local project config
+# Edit local project config (default behavior)
 ocx config edit
 
-# Edit global base config
+# Edit global base config (explicit --global required)
 ocx config edit --global
 
 # Edit profile config
@@ -281,6 +331,8 @@ To use a custom OpenCode binary (e.g., a development build), set the `bin` optio
 
 ## Config Location
 
+### Global Profiles
+
 ```
 ~/.config/opencode/
 ├── ocx.jsonc                 # Global base config
@@ -293,15 +345,31 @@ To use a custom OpenCode binary (e.g., a development build), set the `bin` optio
         ├── ocx.jsonc
         ├── opencode.jsonc
         └── AGENTS.md
-
-.opencode/                    # Local config (no profiles)
-├── ocx.jsonc
-└── opencode.jsonc
 ```
+
+### Local Project Config
+
+```
+.opencode/                    # Local config
+├── ocx.jsonc                 # Local OCX config (can specify profile)
+└── opencode.jsonc            # Local OpenCode config
+```
+
+### Profile Selection via Local Config
+
+You can specify which profile to use in your project's `.opencode/ocx.jsonc`:
+
+```jsonc
+{
+  "profile": "work"
+}
+```
+
+This enables profile layering: the global `work` profile provides defaults, and the local config can override settings.
 
 ## Configuration Isolation
 
-OCX configs (`ocx.jsonc`) are **ISOLATED per scope** - they do NOT merge.
+OCX configs (`ocx.jsonc`) are **ISOLATED per scope** - they do NOT merge, except for profile layering.
 
 ### Registry Isolation (Security Model)
 
@@ -310,6 +378,14 @@ OCX configs (`ocx.jsonc`) are **ISOLATED per scope** - they do NOT merge.
 - **Local registries** (in `.opencode/ocx.jsonc`) - ONLY for that project
 
 This prevents global registries from injecting components into all projects.
+
+### Profile Layering (V2)
+
+When a profile name is specified in `.opencode/ocx.jsonc`:
+
+- **Global base profile** (`~/.config/opencode/profiles/<name>/`) provides defaults
+- **Local overlay** (settings in `.opencode/ocx.jsonc`) takes precedence
+- Local overlay completely replaces (not merges) array values like `exclude`
 
 ### What DOES Merge
 
@@ -320,45 +396,38 @@ This prevents global registries from injecting components into all projects.
 
 ### Trusted Repository
 
-Include project configuration files while filtering specific instruction files:
+The default already excludes all instruction files. For trusted repos, selectively include:
 
 ```jsonc
 {
   "exclude": [
     "**/CLAUDE.md",
-    "**/CONTEXT.md"
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
   ],
   "include": [
-    "**/AGENTS.md",
-    "**/.opencode/**"
+    "**/AGENTS.md"  // Allow project AGENTS.md files
   ]
 }
 ```
 
 ### Untrusted Repository
 
-Maximum isolation - profile instructions only:
+Maximum isolation is the default. No changes needed - all project instruction files are excluded.
+
+### Selective Inclusion
+
+Exclude all instruction files but include specific ones:
 
 ```jsonc
 {
   "exclude": [
     "**/AGENTS.md",
-    "**/CLAUDE.md", 
-    "**/CONTEXT.md",
-    "**/.opencode/**",
-    "**/opencode.jsonc",
-    "**/opencode.json"
-  ]
-}
-```
-
-### Selective Inclusion
-
-Exclude all instruction files but include the root one:
-
-```jsonc
-{
-  "exclude": ["**/AGENTS.md"],
+    "**/CLAUDE.md",
+    "**/CONTEXT.md"
+  ],
   "include": ["./AGENTS.md"]  // Only root AGENTS.md
 }
 ```

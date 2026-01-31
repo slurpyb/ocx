@@ -18,12 +18,8 @@ export interface BuildRegistryOptions {
 }
 
 export interface BuildRegistryResult {
-	/** Name of the registry */
-	name: string
 	/** Namespace of the registry */
 	namespace: string
-	/** Version of the registry */
-	version: string
 	/** Number of components built */
 	componentsCount: number
 	/** Absolute path to output directory */
@@ -78,15 +74,18 @@ export async function buildRegistry(options: BuildRegistryOptions): Promise<Buil
 	const componentsDir = join(outPath, "components")
 	await mkdir(componentsDir, { recursive: true })
 
-	// Generate packument and copy files for each component
+	// V2: Generate packument and copy files for each component
+	// Use component-level versioning (default to 1.0.0)
+	const DEFAULT_COMPONENT_VERSION = "1.0.0"
+
 	for (const component of registry.components) {
 		const packument = {
 			name: component.name,
 			versions: {
-				[registry.version]: component,
+				[DEFAULT_COMPONENT_VERSION]: component,
 			},
 			"dist-tags": {
-				latest: registry.version,
+				latest: DEFAULT_COMPONENT_VERSION,
 			},
 		}
 
@@ -94,7 +93,7 @@ export async function buildRegistry(options: BuildRegistryOptions): Promise<Buil
 		const packumentPath = join(componentsDir, `${component.name}.json`)
 		await Bun.write(packumentPath, JSON.stringify(packument, null, 2))
 
-		// Copy files to components/[name]/[path]
+		// Copy files (if any - bundles may have no files, only dependencies)
 		for (const rawFile of component.files) {
 			const file = normalizeFile(rawFile, component.type)
 			const sourceFilePath = join(sourcePath, "files", file.path)
@@ -120,11 +119,12 @@ export async function buildRegistry(options: BuildRegistryOptions): Promise<Buil
 		)
 	}
 
-	// Generate index.json at the root
+	// V2: Generate index.json at the root (no registry version field)
 	const index = {
-		name: registry.name,
+		$schema: registry.$schema,
+		...(registry.name && { name: registry.name }),
+		...(registry.version && { version: registry.version }),
 		namespace: registry.namespace,
-		version: registry.version,
 		author: registry.author,
 		// Include version requirements for compatibility checking
 		...(registry.opencode && { opencode: registry.opencode }),
@@ -145,9 +145,7 @@ export async function buildRegistry(options: BuildRegistryOptions): Promise<Buil
 	await Bun.write(join(wellKnownDir, "ocx.json"), JSON.stringify(discovery, null, 2))
 
 	return {
-		name: registry.name,
 		namespace: registry.namespace,
-		version: registry.version,
 		componentsCount: registry.components.length,
 		outputPath: outPath,
 	}

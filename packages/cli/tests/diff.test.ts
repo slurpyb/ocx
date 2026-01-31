@@ -34,8 +34,8 @@ describe("ocx diff", () => {
 		// Mock an install
 		await runCLI(["add", "kdco/test-plugin", "--force"], testDir)
 
-		// Modify the local file
-		const pluginPath = join(testDir, ".opencode/plugin/test-plugin.ts")
+		// Modify the local file (V2: pluralized path)
+		const pluginPath = join(testDir, "plugins/test-plugin.ts")
 		await writeFile(pluginPath, "console.log('modified')")
 
 		const { exitCode, output } = await runCLI(["diff", "kdco/test-plugin"], testDir)

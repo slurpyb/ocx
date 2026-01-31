@@ -6,19 +6,18 @@ Set up [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) with OCX
 
 ## Quick Start
 
-### 1. Add the kit registry (one-time)
+### 1. Install the omo profile
 
 ```bash
+# One-command install (ephemeral registry)
+ocx profile add omo --from https://ocx-kit.kdco.dev/omo
+
+# Or add registry first, then install
 ocx registry add https://ocx-kit.kdco.dev --name kit --global
-```
-
-### 2. Install the omo profile
-
-```bash
 ocx profile add omo --from kit/omo
 ```
 
-### 3. Launch
+### 2. Launch
 
 ```bash
 ocx oc -p omo

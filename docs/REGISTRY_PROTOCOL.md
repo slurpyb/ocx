@@ -1,6 +1,8 @@
-# OCX Registry Protocol v1
+# OCX Registry Protocol v2
 
 This document specifies the HTTP API that OCX-compatible registries must implement.
+
+> **V2 Changes:** Registry targets are now root-relative (no `.opencode/` prefix required). The OCX CLI handles path resolution based on component type.
 
 ## Discovery (Optional)
 
@@ -90,7 +92,7 @@ Returns full component metadata in npm-style packument format.
       "files": [
         {
           "path": "SKILL.md",
-          "target": ".opencode/skills/my-skill/SKILL.md"
+          "target": "skills/my-skill/SKILL.md"
         }
       ],
       "dependencies": [],
@@ -129,13 +131,15 @@ Returns raw file content for installation.
 
 | Type | Install Location | Description |
 |------|------------------|-------------|
-| `ocx:skill` | `.opencode/skills/{name}/` | AI behavior instructions |
-| `ocx:plugin` | `.opencode/plugin/` | OpenCode plugins |
-| `ocx:agent` | `.opencode/agent/` | Custom agent definitions |
-| `ocx:command` | `.opencode/command/` | Custom CLI commands |
-| `ocx:tool` | `.opencode/tool/` | Custom tools |
+| `ocx:skill` | `skills/{name}/` | AI behavior instructions |
+| `ocx:plugin` | `plugin/` | OpenCode plugins |
+| `ocx:agent` | `agent/` | Custom agent definitions |
+| `ocx:command` | `command/` | Custom CLI commands |
+| `ocx:tool` | `tool/` | Custom tools |
 | `ocx:bundle` | (varies) | Meta-package grouping other components |
 | `ocx:profile` | `~/.config/opencode/profiles/{name}/` | Shareable profile configuration |
+
+**Note:** Targets in registry files are root-relative. The OCX CLI resolves them to the appropriate `.opencode/` subdirectory based on component type.
 
 ## Example: Minimal Compliant Registry
 

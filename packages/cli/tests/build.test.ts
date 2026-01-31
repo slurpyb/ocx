@@ -28,16 +28,16 @@ describe("ocx build", () => {
 			components: [
 				{
 					name: "comp-1",
-					type: "ocx:plugin",
+					type: "plugin", // V2: No ocx: prefix
 					description: "Test component 1",
-					files: [{ path: "index.ts", target: ".opencode/plugin/comp-1.ts" }],
+					files: [{ path: "index.ts", target: "plugins/comp-1.ts" }], // V2: root-relative
 					dependencies: [],
 				},
 				{
 					name: "comp-2",
-					type: "ocx:agent",
+					type: "agent", // V2: No ocx: prefix
 					description: "Test component 2",
-					files: [{ path: "agent.md", target: ".opencode/agent/comp-2.md" }],
+					files: [{ path: "agent.md", target: "agents/comp-2.md" }], // V2: root-relative
 					dependencies: ["comp-1"],
 				},
 			],
@@ -93,9 +93,9 @@ describe("ocx build", () => {
 			components: [
 				{
 					name: "INVALID_NAME",
-					type: "ocx:plugin",
+					type: "plugin", // V2: No ocx: prefix
 					description: "Invalid component",
-					files: [{ path: "index.ts", target: ".opencode/plugin/invalid.ts" }],
+					files: [{ path: "index.ts", target: "plugins/invalid.ts" }], // V2: root-relative
 					dependencies: [],
 				},
 			],
@@ -122,9 +122,9 @@ describe("ocx build", () => {
 			components: [
 				{
 					name: "comp",
-					type: "ocx:plugin",
+					type: "plugin", // V2: No ocx: prefix
 					description: "Component with missing dep",
-					files: [{ path: "index.ts", target: ".opencode/plugin/comp.ts" }],
+					files: [{ path: "index.ts", target: "plugins/comp.ts" }], // V2: root-relative
 					dependencies: ["non-existent"],
 				},
 			],
@@ -158,9 +158,9 @@ describe("ocx build", () => {
 	"components": [
 		{
 			"name": "jsonc-comp",
-			"type": "ocx:plugin",
+			"type": "plugin",
 			"description": "Component from JSONC", // trailing comment
-			"files": [{ "path": "index.ts", "target": ".opencode/plugin/jsonc-comp.ts" }],
+			"files": [{ "path": "index.ts", "target": "plugins/jsonc-comp.ts" }],
 			"dependencies": [],
 		}
 	],
@@ -206,9 +206,9 @@ describe("ocx build", () => {
 			components: [
 				{
 					name: "from-json",
-					type: "ocx:plugin",
+					type: "plugin", // V2: No ocx: prefix
 					description: "Component from JSON",
-					files: [{ path: "index.ts", target: ".opencode/plugin/from-json.ts" }],
+					files: [{ path: "index.ts", target: "plugins/from-json.ts" }], // V2: root-relative
 					dependencies: [],
 				},
 			],
@@ -224,9 +224,9 @@ describe("ocx build", () => {
 	"components": [
 		{
 			"name": "from-jsonc",
-			"type": "ocx:plugin",
+			"type": "plugin",
 			"description": "Component from JSONC",
-			"files": [{ "path": "index.ts", "target": ".opencode/plugin/from-jsonc.ts" }],
+			"files": [{ "path": "index.ts", "target": "plugins/from-jsonc.ts" }],
 			"dependencies": [],
 		}
 	]

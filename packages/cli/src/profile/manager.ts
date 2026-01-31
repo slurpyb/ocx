@@ -12,6 +12,10 @@ import {
 } from "../utils/errors"
 import { atomicWrite } from "./atomic"
 import {
+	getLocalProfileAgents,
+	getLocalProfileDir,
+	getLocalProfileOcxConfig,
+	getLocalProfileOpencodeConfig,
 	getProfileAgents,
 	getProfileDir,
 	getProfileOcxConfig,
@@ -62,16 +66,20 @@ export const DEFAULT_OCX_CONFIG_TEMPLATE = `{
 /**
  * Manages OCX profiles.
  * Uses static factory pattern for consistent construction.
+ * Supports both global (~/.config/opencode/profiles/) and local (.opencode/profiles/) profiles.
  */
 export class ProfileManager {
-	private constructor(private readonly profilesDir: string) {}
+	private constructor(
+		private readonly profilesDir: string,
+		private readonly cwd: string = process.cwd(),
+	) {}
 
 	/**
 	 * Create a ProfileManager instance.
 	 * Does not require profiles to be initialized.
 	 */
-	static create(): ProfileManager {
-		return new ProfileManager(getProfilesDir())
+	static create(cwd?: string): ProfileManager {
+		return new ProfileManager(getProfilesDir(), cwd ?? process.cwd())
 	}
 
 	/**
@@ -126,9 +134,10 @@ export class ProfileManager {
 	/**
 	 * Check if a profile exists.
 	 * @param name - Profile name
+	 * @param global - Whether to check global (default: true for compatibility)
 	 */
-	async exists(name: string): Promise<boolean> {
-		const dir = getProfileDir(name)
+	async exists(name: string, global = true): Promise<boolean> {
+		const dir = global ? getProfileDir(name) : getLocalProfileDir(name, this.cwd)
 		try {
 			const stats = await stat(dir)
 			return stats.isDirectory()
@@ -184,8 +193,9 @@ export class ProfileManager {
 	/**
 	 * Create a new profile.
 	 * @param name - Profile name (validated)
+	 * @param global - Whether to create global profile (default: false for local-first)
 	 */
-	async add(name: string): Promise<void> {
+	async add(name: string, global = false): Promise<void> {
 		// Validate name
 		const result = profileNameSchema.safeParse(name)
 		if (!result.success) {
@@ -193,30 +203,32 @@ export class ProfileManager {
 		}
 
 		// Check doesn't exist
-		if (await this.exists(name)) {
+		if (await this.exists(name, global)) {
 			throw new ProfileExistsError(name)
 		}
 
 		// Create directory with secure permissions
-		const dir = getProfileDir(name)
+		const dir = global ? getProfileDir(name) : getLocalProfileDir(name, this.cwd)
 		await mkdir(dir, { recursive: true, mode: 0o700 })
 
 		// Create ocx.jsonc with create-if-missing (uses JSONC template with commented AGENTS.md)
-		const ocxPath = getProfileOcxConfig(name)
+		const ocxPath = global ? getProfileOcxConfig(name) : getLocalProfileOcxConfig(name, this.cwd)
 		const ocxFile = Bun.file(ocxPath)
 		if (!(await ocxFile.exists())) {
 			await Bun.write(ocxPath, DEFAULT_OCX_CONFIG_TEMPLATE, { mode: 0o600 })
 		}
 
 		// Create opencode.jsonc with create-if-missing
-		const opencodePath = getProfileOpencodeConfig(name)
+		const opencodePath = global
+			? getProfileOpencodeConfig(name)
+			: getLocalProfileOpencodeConfig(name, this.cwd)
 		const opencodeFile = Bun.file(opencodePath)
 		if (!(await opencodeFile.exists())) {
 			await atomicWrite(opencodePath, {})
 		}
 
 		// Create AGENTS.md with create-if-missing
-		const agentsPath = getProfileAgents(name)
+		const agentsPath = global ? getProfileAgents(name) : getLocalProfileAgents(name, this.cwd)
 		const agentsFile = Bun.file(agentsPath)
 		if (!(await agentsFile.exists())) {
 			const agentsContent = `# Profile Instructions
@@ -361,7 +373,7 @@ export class ProfileManager {
 		// Create profiles directory
 		await mkdir(this.profilesDir, { recursive: true, mode: 0o700 })
 
-		// Create default profile
-		await this.add("default")
+		// Create default profile (global)
+		await this.add("default", true)
 	}
 }

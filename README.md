@@ -9,7 +9,7 @@ Your OpenCode config, anywhere.
 
 ## Why OCX?
 
-- 👻 **Profiles** — Work in any repo with YOUR config. Control exactly what OpenCode sees.
+- 📁 **Profiles** — Work in any repo with YOUR config. Control exactly what OpenCode sees.
 - 📦 **Registries** — npm plugins, MCP servers, components from curated registries.
 - 🔒 **Auditable** — SHA-256 verified, version-pinned, code you own.
 
@@ -55,7 +55,7 @@ ocx oc                      # Uses work profile automatically
 
 Profile settings control what OpenCode sees through `exclude`/`include` patterns. Registries are isolated per profile for security. OpenCode config merges safely between profile and local settings.
 
-> **Security Note:** By default, profiles include project `AGENTS.md` files. For untrusted repos, uncomment `**/AGENTS.md` in your profile's exclude list. See [Lock Down Recipe](./docs/PROFILES.md#lock-down-recipe).
+> **Security Note:** By default, profiles exclude all project instruction files. For trusted repos, add include patterns to your profile's `ocx.jsonc`. See [Lock Down Recipe](./docs/PROFILES.md#lock-down-recipe).
 
 **[Full Profile Guide →](./docs/PROFILES.md)**
 
@@ -66,20 +66,21 @@ Add components to local projects with automatic dependency resolution.
 ![OCX Components Demo](./assets/components-demo.gif)
 
 ```bash
-# Initialize local config
-ocx init
-
-# Add a registry
-ocx registry add https://registry.kdco.dev --name kdco
-
-# Install components
-ocx add kdco/workspace
+# One-command install (ephemeral registry, no config changes)
+ocx add kdco/workspace --from https://registry.kdco.dev
 
 # Or install npm plugins directly
 ocx add npm:@franlol/opencode-md-table-formatter
 ```
 
 After installation, components live in `.opencode/` where you can customize freely. OCX handles npm dependencies, MCP servers, and config merging automatically.
+
+To add a registry permanently for your project:
+
+```bash
+ocx registry add https://registry.kdco.dev --name kdco
+ocx add kdco/workspace
+```
 
 ## Philosophy
 
@@ -98,13 +99,14 @@ ocx diff kdco/workspace
 | Command | Description |
 |---------|-------------|
 | `ocx add <component>` | Add components or npm plugins (`npm:package`) |
+| `ocx add <component> --from <url>` | One-command install with ephemeral registry |
 | `ocx update [component]` | Update to latest version |
 | `ocx diff [component]` | Show upstream changes before updating |
 | `ocx profile <cmd>` | Manage global profiles (`add`, `list`, `remove`, `show`) |
 | `ocx opencode` / `ocx oc` | Launch OpenCode with profile |
-| `ocx registry add <url>` | Add a component registry (`--global` for global, `-p` for profile) |
+| `ocx registry add <url>` | Add a component registry (local-first; use `--global` for global) |
 | `ocx config show` | View config from current scope |
-| `ocx config edit` | Edit local or global config (`--global`) |
+| `ocx config edit` | Edit local config (use `--global` for global) |
 | `ocx self update` | Update OCX to latest version |
 | `ocx self uninstall` | Remove OCX config and binary |
 

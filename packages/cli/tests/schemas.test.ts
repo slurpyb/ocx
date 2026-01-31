@@ -128,27 +128,27 @@ describe("schemas", () => {
 	})
 
 	describe("targetPathSchema", () => {
-		it("should accept valid .opencode paths", () => {
-			expect(() => targetPathSchema.parse(".opencode/agent/test.md")).not.toThrow()
-			expect(() => targetPathSchema.parse(".opencode/plugin/my-plugin.ts")).not.toThrow()
-			expect(() => targetPathSchema.parse(".opencode/skills/test/SKILL.md")).not.toThrow()
+		it("should accept valid root-relative paths", () => {
+			expect(() => targetPathSchema.parse("agents/test.md")).not.toThrow()
+			expect(() => targetPathSchema.parse("plugins/my-plugin.ts")).not.toThrow()
+			expect(() => targetPathSchema.parse("skills/test/SKILL.md")).not.toThrow()
 		})
 
 		it("should accept all valid directories", () => {
-			const validDirs = ["agent", "skills", "plugin", "command", "tool", "philosophy"]
+			const validDirs = ["agents", "skills", "plugins", "commands", "tools"]
 			for (const dir of validDirs) {
-				expect(() => targetPathSchema.parse(`.opencode/${dir}/file.md`)).not.toThrow()
+				expect(() => targetPathSchema.parse(`${dir}/file.md`)).not.toThrow()
 			}
 		})
 
-		it("should reject paths not starting with .opencode/", () => {
-			expect(() => targetPathSchema.parse("opencode/agent/test.md")).toThrow()
-			expect(() => targetPathSchema.parse("src/file.ts")).toThrow()
+		it("should reject paths with .opencode/ prefix", () => {
+			expect(() => targetPathSchema.parse(".opencode/agents/test.md")).toThrow()
+			expect(() => targetPathSchema.parse(".opencode/plugins/file.ts")).toThrow()
 		})
 
 		it("should reject invalid directory names", () => {
-			expect(() => targetPathSchema.parse(".opencode/invalid/file.md")).toThrow("valid directory")
-			expect(() => targetPathSchema.parse(".opencode/src/file.md")).toThrow()
+			expect(() => targetPathSchema.parse("invalid/file.md")).toThrow("allowed prefix")
+			expect(() => targetPathSchema.parse("src/file.md")).toThrow()
 		})
 	})
 
@@ -199,30 +199,30 @@ describe("schemas", () => {
 	})
 
 	describe("inferTargetPath", () => {
-		it("should prepend .opencode/ to path", () => {
-			expect(inferTargetPath("plugin/foo.ts")).toBe(".opencode/plugin/foo.ts")
+		it("should return path as-is (root-relative)", () => {
+			expect(inferTargetPath("plugins/foo.ts")).toBe("plugins/foo.ts")
 		})
 
 		it("should handle nested paths", () => {
-			expect(inferTargetPath("skills/test/SKILL.md")).toBe(".opencode/skills/test/SKILL.md")
+			expect(inferTargetPath("skills/test/SKILL.md")).toBe("skills/test/SKILL.md")
 		})
 
 		it("should handle single file", () => {
-			expect(inferTargetPath("agent/test.md")).toBe(".opencode/agent/test.md")
+			expect(inferTargetPath("agents/test.md")).toBe("agents/test.md")
 		})
 	})
 
 	describe("normalizeFile", () => {
 		it("should convert string path to object", () => {
-			const result = normalizeFile("plugin/foo.ts")
+			const result = normalizeFile("plugins/foo.ts")
 			expect(result).toEqual({
-				path: "plugin/foo.ts",
-				target: ".opencode/plugin/foo.ts",
+				path: "plugins/foo.ts",
+				target: "plugins/foo.ts",
 			})
 		})
 
-		it("should pass through object unchanged", () => {
-			const input = { path: "src/custom.ts", target: ".opencode/plugin/custom.ts" }
+		it("should pass through object with target validation", () => {
+			const input = { path: "src/custom.ts", target: "plugins/custom.ts" }
 			const result = normalizeFile(input)
 			expect(result).toEqual(input)
 		})
@@ -231,7 +231,7 @@ describe("schemas", () => {
 			const result = normalizeFile("skills/my-skill/SKILL.md")
 			expect(result).toEqual({
 				path: "skills/my-skill/SKILL.md",
-				target: ".opencode/skills/my-skill/SKILL.md",
+				target: "skills/my-skill/SKILL.md",
 			})
 		})
 	})

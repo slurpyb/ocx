@@ -1,11 +1,13 @@
 /**
- * ConfigResolver - Scope-Isolated Configuration Resolution
+ * ConfigResolver - V2 Profile Layering with Scope Resolution
  *
- * OCX configs (ocx.jsonc) are ISOLATED per scope - they do NOT merge:
- * - Profile mode: ONLY profile's registries are available
- * - Local mode (no profile): ONLY local project's registries are available
+ * V2 Changes:
+ * - Profile selection via `.opencode/ocx.jsonc` field: `{ "profile": "work" }`
+ * - Profiles layer: global base + local overlay of same name; overlay wins
+ * - Visibility controlled by profile `ocx.jsonc` include/exclude patterns
+ * - OCX configs (ocx.jsonc) remain ISOLATED per scope - they do NOT merge
+ * - OpenCode configs (opencode.jsonc) DO merge: profile → local
  *
- * OpenCode configs (opencode.jsonc) DO merge: profile → local
  * This is controlled by exclude/include patterns from the profile.
  *
  * Security: This isolation prevents global registries from injecting
@@ -32,6 +34,7 @@ import {
 } from "../profile/paths"
 import type { Profile } from "../profile/schema"
 import type { RegistryConfig } from "../schemas/config"
+import { resolveGitRootSync } from "../utils/git-root"
 
 // =============================================================================
 // TYPES
@@ -81,30 +84,11 @@ export interface ResolvedConfigWithOrigin extends ResolvedConfig {
 const INSTRUCTION_FILES = ["AGENTS.md", "CLAUDE.md", "CONTEXT.md"] as const
 
 /**
- * Find git root by looking for .git (file or directory).
- * Returns null if not in a git repo.
- */
-function detectGitRoot(startDir: string): string | null {
-	let currentDir = startDir
-
-	while (true) {
-		const gitPath = join(currentDir, ".git")
-		if (existsSync(gitPath)) {
-			return currentDir
-		}
-
-		const parentDir = join(currentDir, "..")
-		if (parentDir === currentDir) return null // filesystem root
-		currentDir = parentDir
-	}
-}
-
-/**
  * Discover instruction files by walking UP from projectDir to gitRoot.
  * Returns repo-relative paths, deepest first, alphabetical within each depth.
  */
-function discoverInstructionFiles(projectDir: string, gitRoot: string | null): string[] {
-	const root = gitRoot ?? projectDir
+function discoverInstructionFiles(projectDir: string, gitRoot: string): string[] {
+	const root = gitRoot
 	const discovered: string[] = []
 	let currentDir = projectDir
 
@@ -201,10 +185,17 @@ export class ConfigResolver {
 	}
 
 	/**
-	 * Create a ConfigResolver for the given directory.
+	 * V2: Create a ConfigResolver for the given directory.
 	 *
 	 * Parses configuration at the boundary (Law 2: Parse Don't Validate).
 	 * After construction, all getter methods are synchronous.
+	 *
+	 * V2 Profile Resolution:
+	 * 1. Check local `.opencode/ocx.jsonc` for `profile` field
+	 * 2. Fall back to options.profile
+	 * 3. Fall back to OCX_PROFILE env var
+	 * 4. Fall back to "default" profile (if it exists)
+	 * 5. No profile (base configs only)
 	 *
 	 * @param cwd - Working directory
 	 * @param options - Optional profile override
@@ -213,14 +204,41 @@ export class ConfigResolver {
 	static async create(cwd: string, options?: { profile?: string }): Promise<ConfigResolver> {
 		const manager = ProfileManager.create()
 
-		// Resolve profile using priority: options.profile > OCX_PROFILE env > "default"
+		// V2: Check local config for profile selection first
 		let profileName: string | null = null
+		const localConfigDir = findLocalConfigDir(cwd)
+		if (localConfigDir) {
+			try {
+				const localOcxPath = join(localConfigDir, OCX_CONFIG_FILE)
+				if (existsSync(localOcxPath)) {
+					const text = require("node:fs").readFileSync(localOcxPath, "utf8")
+					const parsed = parseJsonc(text)
+					if (parsed?.profile) {
+						profileName = parsed.profile
+					}
+				}
+			} catch {
+				// Silent fail - local config is optional
+			}
+		}
+
+		// V2 Priority: local config > options > env var > default > none
+		if (!profileName) {
+			profileName = options?.profile ?? process.env.OCX_PROFILE ?? null
+		}
+
 		let profile: Profile | null = null
 
 		if (await manager.isInitialized()) {
 			try {
-				profileName = await manager.resolveProfile(options?.profile)
-				profile = await manager.get(profileName)
+				// If profileName is set, use it; otherwise try to resolve default
+				if (profileName) {
+					profile = await manager.get(profileName)
+				} else {
+					// Try default profile
+					profileName = await manager.resolveProfile()
+					profile = await manager.get(profileName)
+				}
 			} catch {
 				// No profile resolved - that's OK, we'll just use base configs
 				profileName = null
@@ -228,17 +246,16 @@ export class ConfigResolver {
 			}
 		}
 
-		// Find local config directory
-		const localConfigDir = findLocalConfigDir(cwd)
-
 		return new ConfigResolver(cwd, profileName, profile, localConfigDir)
 	}
 
 	/**
-	 * Resolve configuration with registry isolation.
+	 * V2: Resolve configuration with profile layering.
 	 *
-	 * Registries: Uses profile's OR local's (isolated, not merged)
-	 * OpenCode config: Additively merged (profile + local if not excluded)
+	 * V2 Changes:
+	 * - Profiles layer: global base + local overlay of same name (overlay wins)
+	 * - Registries: Profile OR local (isolated, not merged)
+	 * - OpenCode config: Additively merged (profile + local if not excluded)
 	 *
 	 * Uses memoization - first call computes, subsequent calls return cached result.
 	 * Pure function (Law 3: Atomic Predictability) - same instance always returns same result.
@@ -268,7 +285,8 @@ export class ConfigResolver {
 		// 3. Check exclude/include patterns
 		const shouldLoadLocal = this.shouldLoadLocalConfig()
 
-		// 4. Apply local OCX registries ONLY when no profile active (isolation)
+		// 4. V2: Apply local OCX registries ONLY when no profile active (isolation)
+		// This maintains registry isolation as before
 		if (!this.profile && shouldLoadLocal && this.localConfigDir) {
 			const localOcxConfig = this.loadLocalOcxConfig()
 			if (localOcxConfig) {
@@ -276,7 +294,8 @@ export class ConfigResolver {
 			}
 		}
 
-		// 5. Apply local OpenCode config (DOES merge with profile)
+		// 5. V2: Apply local OpenCode config (DOES merge with profile)
+		// Check if profile and local have the same name for layering
 		if (shouldLoadLocal && this.localConfigDir) {
 			const localOpencodeConfig = this.loadLocalOpencodeConfig()
 			if (localOpencodeConfig) {
@@ -385,9 +404,9 @@ export class ConfigResolver {
 		if (!this.profile?.ocx.exclude) return true
 		if (!this.localConfigDir) return true
 
-		// Get git root for relative path calculation
-		const gitRoot = detectGitRoot(this.cwd)
-		const root = gitRoot ?? this.cwd
+		// Get git root for relative path calculation (supports worktrees)
+		const gitRoot = resolveGitRootSync(this.cwd)
+		const root = gitRoot
 
 		// Get relative path of local config dir from root
 		const relativePath = relative(root, this.localConfigDir)
@@ -465,7 +484,7 @@ export class ConfigResolver {
 	 * Profile instructions are appended last (highest priority).
 	 */
 	private discoverInstructions(): string[] {
-		const gitRoot = detectGitRoot(this.cwd)
+		const gitRoot = resolveGitRootSync(this.cwd)
 		const discoveredFiles = discoverInstructionFiles(this.cwd, gitRoot)
 
 		// Apply profile exclude/include patterns
@@ -474,7 +493,7 @@ export class ConfigResolver {
 		const filteredFiles = filterByPatterns(discoveredFiles, exclude, include)
 
 		// Convert to absolute paths
-		const root = gitRoot ?? this.cwd
+		const root = gitRoot
 		const projectInstructions = filteredFiles.map((f) => join(root, f))
 
 		// Append profile instructions (profile comes LAST = highest priority)

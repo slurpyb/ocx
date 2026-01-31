@@ -83,7 +83,7 @@
 							{
 								"type": "string",
 								"minLength": 1,
-								"description": "Source path (target auto-inferred as .opencode/<path>)"
+								"description": "Source path (target auto-inferred as root-relative path; OCX V2 resolves to .opencode/<path> based on component type)"
 							},
 							{
 								"type": "object",
@@ -97,8 +97,8 @@
 									},
 									"target": {
 										"type": "string",
-										"pattern": "^\\.opencode/(agent|skill|plugin|command|tool|philosophy)/",
-										"description": "Target path in project (must start with .opencode/{agent|skill|plugin|command|tool|philosophy}/)"
+										"pattern": "^(agent|skill|plugin|command|tool|philosophy)/",
+										"description": "Target path in project (root-relative, no .opencode/ prefix; OCX V2 resolves based on component type)"
 									}
 								}
 							}

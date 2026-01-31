@@ -3,7 +3,6 @@
  * Update installed components from registries
  */
 
-import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
 import { mkdir, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
@@ -11,7 +10,7 @@ import { dirname, join } from "node:path"
 import type { Command } from "commander"
 import { type ConfigProvider, LocalConfigProvider } from "../config/provider"
 import { fetchComponentVersion, fetchFileContent } from "../registry/fetcher"
-import { findOcxLock, type OcxLock, readOcxLock, writeOcxLock } from "../schemas/config"
+import { parseCanonicalId, type Receipt, readReceipt, writeReceipt } from "../schemas/config"
 import {
 	type ComponentFileObject,
 	normalizeComponentManifest,
@@ -19,6 +18,7 @@ import {
 } from "../schemas/registry"
 import { ConfigError, NotFoundError, ValidationError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
+import { hashBundle, hashContent } from "../utils/receipt"
 
 // =============================================================================
 // TYPES
@@ -91,16 +91,15 @@ export async function runUpdateCore(
 	options: UpdateOptions,
 	provider: ConfigProvider,
 ): Promise<void> {
-	const { path: lockPath } = findOcxLock(provider.cwd)
 	const registries = provider.getRegistries()
 
 	// -------------------------------------------------------------------------
 	// Guard clauses (Law 1: Early Exit)
 	// -------------------------------------------------------------------------
 
-	// Guard: No lock file (nothing installed yet)
-	const lock = await readOcxLock(provider.cwd)
-	if (!lock || Object.keys(lock.installed).length === 0) {
+	// Guard: No receipt file (nothing installed yet)
+	const receipt = await readReceipt(provider.cwd)
+	if (!receipt || Object.keys(receipt.installed).length === 0) {
 		throw new ValidationError("Nothing installed yet. Run 'ocx add <component>' first.")
 	}
 
@@ -162,7 +161,7 @@ export async function runUpdateCore(
 	// Determine which components to update
 	// -------------------------------------------------------------------------
 
-	const componentsToUpdate = resolveComponentsToUpdate(lock, parsedComponents, options)
+	const componentsToUpdate = resolveComponentsToUpdate(receipt, parsedComponents, options)
 
 	// Guard: No matching components
 	if (componentsToUpdate.length === 0) {
@@ -181,30 +180,33 @@ export async function runUpdateCore(
 
 	const results: UpdateResult[] = []
 	const updates: {
-		qualifiedName: string
+		canonicalId: string
 		component: ReturnType<typeof normalizeComponentManifest>
 		files: { path: string; content: Buffer }[]
 		newHash: string
 		newVersion: string
 		baseUrl: string
+		namespace: string
+		name: string
 	}[] = []
 
 	try {
 		for (const spec of componentsToUpdate) {
-			const qualifiedName = spec.component
-			const lockEntry = lock.installed[qualifiedName]
-			// Guard: component must exist in lock (already validated in resolveComponentsToUpdate)
-			if (!lockEntry) {
-				throw new NotFoundError(`Component '${qualifiedName}' not found in lock file.`)
+			const canonicalId = spec.component
+			const entry = receipt.installed[canonicalId]
+			// Guard: component must exist in receipt (already validated in resolveComponentsToUpdate)
+			if (!entry) {
+				throw new NotFoundError(`Component '${canonicalId}' not found in receipt.`)
 			}
 
-			const { namespace, component: componentName } = parseQualifiedComponent(qualifiedName)
+			const namespace = entry.namespace
+			const componentName = entry.name
 
 			// Get registry config
 			const regConfig = registries[namespace]
 			if (!regConfig) {
 				throw new ConfigError(
-					`Registry '${namespace}' not configured. Component '${qualifiedName}' cannot be updated.`,
+					`Registry '${namespace}' not configured. Component '${canonicalId}' cannot be updated.`,
 				)
 			}
 
@@ -225,34 +227,36 @@ export async function runUpdateCore(
 			const newHash = await hashBundle(files)
 
 			// Compare hashes
-			if (newHash === lockEntry.hash) {
+			if (newHash === entry.hash) {
 				results.push({
-					qualifiedName,
-					oldVersion: lockEntry.version,
+					qualifiedName: canonicalId,
+					oldVersion: entry.revision,
 					newVersion: version,
 					status: "up-to-date",
 				})
 			} else if (options.dryRun) {
 				results.push({
-					qualifiedName,
-					oldVersion: lockEntry.version,
+					qualifiedName: canonicalId,
+					oldVersion: entry.revision,
 					newVersion: version,
 					status: "would-update",
 				})
 			} else {
 				results.push({
-					qualifiedName,
-					oldVersion: lockEntry.version,
+					qualifiedName: canonicalId,
+					oldVersion: entry.revision,
 					newVersion: version,
 					status: "updated",
 				})
 				updates.push({
-					qualifiedName,
+					canonicalId,
 					component: normalizedManifest,
 					files,
 					newHash,
 					newVersion: version,
 					baseUrl: regConfig.url,
+					namespace,
+					name: componentName,
 				})
 			}
 		}
@@ -308,16 +312,32 @@ export async function runUpdateCore(
 				}
 			}
 
-			// Update lock entry - we know it exists because we validated in resolveComponentsToUpdate
-			const existingEntry = lock.installed[update.qualifiedName]
+			// Update receipt entry - we know it exists because we validated in resolveComponentsToUpdate
+			const existingEntry = receipt.installed[update.canonicalId]
 			if (!existingEntry) {
-				throw new NotFoundError(`Component '${update.qualifiedName}' not found in lock file.`)
+				throw new NotFoundError(`Component '${update.canonicalId}' not found in receipt.`)
 			}
-			lock.installed[update.qualifiedName] = {
-				registry: existingEntry.registry,
-				version: update.newVersion,
+
+			// Compute individual file hashes
+			const fileHashes: Array<{ path: string; hash: string }> = []
+			for (const file of update.files) {
+				const componentFile = update.component.files.find(
+					(f: ComponentFileObject) => f.path === file.path,
+				)
+				if (!componentFile) throw new Error(`File ${file.path} not found in component manifest`)
+				fileHashes.push({
+					path: componentFile.target,
+					hash: hashContent(file.content),
+				})
+			}
+
+			receipt.installed[update.canonicalId] = {
+				registryUrl: existingEntry.registryUrl,
+				namespace: existingEntry.namespace,
+				name: existingEntry.name,
+				revision: update.newVersion,
 				hash: update.newHash,
-				files: existingEntry.files,
+				files: fileHashes,
 				installedAt: existingEntry.installedAt,
 				updatedAt: new Date().toISOString(),
 			}
@@ -325,8 +345,8 @@ export async function runUpdateCore(
 
 		installSpin?.succeed(`Updated ${updates.length} component(s)`)
 
-		// Save lock file
-		await writeOcxLock(provider.cwd, lock, lockPath)
+		// Save receipt file
+		await writeReceipt(provider.cwd, receipt)
 
 		// -------------------------------------------------------------------------
 		// Output results
@@ -389,14 +409,14 @@ function parseComponentSpec(spec: string): ComponentSpec {
 
 /**
  * Resolve which components to update based on args and flags.
- * Law 4: Fail fast if component not found in lock.
+ * Law 4: Fail fast if component not found in receipt.
  */
 function resolveComponentsToUpdate(
-	lock: OcxLock,
+	receipt: Receipt,
 	parsedComponents: ComponentSpec[],
 	options: UpdateOptions,
 ): ComponentSpec[] {
-	const installedComponents = Object.keys(lock.installed)
+	const installedComponents = Object.keys(receipt.installed)
 
 	// --all: update all installed components (no version override)
 	if (options.all) {
@@ -406,20 +426,27 @@ function resolveComponentsToUpdate(
 	// --registry: filter by registry namespace (no version override)
 	if (options.registry) {
 		return installedComponents
-			.filter((name) => {
-				const entry = lock.installed[name]
-				return entry?.registry === options.registry
+			.filter((canonicalId) => {
+				const entry = receipt.installed[canonicalId]
+				return entry?.namespace === options.registry
 			})
 			.map((c) => ({ component: c }))
 	}
 
 	// Specific components: validate they exist
+	// User provides qualified names like "kdco/agents"
+	// We need to find the matching canonical ID in the receipt
 	const result: ComponentSpec[] = []
 	for (const spec of parsedComponents) {
 		const name = spec.component
 		// Validate format (must be qualified)
 		if (!name.includes("/")) {
-			const suggestions = installedComponents.filter((installed) => installed.endsWith(`/${name}`))
+			const suggestions = installedComponents
+				.map((id) => {
+					const parsed = parseCanonicalId(id)
+					return `${parsed.namespace}/${parsed.name}`
+				})
+				.filter((qualified) => qualified.endsWith(`/${name}`))
 			if (suggestions.length === 1) {
 				throw new ValidationError(
 					`Ambiguous component '${name}'. Did you mean '${suggestions[0]}'?`,
@@ -437,14 +464,21 @@ function resolveComponentsToUpdate(
 			)
 		}
 
-		// Check if installed
-		if (!lock.installed[name]) {
+		// Find matching canonical ID
+		const { namespace, component } = parseQualifiedComponent(name)
+		const matchingIds = installedComponents.filter((id) => {
+			const parsed = parseCanonicalId(id)
+			return parsed.namespace === namespace && parsed.name === component
+		})
+
+		if (matchingIds.length === 0) {
 			throw new NotFoundError(
 				`Component '${name}' is not installed.\nRun 'ocx add ${name}' to install it first.`,
 			)
 		}
 
-		result.push(spec)
+		// Use the first matching canonical ID (there should only be one per namespace/name pair)
+		result.push({ component: matchingIds[0], version: spec.version } as ComponentSpec)
 	}
 
 	return result
@@ -487,27 +521,4 @@ function outputDryRun(results: UpdateResult[], options: UpdateOptions): void {
 			logger.info("All components are up to date.")
 		}
 	}
-}
-
-/**
- * Compute SHA-256 hash of file content.
- */
-async function hashContent(content: string | Buffer): Promise<string> {
-	return createHash("sha256").update(content).digest("hex")
-}
-
-/**
- * Compute deterministic hash for a bundle of files.
- * Files are sorted by path for consistent hashing.
- */
-async function hashBundle(files: { path: string; content: Buffer }[]): Promise<string> {
-	const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path))
-
-	const manifestParts: string[] = []
-	for (const file of sorted) {
-		const hash = await hashContent(file.content)
-		manifestParts.push(`${file.path}:${hash}`)
-	}
-
-	return hashContent(manifestParts.join("\n"))
 }

@@ -3,7 +3,6 @@
  * Install components from registries
  */
 
-import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
 import { mkdir, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
@@ -17,7 +16,7 @@ import { getProfileDir } from "../profile/paths"
 import { fetchFileContent, fetchRegistryIndex } from "../registry/fetcher"
 import type { ResolvedComponent } from "../registry/resolver"
 import { type ResolvedDependencies, resolveDependencies } from "../registry/resolver"
-import { findOcxLock, type OcxLock, readOcxLock, writeOcxLock } from "../schemas/config"
+import { createCanonicalId, type Receipt, readReceipt, writeReceipt } from "../schemas/config"
 import type { ComponentFileObject, RegistryIndex } from "../schemas/registry"
 import { parseQualifiedComponent } from "../schemas/registry"
 import {
@@ -44,6 +43,7 @@ import {
 	validateOpenCodePlugin,
 } from "../utils/npm-registry"
 import { resolveTargetPath } from "../utils/paths"
+import { hashBundle, hashContent } from "../utils/receipt"
 import {
 	addCommonOptions,
 	addForceOption,
@@ -107,6 +107,7 @@ export interface AddOptions {
 	trust?: boolean
 	global?: boolean
 	profile?: string
+	from?: string
 }
 
 export function registerAddCommand(program: Command): void {
@@ -125,6 +126,7 @@ export function registerAddCommand(program: Command): void {
 		.option("--skip-compat-check", "Skip version compatibility checks")
 		.option("--trust", "Skip npm plugin validation (for packages that don't follow conventions)")
 		.option("-p, --profile <name>", "Use specific profile")
+		.option("--from <url>", "Use ephemeral registry (does not persist)")
 
 	addCommonOptions(cmd)
 	addForceOption(cmd)
@@ -346,16 +348,60 @@ async function runRegistryAddCore(
 	provider: ConfigProvider,
 ): Promise<void> {
 	const cwd = provider.cwd
-	// Use flattened paths for global/profile mode (no .opencode/ prefix)
-	const isFlattened = !!options.global || !!options.profile
-	const { path: lockPath } = findOcxLock(cwd, { isFlattened })
+	// V2: Determine if we're in flattened mode (profile/global vs local)
+	const isFlattened = !!(options.global || options.profile)
 	const registries = provider.getRegistries()
 
-	// Load or create lock
-	let lock: OcxLock = { lockVersion: 1, installed: {} }
-	const existingLock = await readOcxLock(cwd, { isFlattened })
-	if (existingLock) {
-		lock = existingLock
+	// V2: Handle --from flag for ephemeral registry
+	let effectiveRegistries = registries
+	if (options.from) {
+		// Validate --from URL
+		const fromUrl = options.from.trim()
+		if (!fromUrl) {
+			throw new ValidationError("--from URL cannot be empty")
+		}
+
+		// Parse URL to validate format
+		try {
+			new URL(fromUrl)
+		} catch {
+			throw new ValidationError(`Invalid --from URL: ${fromUrl}`)
+		}
+
+		// Fetch registry index to get declared namespace
+		const index = await fetchRegistryIndex(fromUrl)
+
+		// Parse component references to extract namespaces
+		const requestedNamespaces = new Set<string>()
+		for (const name of componentNames) {
+			const { namespace } = parseQualifiedComponent(name)
+			requestedNamespaces.add(namespace)
+		}
+
+		// Validate all requested components use the same namespace as the registry
+		for (const ns of requestedNamespaces) {
+			if (ns !== index.namespace) {
+				throw new ValidationError(
+					`Namespace mismatch: component "${ns}/*" does not match registry namespace "${index.namespace}".\n` +
+						`When using --from, all components must match the registry's declared namespace.`,
+				)
+			}
+		}
+
+		// Create ephemeral registry config (does not persist)
+		effectiveRegistries = {
+			...registries,
+			[index.namespace]: {
+				url: fromUrl,
+			},
+		}
+	}
+
+	// V2: Load or create receipt
+	let receipt: Receipt = { version: 2, root: cwd, installed: {} }
+	const existingReceipt = await readReceipt(cwd)
+	if (existingReceipt) {
+		receipt = existingReceipt
 	}
 
 	const spin = options.quiet ? null : createSpinner({ text: "Resolving dependencies..." })
@@ -363,7 +409,7 @@ async function runRegistryAddCore(
 
 	try {
 		// Resolve all dependencies across all configured registries
-		const resolved = await resolveDependencies(registries, componentNames)
+		const resolved = await resolveDependencies(effectiveRegistries, componentNames)
 
 		if (options.verbose) {
 			logger.info("Install order:")
@@ -433,35 +479,23 @@ async function runRegistryAddCore(
 
 			// Layer 2 path safety: Verify all target paths are inside cwd (runtime containment)
 			for (const file of component.files) {
-				const targetPath = join(cwd, resolveTargetPath(file.target, isFlattened))
+				// V2: Resolve target path based on mode (flattened vs local)
+				const resolvedTarget = resolveTargetPath(file.target, isFlattened)
+				const targetPath = join(cwd, resolvedTarget)
 				assertPathInside(targetPath, cwd)
 			}
 
-			// Verify integrity if already in lock (use qualifiedName as key)
-			const existingEntry = lock.installed[component.qualifiedName]
+			// V2: Check if already installed with canonical ID
+			const canonicalId = createCanonicalId(
+				component.baseUrl,
+				component.registryName,
+				component.name,
+				"1.0.0", // TODO: Get actual revision from resolved component
+			)
+			const existingEntry = receipt.installed[canonicalId]
 			if (existingEntry && existingEntry.hash !== computedHash) {
 				fetchSpin?.fail("Integrity check failed")
-				throw new IntegrityError(component.qualifiedName, existingEntry.hash, computedHash)
-			}
-
-			// Check for file conflicts with components from other namespaces
-			for (const file of component.files) {
-				const resolvedTarget = resolveTargetPath(file.target, isFlattened)
-				const targetPath = join(cwd, resolvedTarget)
-				if (existsSync(targetPath)) {
-					// File exists - check if it's from the same component (re-install) or different (conflict)
-					const conflictingComponent = findComponentByFile(lock, resolvedTarget)
-					if (conflictingComponent && conflictingComponent !== component.qualifiedName) {
-						fetchSpin?.fail("File conflict detected")
-						throw new ConflictError(
-							`File conflict: ${resolvedTarget} already exists (installed by '${conflictingComponent}').\n\n` +
-								`To resolve:\n` +
-								`  1. Remove existing: rm ${resolvedTarget}\n` +
-								`  2. Or rename it manually and update references\n` +
-								`  3. Then run: ocx add ${component.qualifiedName}`,
-						)
-					}
-				}
+				throw new IntegrityError(canonicalId, existingEntry.hash, computedHash)
 			}
 
 			componentBundles.push({ component, files, computedHash })
@@ -478,6 +512,7 @@ async function runRegistryAddCore(
 				const componentFile = component.files.find((f: ComponentFileObject) => f.path === file.path)
 				if (!componentFile) continue
 
+				// V2: Resolve target path based on mode (flattened vs local)
 				const resolvedTarget = resolveTargetPath(componentFile.target, isFlattened)
 				const targetPath = join(cwd, resolvedTarget)
 				if (existsSync(targetPath)) {
@@ -512,10 +547,9 @@ async function runRegistryAddCore(
 
 		for (const { component, files, computedHash } of componentBundles) {
 			// Install component
-			const installResult = await installComponent(component, files, cwd, {
+			const installResult = await installComponent(component, files, cwd, isFlattened, {
 				force: options.force,
 				verbose: options.verbose,
-				isFlattened,
 			})
 
 			// Log results in verbose mode
@@ -531,7 +565,7 @@ async function runRegistryAddCore(
 				}
 			}
 
-			// Use cached registry index for lockfile version
+			// Use cached registry index
 			const index = registryIndexes.get(component.registryName)
 			if (!index) {
 				throw new ValidationError(
@@ -540,12 +574,33 @@ async function runRegistryAddCore(
 				)
 			}
 
-			// Update lock with qualifiedName as key (namespace/component format)
-			lock.installed[component.qualifiedName] = {
-				registry: component.registryName,
-				version: index.version,
+			// V2: Create canonical ID and update receipt
+			const canonicalId = createCanonicalId(
+				component.baseUrl,
+				component.registryName,
+				component.name,
+				"1.0.0", // TODO: Get actual revision
+			)
+
+			// Compute individual file hashes (store resolved paths in receipt)
+			const fileHashes: Array<{ path: string; hash: string }> = []
+			for (const file of files) {
+				const componentFile = component.files.find((f: ComponentFileObject) => f.path === file.path)
+				if (!componentFile) throw new Error(`File ${file.path} not found in component manifest`)
+				const resolvedTarget = resolveTargetPath(componentFile.target, isFlattened)
+				fileHashes.push({
+					path: resolvedTarget, // Resolved path (with .opencode/ prefix if local mode)
+					hash: hashContent(file.content),
+				})
+			}
+
+			receipt.installed[canonicalId] = {
+				registryUrl: component.baseUrl,
+				namespace: component.registryName,
+				name: component.name,
+				revision: "1.0.0", // TODO: Get actual revision
 				hash: computedHash,
-				files: component.files.map((f) => resolveTargetPath(f.target, isFlattened)),
+				files: fileHashes,
 				installedAt: new Date().toISOString(),
 			}
 		}
@@ -582,6 +637,8 @@ async function runRegistryAddCore(
 			npmSpin?.start()
 
 			try {
+				// V2: Pass isFlattened based on mode (profile/global vs local)
+				const isFlattened = !!(options.global || options.profile)
 				await updateOpencodeDevDependencies(
 					cwd,
 					resolved.npmDependencies,
@@ -596,8 +653,8 @@ async function runRegistryAddCore(
 			}
 		}
 
-		// Save lock file
-		await writeOcxLock(cwd, lock, lockPath)
+		// V2: Save receipt file
+		await writeReceipt(cwd, receipt)
 
 		if (options.json) {
 			console.log(
@@ -636,7 +693,8 @@ async function installComponent(
 	component: ResolvedComponent,
 	files: { path: string; content: Buffer }[],
 	cwd: string,
-	options: { force?: boolean; verbose?: boolean; isFlattened?: boolean },
+	isFlattened: boolean,
+	_options: { force?: boolean; verbose?: boolean },
 ): Promise<{ written: string[]; skipped: string[]; overwritten: string[] }> {
 	const result = {
 		written: [] as string[],
@@ -648,7 +706,8 @@ async function installComponent(
 		const componentFile = component.files.find((f: ComponentFileObject) => f.path === file.path)
 		if (!componentFile) continue
 
-		const resolvedTarget = resolveTargetPath(componentFile.target, !!options.isFlattened)
+		// V2: Resolve target path based on mode (flattened vs local)
+		const resolvedTarget = resolveTargetPath(componentFile.target, isFlattened)
 		const targetPath = join(cwd, resolvedTarget)
 		const targetDir = dirname(targetPath)
 
@@ -679,25 +738,6 @@ async function installComponent(
 	}
 
 	return result
-}
-
-async function hashContent(content: string | Buffer): Promise<string> {
-	return createHash("sha256").update(content).digest("hex")
-}
-
-async function hashBundle(files: { path: string; content: Buffer }[]): Promise<string> {
-	// Sort files for deterministic hashing
-	const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path))
-
-	// Create a manifest of file hashes
-	const manifestParts: string[] = []
-	for (const file of sorted) {
-		const hash = await hashContent(file.content)
-		manifestParts.push(`${file.path}:${hash}`)
-	}
-
-	// Hash the manifest itself
-	return hashContent(manifestParts.join("\n"))
 }
 
 function logResolved(resolved: ResolvedDependencies): void {
@@ -884,16 +924,4 @@ async function updateOpencodeDevDependencies(
 	if (!options.isFlattened) {
 		await ensureManifestFilesAreTracked(packageDir)
 	}
-}
-
-/**
- * Find which component installed a given file path
- */
-function findComponentByFile(lock: OcxLock, filePath: string): string | null {
-	for (const [qualifiedName, entry] of Object.entries(lock.installed)) {
-		if (entry.files.includes(filePath)) {
-			return qualifiedName
-		}
-	}
-	return null
 }

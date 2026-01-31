@@ -34,10 +34,14 @@ export type RegistryConfig = z.infer<typeof registryConfigSchema>
 
 /**
  * Main OCX config schema (ocx.jsonc)
+ * V2: Adds profile field for local profile selection
  */
 export const ocxConfigSchema = z.object({
 	/** Schema URL for IDE support */
 	$schema: z.string().optional(),
+
+	/** Profile selection - specifies which global profile to layer with local config */
+	profile: z.string().optional(),
 
 	/** Configured registries */
 	registries: z.record(registryConfigSchema).default({}),
@@ -52,14 +56,91 @@ export const ocxConfigSchema = z.object({
 export type OcxConfig = z.infer<typeof ocxConfigSchema>
 
 // =============================================================================
-// OCX LOCKFILE SCHEMA (ocx.lock)
+// RECEIPT SCHEMA (V2: replaces ocx.lock)
+// =============================================================================
+
+export const RECEIPT_DIR = ".ocx"
+export const RECEIPT_FILE = "receipt.jsonc"
+
+/**
+ * V2: Installed component entry in receipt
+ * Canonical ID format: "registryUrl::namespace/component@resolvedRevision"
+ * Includes ownership tracking and sha256 baseline for integrity
+ */
+export const installedComponentSchema = z.object({
+	/** Registry URL where this was installed from */
+	registryUrl: z.string(),
+
+	/** Registry namespace */
+	namespace: z.string(),
+
+	/** Component name */
+	name: z.string(),
+
+	/** Resolved version/revision (not tags) */
+	revision: z.string(),
+
+	/** SHA-256 hash of installed files for integrity (baseline) */
+	hash: z.string(),
+
+	/** Target files where installed (root-relative paths) with individual hashes */
+	files: z.array(
+		z.object({
+			/** File path relative to install root */
+			path: z.string(),
+			/** SHA-256 hash of this specific file */
+			hash: z.string(),
+		}),
+	),
+
+	/** ISO timestamp of installation */
+	installedAt: z.string(),
+
+	/** ISO timestamp of last update (optional, only set after update) */
+	updatedAt: z.string().optional(),
+
+	/** Ownership metadata - who/what installed this component */
+	owner: z
+		.object({
+			/** Owner type: user, profile, or system */
+			type: z.enum(["user", "profile", "system"]),
+			/** Owner identifier (username, profile name, etc.) */
+			id: z.string().optional(),
+		})
+		.optional(),
+})
+
+export type InstalledComponent = z.infer<typeof installedComponentSchema>
+
+/**
+ * V2: Receipt file schema (.ocx/receipt.jsonc)
+ * Tracks installed components with ownership and baselines per install root.
+ * Replaces the old ocx.lock format.
+ *
+ * Keys use canonical ID format: "registryUrl::namespace/component@resolvedRevision"
+ */
+export const receiptSchema = z.object({
+	/** Receipt format version */
+	version: z.literal(2),
+
+	/** Install root (for validation) */
+	root: z.string().optional(),
+
+	/** Installed components, keyed by canonical ID */
+	installed: z.record(z.string(), installedComponentSchema).default({}),
+})
+
+export type Receipt = z.infer<typeof receiptSchema>
+
+// =============================================================================
+// OCX LOCKFILE SCHEMA (LEGACY - V1 compat)
 // =============================================================================
 
 /**
- * Installed component entry in lockfile
+ * LEGACY V1: Installed component entry in lockfile
  * Key format: "namespace/component" (e.g., "kdco/researcher")
  */
-export const installedComponentSchema = z.object({
+export const legacyInstalledComponentSchema = z.object({
 	/** Registry namespace this was installed from */
 	registry: z.string(),
 
@@ -79,7 +160,7 @@ export const installedComponentSchema = z.object({
 	updatedAt: z.string().optional(),
 })
 
-export type InstalledComponent = z.infer<typeof installedComponentSchema>
+export type LegacyInstalledComponent = z.infer<typeof legacyInstalledComponentSchema>
 
 /**
  * Profile source tracking for profiles installed from registries.
@@ -116,10 +197,154 @@ export const ocxLockSchema = z.object({
 	installedFrom: installedFromSchema.optional(),
 
 	/** Installed components, keyed by "namespace/component" */
-	installed: z.record(qualifiedComponentSchema, installedComponentSchema).default({}),
+	installed: z.record(qualifiedComponentSchema, legacyInstalledComponentSchema).default({}),
 })
 
 export type OcxLock = z.infer<typeof ocxLockSchema>
+
+// =============================================================================
+// RECEIPT FILE HELPERS (V2)
+// =============================================================================
+
+/**
+ * V2: Create canonical component ID.
+ * Format: "registryUrl::namespace/component@resolvedRevision"
+ *
+ * Registry versions are ignored - registry is treated as latest-only.
+ *
+ * @param registryUrl - Registry base URL (normalized)
+ * @param namespace - Component namespace
+ * @param name - Component name
+ * @param revision - Resolved version/revision (not tags)
+ * @returns Canonical ID string
+ */
+export function createCanonicalId(
+	registryUrl: string,
+	namespace: string,
+	name: string,
+	revision: string,
+): string {
+	// Normalize registry URL (remove trailing slash)
+	const normalizedUrl = registryUrl.replace(/\/$/, "")
+	return `${normalizedUrl}::${namespace}/${name}@${revision}`
+}
+
+/**
+ * V2: Parse a canonical component ID.
+ * Format: "registryUrl::namespace/component@resolvedRevision"
+ *
+ * @param canonicalId - The canonical ID to parse
+ * @returns Parsed components
+ * @throws Error if format is invalid
+ */
+export function parseCanonicalId(canonicalId: string): {
+	registryUrl: string
+	namespace: string
+	name: string
+	revision: string
+} {
+	// Guard: must contain ::
+	if (!canonicalId.includes("::")) {
+		throw new Error(
+			`Invalid canonical ID: "${canonicalId}". Expected format: registryUrl::namespace/component@revision`,
+		)
+	}
+
+	const [registryUrl, rest] = canonicalId.split("::")
+
+	// Guard: must have content after ::
+	if (!rest || !registryUrl) {
+		throw new Error(
+			`Invalid canonical ID: "${canonicalId}". Expected format: registryUrl::namespace/component@revision`,
+		)
+	}
+
+	// Guard: must contain @
+	if (!rest.includes("@")) {
+		throw new Error(
+			`Invalid canonical ID: "${canonicalId}". Expected format: registryUrl::namespace/component@revision`,
+		)
+	}
+
+	const [qualifiedName, revision] = rest.split("@")
+
+	// Guard: must have qualified name and revision
+	if (!qualifiedName || !revision) {
+		throw new Error(
+			`Invalid canonical ID: "${canonicalId}". Expected format: registryUrl::namespace/component@revision`,
+		)
+	}
+
+	// Parse qualified name
+	if (!qualifiedName.includes("/")) {
+		throw new Error(
+			`Invalid canonical ID: "${canonicalId}". Component must be qualified (namespace/component)`,
+		)
+	}
+
+	const [namespace, name] = qualifiedName.split("/")
+
+	// Guard: namespace and name must exist
+	if (!namespace || !name) {
+		throw new Error(
+			`Invalid canonical ID: "${canonicalId}". Both namespace and component name are required`,
+		)
+	}
+
+	return {
+		registryUrl: registryUrl.replace(/\/$/, ""), // Normalize
+		namespace,
+		name,
+		revision,
+	}
+}
+
+/**
+ * V2: Find receipt file path for an install root.
+ * Receipt is always at <root>/.ocx/receipt.jsonc
+ * @param installRoot - The install root directory
+ * @returns Object with path and whether it exists
+ */
+export function findReceipt(installRoot: string): { path: string; exists: boolean } {
+	const receiptPath = path.join(installRoot, RECEIPT_DIR, RECEIPT_FILE)
+	return {
+		path: receiptPath,
+		exists: existsSync(receiptPath),
+	}
+}
+
+/**
+ * V2: Read receipt file
+ * @param installRoot - The install root directory
+ * @returns Receipt object or null if not found
+ */
+export async function readReceipt(installRoot: string): Promise<Receipt | null> {
+	const { path: receiptPath, exists } = findReceipt(installRoot)
+
+	if (!exists) {
+		return null
+	}
+
+	const file = Bun.file(receiptPath)
+	const content = await file.text()
+	const json = parseJsonc(content, [], { allowTrailingComma: true })
+	return receiptSchema.parse(json)
+}
+
+/**
+ * V2: Write receipt file
+ * @param installRoot - The install root directory
+ * @param receipt - Receipt data to write
+ */
+export async function writeReceipt(installRoot: string, receipt: Receipt): Promise<void> {
+	const receiptPath = path.join(installRoot, RECEIPT_DIR, RECEIPT_FILE)
+
+	// Ensure directory exists
+	await mkdir(path.dirname(receiptPath), { recursive: true })
+
+	const content = JSON.stringify(receipt, null, 2)
+	await Bun.write(receiptPath, content)
+}
 
 // =============================================================================
 // CONFIG FILE HELPERS (Bun-specific I/O)

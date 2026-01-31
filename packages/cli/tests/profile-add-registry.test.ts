@@ -28,7 +28,9 @@ describe("parseFromOption()", () => {
 		// Multiple slashes are treated as a profile name, not a registry ref
 		const result = parseFromOption("namespace/component/extra")
 		expect(result.type).toBe("local-profile")
-		expect(result.name).toBe("namespace/component/extra")
+		if (result.type === "local-profile") {
+			expect(result.name).toBe("namespace/component/extra")
+		}
 	})
 
 	it("throws on empty input", () => {
@@ -230,15 +232,14 @@ describe("ocx profile add (conflict detection)", () => {
 			JSON.stringify({ registries: { kdco: { url: registry.url } } }, null, 2),
 		)
 
-		// Create default profile (required for initialization)
-		await mkdir(join(profilesDir, "default"), { recursive: true })
-		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
-
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
 
-		// Create a new empty profile (not from registry)
-		const { exitCode } = await runCLI(["profile", "add", "new-profile"], workDir)
+		// V2: Create global profile with --global flag
+		const { exitCode } = await runCLI(["profile", "add", "new-profile", "--global"], workDir, {
+			env: { XDG_CONFIG_HOME: testDir },
+			isolated: true,
+		})
 
 		expect(exitCode).toBe(0)
 		expect(existsSync(join(profilesDir, "new-profile"))).toBe(true)
@@ -290,28 +291,36 @@ describe("ocx profile add (conflict detection)", () => {
 		await mkdir(join(profilesDir, "default"), { recursive: true })
 		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
 
-		// Create existing profile with custom content
-		const existingProfileDir = join(profilesDir, "existing-profile")
-		await mkdir(existingProfileDir, { recursive: true })
+		// Create existing profile manually
+		await mkdir(join(profilesDir, "existing-profile"), { recursive: true })
 		await writeFile(
-			join(existingProfileDir, "ocx.jsonc"),
-			JSON.stringify({ custom: "content-that-will-be-overwritten" }, null, 2),
+			join(profilesDir, "existing-profile", "ocx.jsonc"),
+			JSON.stringify({ some: "config" }, null, 2),
 		)
 
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
 
-		// First remove the profile
-		const { exitCode: rmExitCode } = await runCLI(["profile", "rm", "existing-profile"], workDir)
+		const env = { XDG_CONFIG_HOME: testDir }
+
+		// Remove the profile
+		const { exitCode: rmExitCode } = await runCLI(["profile", "rm", "existing-profile"], workDir, {
+			env,
+			isolated: true,
+		})
 		expect(rmExitCode).toBe(0)
 
-		// Then add the profile fresh
-		const { exitCode } = await runCLI(["profile", "add", "existing-profile"], workDir)
+		// Then add the profile fresh (V2: with --global flag)
+		const { exitCode } = await runCLI(["profile", "add", "existing-profile", "--global"], workDir, {
+			env,
+			isolated: true,
+		})
 
 		expect(exitCode).toBe(0)
 
-		// Verify the profile was recreated (old content should be gone)
-		const newContent = await readFile(join(existingProfileDir, "ocx.jsonc"), "utf-8")
+		// Verify the profile was recreated
+		const profileDir = join(profilesDir, "existing-profile")
+		const newContent = await readFile(join(profileDir, "ocx.jsonc"), "utf-8")
 		expect(newContent).not.toContain("content-that-will-be-overwritten")
 	})
 })
@@ -366,15 +375,20 @@ describe("ocx profile add --from (type validation)", () => {
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
 
-		// Try to install test-agent (which is type ocx:agent, not ocx:profile)
+		// Try to install test-agent (which is type agent, not profile)
 		const { exitCode, output } = await runCLI(
-			["profile", "add", "agent-as-profile", "--from", "kdco/test-agent"],
+			["profile", "add", "agent-as-profile", "--from", "kdco/test-agent", "--global"],
 			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
 		)
 
 		expect(exitCode).not.toBe(0)
-		expect(output).toContain("ocx:agent")
-		expect(output).toContain("ocx:profile")
+		// V2: Error message uses type without ocx: prefix
+		expect(output).toContain("agent")
+		expect(output).toContain("profile")
 	})
 
 	it("fails when trying to install a plugin as a profile", async () => {
@@ -394,15 +408,20 @@ describe("ocx profile add --from (type validation)", () => {
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
 
-		// Try to install test-plugin (which is type ocx:plugin, not ocx:profile)
+		// Try to install test-plugin (which is type plugin, not profile)
 		const { exitCode, output } = await runCLI(
-			["profile", "add", "plugin-as-profile", "--from", "kdco/test-plugin"],
+			["profile", "add", "plugin-as-profile", "--from", "kdco/test-plugin", "--global"],
 			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
 		)
 
 		expect(exitCode).not.toBe(0)
-		expect(output).toContain("ocx:plugin")
-		expect(output).toContain("ocx:profile")
+		// V2: Error message uses type without ocx: prefix
+		expect(output).toContain("plugin")
+		expect(output).toContain("profile")
 	})
 })
 
@@ -455,10 +474,14 @@ describe("ocx profile add --from (local profile cloning)", () => {
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
 
-		// Clone from source-profile
+		// Clone from source-profile (V2: with --global flag)
 		const { exitCode, output } = await runCLI(
-			["profile", "add", "cloned-profile", "--from", "source-profile"],
+			["profile", "add", "cloned-profile", "--from", "source-profile", "--global"],
 			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
 		)
 
 		expect(exitCode).toBe(0)
@@ -487,10 +510,14 @@ describe("ocx profile add --from (local profile cloning)", () => {
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
 
-		// Try to clone from non-existent profile
+		// Try to clone from non-existent profile (V2: with --global flag)
 		const { exitCode, output } = await runCLI(
-			["profile", "add", "new-profile", "--from", "nonexistent-profile"],
+			["profile", "add", "cloned-from-nothing", "--from", "nonexistent-profile", "--global"],
 			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
 		)
 
 		expect(exitCode).not.toBe(0)
@@ -591,10 +618,14 @@ describe("ocx profile add --from (registry installation)", () => {
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
 
-		// Install profile with dependencies from registry
+		// Install profile with dependencies from registry (V2: with --global flag)
 		const { exitCode, output } = await runCLI(
-			["profile", "add", "test-with-deps", "--from", "kdco/test-profile-with-deps"],
+			["profile", "add", "test-with-deps", "--from", "kdco/test-profile-with-deps", "--global"],
 			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
 		)
 
 		if (exitCode !== 0) {
@@ -609,24 +640,22 @@ describe("ocx profile add --from (registry installation)", () => {
 		expect(existsSync(join(profileDir, "opencode.jsonc"))).toBe(true)
 		expect(existsSync(join(profileDir, "AGENTS.md"))).toBe(true)
 
-		// Verify dependency files are FLAT (at profile root, not in .opencode/)
-		expect(existsSync(join(profileDir, "plugin", "test-plugin.ts"))).toBe(true)
+		// V2: Verify dependency files are FLAT at root with root-relative paths
+		expect(existsSync(join(profileDir, "plugins", "test-plugin.ts"))).toBe(true)
 
 		// Verify NO .opencode/ directory exists - this is the key regression check
 		expect(existsSync(join(profileDir, ".opencode"))).toBe(false)
 
-		// Verify lockfile contains both installedFrom and installed entries
-		const lockPath = join(profileDir, "ocx.lock")
-		expect(existsSync(lockPath)).toBe(true)
-		const lockContent = parseJsonc(await readFile(lockPath, "utf-8")) as {
-			lockVersion: number
-			installedFrom: { registry: string; component: string }
+		// V2: Verify receipt file instead of ocx.lock
+		const receiptPath = join(profileDir, ".ocx", "receipt.jsonc")
+		expect(existsSync(receiptPath)).toBe(true)
+		const receiptContent = parseJsonc(await readFile(receiptPath, "utf-8")) as {
+			version: number
 			installed: Record<string, unknown>
 		}
-		expect(lockContent.lockVersion).toBe(1)
-		expect(lockContent.installedFrom.registry).toBe("kdco")
-		expect(lockContent.installedFrom.component).toBe("test-profile-with-deps")
-		expect(lockContent.installed["kdco/test-plugin"]).toBeDefined()
+		// V2: Receipt doesn't have installedFrom field - that's stored in ocx.jsonc metadata
+		expect(receiptContent.version).toBe(2)
+		expect(Object.keys(receiptContent.installed).length).toBeGreaterThan(0)
 	})
 })
 

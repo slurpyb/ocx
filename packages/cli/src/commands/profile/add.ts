@@ -9,10 +9,16 @@ import type { Command } from "commander"
 import { parse as parseJsonc } from "jsonc-parser"
 import { atomicWrite } from "../../profile/atomic"
 import { ProfileManager } from "../../profile/manager"
-import { getGlobalConfig, getProfileOcxConfig } from "../../profile/paths"
+import { getGlobalConfig, getLocalProfileOcxConfig, getProfileOcxConfig } from "../../profile/paths"
+import type { Profile } from "../../profile/schema"
 import type { ProfileOcxConfig } from "../../schemas/ocx"
 import { profileOcxConfigSchema } from "../../schemas/ocx"
-import { ConfigError, ProfileExistsError, ValidationError } from "../../utils/errors"
+import {
+	ConfigError,
+	ProfileExistsError,
+	ProfileNotFoundError,
+	ValidationError,
+} from "../../utils/errors"
 import { handleError, logger } from "../../utils/index"
 import { installProfileFromRegistry } from "./install-from-registry"
 
@@ -68,6 +74,7 @@ export function parseFromOption(from: string): FromInput {
 
 interface ProfileAddOptions {
 	from?: string
+	global?: boolean
 }
 
 // =============================================================================
@@ -150,11 +157,13 @@ export function registerProfileAddCommand(parent: Command): void {
 			"--from <source>",
 			"Clone from existing profile or install from registry (e.g., kdco/minimal)",
 		)
+		.option("-g, --global", "Create global profile (default: local overlay)")
 		.addHelpText(
 			"after",
 			`
 Examples:
-  $ ocx profile add work                      # Create empty profile
+  $ ocx profile add work                      # Create local overlay profile
+  $ ocx profile add work --global             # Create global profile
   $ ocx profile add work --from dev           # Clone from existing profile
   $ ocx profile add work --from kdco/minimal  # Install from registry
 `,
@@ -178,7 +187,7 @@ async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<
 	// Route based on --from input type
 	if (!options.from) {
 		// No --from: create empty profile
-		await createEmptyProfile(manager, name)
+		await createEmptyProfile(manager, name, options.global ?? false)
 		return
 	}
 
@@ -186,10 +195,15 @@ async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<
 
 	switch (fromInput.type) {
 		case "local-profile":
-			await cloneFromLocalProfile(manager, name, fromInput.name)
+			await cloneFromLocalProfile(manager, name, fromInput.name, options.global ?? false)
 			break
 
 		case "registry": {
+			// Registry installation always creates global profiles
+			if (!options.global) {
+				logger.warn("Registry installation requires --global flag. Creating global profile.")
+			}
+
 			// Validate registry is configured globally and get URL
 			const { config: globalConfig, registryUrl } = await requireGlobalRegistry(fromInput.namespace)
 
@@ -215,13 +229,18 @@ async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<
 /**
  * Create an empty profile with default configuration.
  */
-async function createEmptyProfile(manager: ProfileManager, name: string): Promise<void> {
-	const exists = await manager.exists(name)
+async function createEmptyProfile(
+	manager: ProfileManager,
+	name: string,
+	global: boolean,
+): Promise<void> {
+	const exists = await manager.exists(name, global)
 	if (exists) {
 		throw new ProfileExistsError(name, `Remove it first with 'ocx profile rm ${name}'.`)
 	}
-	await manager.add(name)
-	logger.success(`Created profile "${name}"`)
+	await manager.add(name, global)
+	const scope = global ? "global" : "local"
+	logger.success(`Created ${scope} profile "${name}"`)
 }
 
 /**
@@ -231,20 +250,29 @@ async function cloneFromLocalProfile(
 	manager: ProfileManager,
 	name: string,
 	sourceName: string,
+	global: boolean,
 ): Promise<void> {
 	// Guard: check if target profile already exists (Fail Fast)
-	const exists = await manager.exists(name)
+	const exists = await manager.exists(name, global)
 	if (exists) {
 		throw new ProfileExistsError(name, `Remove it first with 'ocx profile rm ${name}'.`)
 	}
 
 	// Load source profile (fail fast if not found)
-	const source = await manager.get(sourceName)
+	// Try to load from global first, then local
+	let source: Profile
+	try {
+		source = await manager.get(sourceName)
+	} catch {
+		throw new ProfileNotFoundError(sourceName)
+	}
 
-	await manager.add(name)
+	await manager.add(name, global)
 
 	// Copy OCX config from source
-	await atomicWrite(getProfileOcxConfig(name), source.ocx)
+	const targetOcxPath = global ? getProfileOcxConfig(name) : getLocalProfileOcxConfig(name)
+	await atomicWrite(targetOcxPath, source.ocx)
 
-	logger.success(`Created profile "${name}" (cloned from "${sourceName}")`)
+	const scope = global ? "global" : "local"
+	logger.success(`Created ${scope} profile "${name}" (cloned from "${sourceName}")`)
 }

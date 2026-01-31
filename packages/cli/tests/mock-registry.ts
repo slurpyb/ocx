@@ -16,6 +16,7 @@ export interface MockRegistry {
 	setRouteTimeout: (pathPattern: string, delayMs: number) => void
 	setRouteMalformed: (pathPattern: string) => void
 	clearRouteOverrides: () => void
+	clearFileContent: () => void
 }
 
 /**
@@ -28,24 +29,24 @@ export function startMockRegistry(): MockRegistry {
 	const components = {
 		"test-plugin": {
 			name: "test-plugin",
-			type: "ocx:plugin",
+			type: "plugin",
 			description: "A test plugin",
-			files: [{ path: "index.ts", target: ".opencode/plugin/test-plugin.ts" }],
+			files: [{ path: "index.ts", target: "plugins/test-plugin.ts" }],
 			dependencies: [],
 			npmDependencies: ["lodash@^4.17.21"],
 		},
 		"test-skill": {
 			name: "test-skill",
-			type: "ocx:skill",
+			type: "skill",
 			description: "A test skill",
-			files: [{ path: "SKILL.md", target: ".opencode/skills/test-skill/SKILL.md" }],
+			files: [{ path: "SKILL.md", target: "skills/test-skill/SKILL.md" }],
 			dependencies: ["test-plugin"],
 		},
 		"test-agent": {
 			name: "test-agent",
-			type: "ocx:agent",
+			type: "agent",
 			description: "A test agent",
-			files: [{ path: "agent.md", target: ".opencode/agent/test-agent.md" }],
+			files: [{ path: "agent.md", target: "agents/test-agent.md" }],
 			dependencies: ["test-skill"],
 			opencode: {
 				mcp: {
@@ -59,7 +60,7 @@ export function startMockRegistry(): MockRegistry {
 		// Profile component for testing profile installation
 		"test-profile": {
 			name: "test-profile",
-			type: "ocx:profile",
+			type: "profile",
 			description: "A test profile for registry installation",
 			files: [
 				{ path: "ocx.jsonc", target: "ocx.jsonc" },
@@ -71,7 +72,7 @@ export function startMockRegistry(): MockRegistry {
 		// Profile with dependencies for testing flat installation
 		"test-profile-with-deps": {
 			name: "test-profile-with-deps",
-			type: "ocx:profile",
+			type: "profile",
 			description: "Test profile with dependencies for regression testing",
 			files: [
 				{ path: "ocx.jsonc", target: "ocx.jsonc" },
@@ -83,9 +84,9 @@ export function startMockRegistry(): MockRegistry {
 		// Components for testing MCP merge regression
 		"test-mcp-provider": {
 			name: "test-mcp-provider",
-			type: "ocx:plugin",
+			type: "plugin",
 			description: "A component that provides MCP servers",
-			files: [{ path: "index.ts", target: ".opencode/plugin/test-mcp-provider.ts" }],
+			files: [{ path: "index.ts", target: "plugins/test-mcp-provider.ts" }],
 			dependencies: [],
 			opencode: {
 				mcp: {
@@ -100,9 +101,9 @@ export function startMockRegistry(): MockRegistry {
 		// Component with string command shorthand MCP
 		"test-local-mcp": {
 			name: "test-local-mcp",
-			type: "ocx:plugin",
+			type: "plugin",
 			description: "A component with local MCP using string command",
-			files: [{ path: "index.ts", target: ".opencode/plugin/test-local-mcp.ts" }],
+			files: [{ path: "index.ts", target: "plugins/test-local-mcp.ts" }],
 			dependencies: [],
 			opencode: {
 				mcp: {
@@ -115,9 +116,9 @@ export function startMockRegistry(): MockRegistry {
 		},
 		"test-no-mcp": {
 			name: "test-no-mcp",
-			type: "ocx:plugin",
+			type: "plugin",
 			description: "A component without MCP that depends on test-mcp-provider",
-			files: [{ path: "index.ts", target: ".opencode/plugin/test-no-mcp.ts" }],
+			files: [{ path: "index.ts", target: "plugins/test-no-mcp.ts" }],
 			dependencies: ["test-mcp-provider"],
 			opencode: {
 				tools: {
@@ -239,6 +240,9 @@ export function startMockRegistry(): MockRegistry {
 		},
 		clearRouteOverrides: () => {
 			routeOverrides.clear()
+		},
+		clearFileContent: () => {
+			customFiles.clear()
 		},
 	}
 }

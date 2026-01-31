@@ -52,18 +52,21 @@ describe("ocx add", () => {
 		}
 		expect(exitCode).toBe(0)
 
-		// Verify files
-		expect(existsSync(join(testDir, ".opencode/agent/test-agent.md"))).toBe(true)
-		expect(existsSync(join(testDir, ".opencode/skills/test-skill/SKILL.md"))).toBe(true)
-		expect(existsSync(join(testDir, ".opencode/plugin/test-plugin.ts"))).toBe(true)
+		// Verify files (V2: root-relative paths)
+		expect(existsSync(join(testDir, "agents/test-agent.md"))).toBe(true)
+		expect(existsSync(join(testDir, "skills/test-skill/SKILL.md"))).toBe(true)
+		expect(existsSync(join(testDir, "plugins/test-plugin.ts"))).toBe(true)
 
-		// Verify lock file
-		const lockPath = join(testDir, ".opencode/ocx.lock")
-		expect(existsSync(lockPath)).toBe(true)
-		const lock = parseJsonc(await readFile(lockPath, "utf-8"))
-		expect(lock.installed["kdco/test-agent"]).toBeDefined()
-		expect(lock.installed["kdco/test-skill"]).toBeDefined()
-		expect(lock.installed["kdco/test-plugin"]).toBeDefined()
+		// V2: Verify receipt file (replaces ocx.lock)
+		const receiptPath = join(testDir, ".ocx/receipt.jsonc")
+		expect(existsSync(receiptPath)).toBe(true)
+		const receipt = parseJsonc(await readFile(receiptPath, "utf-8"))
+		// V2: Receipt uses canonical IDs as keys
+		const installedKeys = Object.keys(receipt.installed)
+		expect(installedKeys.length).toBe(3)
+		expect(installedKeys.some((k) => k.includes("test-agent"))).toBe(true)
+		expect(installedKeys.some((k) => k.includes("test-skill"))).toBe(true)
+		expect(installedKeys.some((k) => k.includes("test-plugin"))).toBe(true)
 
 		// Verify opencode.jsonc patching (new files default to .jsonc)
 		const opencodePath = join(testDir, ".opencode", "opencode.jsonc")
@@ -96,8 +99,8 @@ describe("ocx add", () => {
 		// Install same component again (should skip, not fail)
 		const { exitCode } = await runCLI(["add", "kdco/test-plugin", "--force"], testDir)
 		expect(exitCode).toBe(0)
-		// File should still exist
-		expect(existsSync(join(testDir, ".opencode/plugin/test-plugin.ts"))).toBe(true)
+		// File should still exist (V2 path)
+		expect(existsSync(join(testDir, "plugins/test-plugin.ts"))).toBe(true)
 	})
 
 	it("should fail on conflict without --force flag", async () => {
@@ -116,8 +119,8 @@ describe("ocx add", () => {
 		// Install component first time
 		await runCLI(["add", "kdco/test-plugin", "--force"], testDir)
 
-		// Modify the file to create a conflict
-		const filePath = join(testDir, ".opencode/plugin/test-plugin.ts")
+		// Modify the file to create a conflict (V2 path)
+		const filePath = join(testDir, "plugins/test-plugin.ts")
 		await writeFile(filePath, "// Modified by user")
 
 		// Try to install again WITHOUT --force (should fail with conflict)
@@ -143,8 +146,8 @@ describe("ocx add", () => {
 		// Install component first time
 		await runCLI(["add", "kdco/test-plugin", "--force"], testDir)
 
-		// Modify the file to create a conflict
-		const filePath = join(testDir, ".opencode/plugin/test-plugin.ts")
+		// Modify the file to create a conflict (V2 path)
+		const filePath = join(testDir, "plugins/test-plugin.ts")
 		await writeFile(filePath, "// Modified by user")
 
 		// Install again WITH --force (should overwrite)
@@ -310,11 +313,11 @@ describe("ocx add --profile", () => {
 		}
 		expect(exitCode).toBe(0)
 
-		// Verify file installed to flattened path (plugin/, not .opencode/plugin/)
-		expect(existsSync(join(profileDir, "plugin", "test-plugin.ts"))).toBe(true)
+		// V2: Verify file installed to flattened path (plugins/, not plugins/)
+		expect(existsSync(join(profileDir, "plugins", "test-plugin.ts"))).toBe(true)
 
 		// Verify NOT installed to nested .opencode/ path
-		expect(existsSync(join(profileDir, ".opencode", "plugin", "test-plugin.ts"))).toBe(false)
+		expect(existsSync(join(profileDir, ".opencode", "plugins", "test-plugin.ts"))).toBe(false)
 	})
 
 	it("should install component with dependencies to flattened paths", async () => {
@@ -332,13 +335,13 @@ describe("ocx add --profile", () => {
 		}
 		expect(exitCode).toBe(0)
 
-		// Verify all installed to flattened paths
-		expect(existsSync(join(profileDir, "agent", "test-agent.md"))).toBe(true)
+		// V2: Verify all installed to flattened paths with correct directory names
+		expect(existsSync(join(profileDir, "agents", "test-agent.md"))).toBe(true)
 		expect(existsSync(join(profileDir, "skills", "test-skill", "SKILL.md"))).toBe(true)
-		expect(existsSync(join(profileDir, "plugin", "test-plugin.ts"))).toBe(true)
+		expect(existsSync(join(profileDir, "plugins", "test-plugin.ts"))).toBe(true)
 
-		// Verify lock file at profile root
-		expect(existsSync(join(profileDir, "ocx.lock"))).toBe(true)
+		// V2: Verify receipt file at profile root/.ocx/
+		expect(existsSync(join(profileDir, ".ocx", "receipt.jsonc"))).toBe(true)
 	})
 
 	it("should place package.json at profile root, not in .opencode/", async () => {
@@ -376,8 +379,8 @@ describe("ocx add --profile", () => {
 		expect(exitCode).toBe(0)
 		expect(output).not.toContain("Run 'ocx init' first")
 
-		// Component installed to profile, not workDir
-		expect(existsSync(join(profileDir, "plugin", "test-plugin.ts"))).toBe(true)
+		// Component installed to profile, not workDir (V2 flattened path: plugins/)
+		expect(existsSync(join(profileDir, "plugins", "test-plugin.ts"))).toBe(true)
 		expect(existsSync(join(workDir, ".opencode"))).toBe(false)
 	})
 
@@ -388,8 +391,8 @@ describe("ocx add --profile", () => {
 		// First install
 		await runCLI(["add", "kdco/test-plugin", "--profile", "test-profile", "--force"], workDir)
 
-		// Modify the file to create a conflict
-		const filePath = join(profileDir, "plugin", "test-plugin.ts")
+		// Modify the file to create a conflict (V2 flattened path: plugins/)
+		const filePath = join(profileDir, "plugins", "test-plugin.ts")
 		await writeFile(filePath, "// Modified by user")
 
 		// Try to reinstall WITHOUT --force

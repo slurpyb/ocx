@@ -21,10 +21,11 @@ bun run deploy
 ## Using the Registry
 
 ```bash
-# Add registry
-ocx registry add https://ocx-kit.your-domain.workers.dev --name kit
+# One-command install (ephemeral registry)
+ocx profile add omo --from https://ocx-kit.your-domain.workers.dev/omo
 
-# Install profile
+# Or add registry first, then install
+ocx registry add https://ocx-kit.your-domain.workers.dev --name kit --global
 ocx profile add omo --from kit/omo
 ```
 

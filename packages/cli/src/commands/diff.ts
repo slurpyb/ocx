@@ -2,15 +2,20 @@
  * Diff Command
  *
  * Compare installed components with upstream registry versions.
+ * V2: Uses receipt (.ocx/receipt.jsonc) instead of ocx.lock
  */
+
+import { join } from "node:path"
 
 import type { Command } from "commander"
 import * as Diff from "diff"
 import kleur from "kleur"
+import { LocalConfigProvider } from "../config/provider"
 import { fetchComponent, fetchFileContent } from "../registry/fetcher"
-import { readOcxConfig, readOcxLock } from "../schemas/config"
-import { normalizeFile, parseQualifiedComponent } from "../schemas/registry"
+import { parseCanonicalId, readReceipt } from "../schemas/config"
+import { normalizeFile } from "../schemas/registry"
 import { handleError, logger, outputJson } from "../utils/index"
+import { checkFileIntegrity } from "../utils/receipt"
 
 interface DiffOptions {
 	cwd: string
@@ -28,35 +33,32 @@ export function registerDiffCommand(program: Command): void {
 		.option("-q, --quiet", "Suppress output", false)
 		.action(async (component: string | undefined, options: DiffOptions) => {
 			try {
-				const lock = await readOcxLock(options.cwd)
-				if (!lock) {
+				// V2: Read receipt instead of lock
+				const cwd = options.cwd ?? process.cwd()
+				const provider = await LocalConfigProvider.requireInitialized(cwd)
+				const receipt = await readReceipt(provider.cwd)
+
+				if (!receipt || Object.keys(receipt.installed).length === 0) {
 					if (options.json) {
 						outputJson({
 							success: false,
-							error: { code: "NOT_FOUND", message: "No ocx.lock found" },
+							error: { code: "NOT_FOUND", message: "No receipt found" },
 						})
 					} else {
-						logger.warn("No ocx.lock found. Run 'ocx add' first.")
+						logger.warn("No components installed. Run 'ocx add' first.")
 					}
 					return
 				}
 
-				const config = await readOcxConfig(options.cwd)
-				if (!config) {
-					if (options.json) {
-						outputJson({
-							success: false,
-							error: { code: "NOT_FOUND", message: "No ocx.jsonc found" },
-						})
-					} else {
-						logger.warn("No ocx.jsonc found. Run 'ocx init' first.")
-					}
-					return
-				}
+				const registries = provider.getRegistries()
 
-				const componentNames = component ? [component] : Object.keys(lock.installed)
+				// V2: Component names are either canonical IDs or qualified names (namespace/component)
+				// If user provides qualified name, find all matching canonical IDs
+				const canonicalIds = component
+					? findMatchingCanonicalIds(receipt, component)
+					: Object.keys(receipt.installed)
 
-				if (componentNames.length === 0) {
+				if (canonicalIds.length === 0) {
 					if (options.json) {
 						outputJson({ success: true, data: { diffs: [] } })
 					} else {
@@ -67,67 +69,104 @@ export function registerDiffCommand(program: Command): void {
 
 				const results: Array<{ name: string; hasChanges: boolean; diff?: string }> = []
 
-				for (const name of componentNames) {
-					const installed = lock.installed[name]
-					if (!installed) {
+				for (const canonicalId of canonicalIds) {
+					const entry = receipt.installed[canonicalId]
+					if (!entry) {
 						if (component) {
-							logger.warn(`Component '${name}' not found in lockfile.`)
+							logger.warn(`Component '${canonicalId}' not found in receipt.`)
 						}
 						continue
 					}
 
 					// Guard: check if files array exists and has items
-					if (!installed.files || installed.files.length === 0) {
-						logger.warn(`No files recorded for component '${name}'`)
+					if (!entry.files || entry.files.length === 0) {
+						logger.warn(`No files recorded for component '${canonicalId}'`)
 						continue
 					}
 
-					// Read local file (use first file from the files array)
-					const localPath = `${options.cwd}/${installed.files[0]}`
-					const localFile = Bun.file(localPath)
-					if (!(await localFile.exists())) {
-						results.push({ name, hasChanges: true, diff: "Local file missing" })
-						continue
-					}
-					const localContent = await localFile.text()
+					// Check file integrity first
+					const integrity = await checkFileIntegrity(provider.cwd, entry)
 
-					// Fetch upstream
-					const registryConfig = config.registries[installed.registry]
+					// Get registry config
+					const registryConfig = registries[entry.namespace]
 					if (!registryConfig) {
-						logger.warn(`Registry '${installed.registry}' not configured for component '${name}'.`)
+						logger.warn(
+							`Registry '${entry.namespace}' not configured for component '${canonicalId}'.`,
+						)
 						continue
 					}
 
 					try {
-						// Parse qualified name to get just the component name for fetching
-						const parsed = parseQualifiedComponent(name)
-						const componentName = parsed.component
-						const upstream = await fetchComponent(registryConfig.url, componentName)
+						// Fetch upstream component
+						const upstream = await fetchComponent(registryConfig.url, entry.name)
 
-						// Assume first file for simplicity in this MVP
-						// In a full implementation we'd diff all files in the component
-						const rawUpstreamFile = upstream.files[0]
-						if (!rawUpstreamFile) {
-							results.push({ name, hasChanges: false })
-							continue
+						// V2: Diff all files in the component
+						const fileDiffs: string[] = []
+						let hasAnyChanges = false
+
+						for (const fileEntry of entry.files) {
+							// The receipt stores resolved paths (with .opencode/ prefix in local mode)
+							// We need to find the matching upstream file by comparing the base target
+							const upstreamFile = upstream.files.find((f) => {
+								const normalized = normalizeFile(f)
+								// Compare the target path (without .opencode/ prefix)
+								const receiptBasePath = fileEntry.path.replace(/^\.opencode\//, "")
+								return normalized.target === receiptBasePath
+							})
+
+							if (!upstreamFile) {
+								// File doesn't exist upstream anymore
+								fileDiffs.push(`File removed from upstream: ${fileEntry.path}`)
+								hasAnyChanges = true
+								continue
+							}
+
+							const normalized = normalizeFile(upstreamFile)
+
+							// Check if file was modified locally (use integrity check results)
+							const fileStatus = integrity.details.find((d) => d.path === fileEntry.path)
+							if (!fileStatus) continue
+
+							// Fetch upstream content
+							const upstreamContent = await fetchFileContent(
+								registryConfig.url,
+								entry.name,
+								normalized.path,
+							)
+
+							// Read local content
+							const localPath = join(provider.cwd, fileEntry.path)
+							const localFile = Bun.file(localPath)
+							if (!(await localFile.exists())) {
+								fileDiffs.push(`File missing locally: ${fileEntry.path}`)
+								hasAnyChanges = true
+								continue
+							}
+							const localContent = await localFile.text()
+
+							// Compare content
+							if (localContent !== upstreamContent) {
+								const patch = Diff.createPatch(fileEntry.path, upstreamContent, localContent)
+								fileDiffs.push(patch)
+								hasAnyChanges = true
+							}
 						}
-						const upstreamFile = normalizeFile(rawUpstreamFile)
 
-						// Fetch actual content from registry
-						const upstreamContent = await fetchFileContent(
-							registryConfig.url,
-							componentName,
-							upstreamFile.path,
-						)
-
-						if (localContent === upstreamContent) {
-							results.push({ name, hasChanges: false })
+						const displayName = `${entry.namespace}/${entry.name}@${entry.revision}`
+						if (hasAnyChanges) {
+							results.push({
+								name: displayName,
+								hasChanges: true,
+								diff: fileDiffs.join("\n\n"),
+							})
 						} else {
-							const patch = Diff.createPatch(name, upstreamContent, localContent)
-							results.push({ name, hasChanges: true, diff: patch })
+							results.push({
+								name: displayName,
+								hasChanges: false,
+							})
 						}
 					} catch (err) {
-						logger.warn(`Could not fetch upstream for ${name}: ${String(err)}`)
+						logger.warn(`Could not fetch upstream for ${canonicalId}: ${String(err)}`)
 					}
 				}
 
@@ -147,4 +186,34 @@ export function registerDiffCommand(program: Command): void {
 				handleError(error, { json: options.json })
 			}
 		})
+}
+
+/**
+ * Find canonical IDs that match the given component reference.
+ * Supports both canonical IDs and qualified names (namespace/component).
+ */
+function findMatchingCanonicalIds(
+	receipt: import("../schemas/config").Receipt,
+	componentRef: string,
+): string[] {
+	// Try as canonical ID first
+	if (receipt.installed[componentRef]) {
+		return [componentRef]
+	}
+
+	// Try as qualified name (namespace/component)
+	if (componentRef.includes("/")) {
+		const [namespace, name] = componentRef.split("/")
+		return Object.keys(receipt.installed).filter((canonicalId) => {
+			try {
+				const parsed = parseCanonicalId(canonicalId)
+				return parsed.namespace === namespace && parsed.name === name
+			} catch {
+				return false
+			}
+		})
+	}
+
+	// Bare name - not supported for diff
+	return []
 }

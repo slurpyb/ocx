@@ -14,7 +14,7 @@ import { dirname, join } from "node:path"
 import type { ConfigProvider } from "../../config/provider"
 import { getProfileDir, getProfilesDir } from "../../profile/paths"
 import { profileNameSchema } from "../../profile/schema"
-import { fetchComponent, fetchFileContent, fetchRegistryIndex } from "../../registry/fetcher"
+import { fetchComponent, fetchFileContent } from "../../registry/fetcher"
 import type { RegistryConfig } from "../../schemas/config"
 import { type OcxLock, writeOcxLock } from "../../schemas/config"
 import { normalizeComponentManifest } from "../../schemas/registry"
@@ -135,10 +135,10 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 	}
 
 	// Guard: Must be a profile type component
-	if (manifest.type !== "ocx:profile") {
+	if (manifest.type !== "profile") {
 		fetchSpin?.fail(`Invalid component type`)
 		throw new ValidationError(
-			`Component "${qualifiedName}" is type "${manifest.type}", not "ocx:profile".\n\n` +
+			`Component "${qualifiedName}" is type "${manifest.type}", not "profile".\n\n` +
 				`Only profile components can be installed with 'ocx profile add --from'.`,
 		)
 	}
@@ -228,15 +228,12 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 
 		const profileHash = hashBundle(profileFiles.map((f) => ({ path: f.path, content: f.content })))
 
-		// Get registry version for the lock file
-		const registryIndex = await fetchRegistryIndex(registryUrl)
-
 		const lock: OcxLock = {
 			lockVersion: 1,
 			installedFrom: {
 				registry: namespace,
 				component,
-				version: registryIndex.version,
+				version: "1.0.0", // V2: Use default version (registry has no version field)
 				hash: profileHash,
 				installedAt: new Date().toISOString(),
 			},

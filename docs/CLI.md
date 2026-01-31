@@ -20,12 +20,12 @@ ocx <command>
 - [`ocx update`](#ocx-update) - Update installed components
 - [`ocx diff`](#ocx-diff) - Compare installed vs upstream
 - [`ocx search`](#ocx-search) - Search for components
-- [`ocx registry`](#ocx-registry) - Manage registries
+- [`ocx registry`](#ocx-registry) - Manage registries (local-first)
 - [`ocx build`](#ocx-build) - Build a registry from source
 - [`ocx self update`](#ocx-self-update) - Update OCX to latest version
 - [`ocx self uninstall`](#ocx-self-uninstall) - Remove OCX configuration and binary
 - [`ocx profile`](#ocx-profile) - Manage global profiles
-- [`ocx config`](#ocx-config) - View and edit configuration
+- [`ocx config`](#ocx-config) - View and edit configuration (local-first)
 - [`ocx opencode`](#ocx-opencode) - Launch OpenCode with resolved configuration
 
 ---
@@ -56,6 +56,7 @@ ocx init [directory] [options]
 | `-v, --verbose` | Verbose output |
 | `--json` | Output as JSON |
 | `--global` | Initialize global configuration with default profile |
+| `--local` | Initialize local configuration (default behavior) |
 | `--registry` | Scaffold a new OCX registry project |
 | `--namespace <name>` | Registry namespace (e.g., `my-org`) |
 | `--author <name>` | Author name for the registry |
@@ -102,7 +103,7 @@ ocx init my-registry --registry --canary
 |------|-------------|
 | `.opencode/ocx.jsonc` | Local project configuration |
 | `.opencode/opencode.jsonc` | OpenCode-specific configuration (optional) |
-| `.opencode/ocx.lock` | Lock file tracking installed components |
+| `.opencode/ocx-receipt.json` | Receipt tracking installed components |
 
 **Global initialization** (`--global`) creates:
 
@@ -149,6 +150,7 @@ ocx add <components...> [options]
 | `-f, --force` | Overwrite existing components/plugins without prompting |
 | `--trust` | Skip plugin validation for npm packages (allows non-ESM packages) |
 | `--dry-run` | Show what would be installed without making changes |
+| `--from <url>` | Use ephemeral registry for one-command install (no config changes) |
 | `-p, --profile <name>` | Use specific global profile for registry resolution |
 | `--cwd <path>` | Working directory (default: current directory) |
 | `-q, --quiet` | Suppress output |
@@ -175,8 +177,11 @@ ocx add kdco/agents kdco/skills kdco/plugins
 ### Examples
 
 ```bash
-# Add a registry component
+# Add a registry component (requires registry to be configured)
 ocx add kdco/background-agents
+
+# One-command install with ephemeral registry (no config changes)
+ocx add kdco/workspace --from https://registry.kdco.dev
 
 # Add using a specific profile
 ocx add kdco/agents --profile work
@@ -218,7 +223,24 @@ ocx add npm:some-package --trust
 3. **Conflict detection** - Checks for modified local files
 4. **Writes files** - Installs component files to target paths
 5. **Updates opencode.jsonc** - Merges component configuration
-6. **Updates lock file** - Records installed version and hash
+6. **Updates receipt** - Records installed version and hash in `ocx-receipt.json`
+
+### One-Command Install
+
+Use `--from URL` to install from an ephemeral registry without modifying your config:
+
+```bash
+ocx add kdco/workspace --from https://registry.kdco.dev
+```
+
+This is useful for:
+- Trying out components without adding the registry
+- CI/CD pipelines
+- One-off installations
+
+The `--from` URL can be:
+- A registry base URL (e.g., `https://registry.kdco.dev`)
+- A direct component URL (e.g., `https://registry.kdco.dev/components/workspace.json`)
 
 ### Errors
 
@@ -228,6 +250,7 @@ ocx add npm:some-package --trust
 | `File conflicts detected` | Local files modified | Use `--force` to overwrite or review changes |
 | `Integrity check failed` | Hash mismatch | Component was modified; resolve manually |
 | `File conflict: already exists` | Another component installed this file | Remove conflicting file first |
+| `Registry not found` | Registry not configured | Add registry with `ocx registry add` or use `--from` |
 
 ---
 
@@ -306,7 +329,7 @@ ocx update kdco/agents --verbose
 2. **Fetches latest versions** - Gets current registry state
 3. **Compares hashes** - Determines which components have changes
 4. **Applies updates** - Writes new files (skipped in dry-run mode)
-5. **Updates lock file** - Records new version and hash
+5. **Updates receipt** - Records new version and hash in `ocx-receipt.json`
 
 ### Dry Run Output
 
@@ -328,13 +351,13 @@ Run without --dry-run to apply changes.
 | Error | Cause | Solution |
 |-------|-------|----------|
 | `No ocx.jsonc found` | Not initialized | Run `ocx init` first |
-| `Nothing installed yet` | Lock file empty | Run `ocx add <component>` first |
+| `Nothing installed yet` | Receipt empty | Run `ocx add <component>` first |
 | `Specify components, use --all, or use --registry` | No arguments provided | Provide components or use a flag |
 | `Cannot specify components with --all` | Mutually exclusive options | Use one or the other |
 | `Cannot specify components with --registry` | Mutually exclusive options | Use one or the other |
 | `Cannot use --all with --registry` | Mutually exclusive options | Use one or the other |
 | `Component 'name' must include a registry prefix` | Missing namespace | Use fully qualified name (e.g., `kdco/agents`) |
-| `Component 'name' is not installed` | Not in lock file | Install first with `ocx add` |
+| `Component 'name' is not installed` | Not in receipt | Install first with `ocx add` |
 | `Invalid version specifier` | Empty version after `@` | Provide version or omit `@` |
 
 ---
@@ -407,9 +430,9 @@ Diff for kdco/plugins:
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| `No ocx.lock found` | No lock file | Run `ocx add` first |
+| `No ocx-receipt.json found` | No receipt file | Run `ocx add` first |
 | `No ocx.jsonc found` | Not initialized | Run `ocx init` first |
-| `Component 'name' not found in lockfile` | Not installed | Check spelling or install first |
+| `Component 'name' not found in receipt` | Not installed | Check spelling or install first |
 | `Registry 'name' not configured` | Registry removed from config | Add registry back with `ocx registry add` |
 
 ---
@@ -490,7 +513,7 @@ Installed components (2):
 | Error | Cause | Solution |
 |-------|-------|----------|
 | `No ocx.jsonc found` | Not initialized | Run `ocx init` first |
-| `No components installed` | Lock file empty | Run `ocx add` first |
+| `No components installed` | Receipt empty | Run `ocx add` first |
 
 ---
 
@@ -528,8 +551,8 @@ ocx registry add <url> [options]
 |--------|-------------|
 | `--name <name>` | Registry alias (defaults to hostname) |
 | `--version <version>` | Pin to specific version |
-| `-f, --force`          | Overwrite existing registry            |
-| `-g, --global` | Add to global config (~/.config/opencode) instead of local project |
+| `-f, --force` | Overwrite existing registry |
+| `-g, --global` | Add to global config (~/.config/opencode). **Default is local.** |
 | `-p, --profile <name>` | Use specific global profile for registry resolution |
 | `--cwd <path>` | Working directory (default: current directory) |
 | `--json` | Output as JSON |
@@ -554,11 +577,15 @@ ocx registry add https://registry.example.com --json
 ocx registry add https://new-url.example.com --name myregistry --force
 ```
 
-#### Global Registry
+#### Registry Scope (Local-First)
 
-Add a registry to your global config (available to all projects):
+By default, `ocx registry add` modifies your **local** project config (`.opencode/ocx.jsonc`). Use `--global` to add to the global config instead:
 
 ```bash
+# Add to local config (default)
+ocx registry add https://registry.example.com --name myregistry
+
+# Add to global config (explicit --global required)
 ocx registry add https://registry.example.com --name myregistry --global
 ```
 
@@ -594,7 +621,7 @@ ocx registry remove <name> [options]
 
 | Option | Description |
 |--------|-------------|
-| `-g, --global` | Remove from global config instead of local project |
+| `-g, --global` | Remove from global config (default is local) |
 | `-p, --profile <name>` | Use specific global profile for registry resolution |
 | `--cwd <path>` | Working directory (default: current directory) |
 | `--json` | Output as JSON |
@@ -637,7 +664,7 @@ ocx registry list [options]
 
 | Option | Description |
 |--------|-------------|
-| `-g, --global` | List registries from global config only |
+| `-g, --global` | List registries from global config (default is local) |
 | `-p, --profile <name>` | Use specific global profile for registry resolution |
 | `--cwd <path>` | Working directory (default: current directory) |
 | `--json` | Output as JSON |
@@ -956,13 +983,13 @@ Profile-specific OpenCode configuration:
 
 Profile-specific agent instructions (highest priority).
 
-### .opencode/ocx.lock
+### .opencode/ocx-receipt.json
 
-Lock file tracking installed components (managed automatically):
+Receipt tracking installed components (managed automatically):
 
 ```json
 {
-  "lockVersion": 1,
+  "version": 1,
   "installed": {
     "kdco/agents": {
       "registry": "kdco",
@@ -975,6 +1002,8 @@ Lock file tracking installed components (managed automatically):
   }
 }
 ```
+
+Receipts are advisory records of what was installed. They help track provenance but do not enforce strict lockfile semantics. Use version pinning in your `ocx.jsonc` for reproducible builds.
 
 ---
 
@@ -1079,7 +1108,7 @@ ocx p add <name> [options]  # alias
 
 | Option | Description |
 |--------|-------------|
-| `--from <source>` | Clone from existing profile or install from registry (e.g., kit/ws) |
+| `--from <source>` | Clone from existing profile, install from registry (e.g., kit/ws), or full URL |
 | `-f, --force` | Overwrite existing profile |
 
 #### Examples
@@ -1091,7 +1120,10 @@ ocx profile add work
 # Clone from existing profile
 ocx profile add client-x --from work
 
-# Install from registry (requires global registry config)
+# Install from registry with one command (ephemeral, no config changes)
+ocx profile add ws --from https://ocx-kit.kdco.dev/ws
+
+# Or first add global registry, then install
 ocx registry add https://ocx-kit.kdco.dev --name kit --global
 ocx profile add ws --from kit/ws
 
@@ -1106,7 +1138,7 @@ ocx p add personal
 
 - Profile names must be valid filesystem names
 - Spaces are automatically converted to hyphens
-- Installing from registry requires global registry configuration
+- `--from` accepts: existing profile name, `registry/component` shorthand, or full URL
 - Use `--force` to overwrite existing profiles
 
 ---
@@ -1307,7 +1339,7 @@ Configuration sources:
 
 ### ocx config edit
 
-Edit configuration file in `$EDITOR`.
+Edit configuration file in `$EDITOR`. **Local-first**: edits local config by default; use `--global` for global config.
 
 #### Usage
 
@@ -1319,7 +1351,7 @@ ocx config edit [options]
 
 | Option | Description |
 |--------|-------------|
-| `--global` | Edit global config instead of local |
+| `--global` | Edit global config (default is local) |
 | `-p, --profile <name>` | Edit specific profile's config (implies --global) |
 
 #### Environment
@@ -1342,9 +1374,9 @@ ocx config edit -p work
 
 #### Notes
 
-- Local config: `.opencode/ocx.jsonc`
-- Global config: `~/.config/opencode/ocx.jsonc`
-- Profile config: `~/.config/opencode/profiles/<name>/ocx.jsonc`
+- Local config: `.opencode/ocx.jsonc` (default, local-first)
+- Global config: `~/.config/opencode/ocx.jsonc` (requires `--global`)
+- Profile config: `~/.config/opencode/profiles/<name>/ocx.jsonc` (use `-p`)
 - Falls back to `vi` if neither `$EDITOR` nor `$VISUAL` are set
 
 ---
@@ -1379,8 +1411,9 @@ Profiles are resolved in this order (first match wins):
 
 1. **`--profile` / `-p` flag** - Explicit CLI specification
 2. **`OCX_PROFILE` environment variable** - Session-level profile
-3. **`default` profile** - If it exists
-4. **No profile** - Base configs only
+3. **`profile` field in `.opencode/ocx.jsonc`** - Project-specific profile
+4. **`default` profile** - If it exists
+5. **No profile** - Base configs only
 
 ### Examples
 

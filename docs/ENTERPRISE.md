@@ -29,9 +29,9 @@ ocx registry add https://registry.kdco.dev --version 0.1.0
 
 This ensures that `ocx add` and updates will only pull components compatible with version `0.1.0` of that registry.
 
-## Security Audit with `ocx.lock`
+## Security Audit with `ocx-receipt.json`
 
-OCX automatically generates an `ocx.lock` file. This file acts as an audit log and integrity check for your installed extensions.
+OCX automatically generates an `ocx-receipt.json` file. This file acts as an audit log and provenance record for your installed extensions.
 
 | Field | Purpose |
 |-------|---------|
@@ -41,13 +41,30 @@ OCX automatically generates an `ocx.lock` file. This file acts as an audit log a
 | `files` | Array of file paths installed by this component. |
 | `installedAt` | ISO timestamp of the installation. |
 
+### Receipt vs Lockfile
+
+OCX uses **receipt semantics** rather than strict lockfile semantics:
+
+- **Receipts are advisory** - They record what was installed but don't enforce strict reproducibility
+- **Version pinning in config** - For reproducible builds, pin versions in `ocx.jsonc`:
+  ```jsonc
+  {
+    "registries": {
+      "kdco": { "url": "https://registry.kdco.dev", "version": "1.2.0" }
+    }
+  }
+  ```
+- **Component-level pinning** - Pin individual components: `ocx add kdco/agents@1.2.0`
+
+This approach gives you flexibility while maintaining auditability.
+
 ## Integrity Verification
 
 OCX provides both proactive and reactive integrity verification to protect against supply-chain attacks and accidental tampering.
 
 ### Install-Time Verification (Proactive)
 
-When you run `ocx add`, OCX automatically verifies the integrity of the component before writing any files to your project. If a component is already present in your `ocx.lock` file, OCX computes the SHA-256 hash of the incoming content and compares it against the locked hash.
+When you run `ocx add`, OCX automatically verifies the integrity of the component before writing any files to your project. If a component is already present in your `ocx-receipt.json` file, OCX computes the SHA-256 hash of the incoming content and compares it against the recorded hash.
 
 If the hashes do not match, the installation fails immediately with an `INTEGRITY_ERROR`. This prevents malicious or unauthorized updates from silently entering your codebase even if a registry is compromised.
 
@@ -85,7 +102,7 @@ This ensures reproducible deployments with known-good versions that have passed 
 
 ### Update Audit Trail
 
-The lock file tracks the complete update history for each component:
+The receipt file tracks the complete update history for each component:
 
 ```jsonc
 {
@@ -102,7 +119,7 @@ Use `ocx diff` to review changes before updating. The combination of `updatedAt`
 
 ### Security Audit with `ocx diff` (Reactive)
 
-Running `ocx diff` compares your local files against the upstream registry and uses the hash in `ocx.lock` to identify changes. This allows teams to audit exactly what modifications have been made to distributed agents or plugins.
+Running `ocx diff` compares your local files against the upstream registry and uses the hash in `ocx-receipt.json` to identify changes. This allows teams to audit exactly what modifications have been made to distributed agents or plugins.
 
 ## Air-Gapped Environments
 

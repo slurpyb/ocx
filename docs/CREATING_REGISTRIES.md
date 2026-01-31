@@ -81,13 +81,14 @@ Use string shorthand when the target can be auto-inferred from the path:
 ```json
 // String shorthand (recommended)
 "files": ["plugin/my-plugin.ts"]
-// Expands to: { "path": "plugin/my-plugin.ts", "target": ".opencode/plugin/my-plugin.ts" }
+// Expands to: { "path": "plugin/my-plugin.ts", "target": "plugin/my-plugin.ts" }
 
 // Full object (when you need a custom target)
+// Note: V2 uses root-relative targets (no .opencode/ prefix)
 "files": [
   {
     "path": "skills/my-skill/SKILL.md",
-    "target": ".opencode/skills/my-skill/SKILL.md"
+    "target": "skills/my-skill/SKILL.md"
   }
 ]
 ```
@@ -287,7 +288,7 @@ Error: File conflict detected
   .opencode/agent/researcher.md already exists (installed from kdco/researcher)
 
 To resolve:
-  1. Remove existing file and update ocx.lock
+  1. Remove existing file and update ocx-receipt.json
   2. Or rename existing file manually
   3. Then retry: ocx add acme/researcher
 ```

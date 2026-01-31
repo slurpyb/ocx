@@ -131,38 +131,67 @@ export const dependencyRefSchema = z.string().refine(
 // =============================================================================
 
 export const componentTypeSchema = z.enum([
-	"ocx:agent",
-	"ocx:skill",
-	"ocx:plugin",
-	"ocx:command",
-	"ocx:tool",
-	"ocx:bundle",
-	"ocx:profile",
+	"agent",
+	"skill",
+	"plugin",
+	"command",
+	"tool",
+	"bundle",
+	"profile",
 ])
 
 export type ComponentType = z.infer<typeof componentTypeSchema>
 
-/** Reserved targets for profiles (installer-owned files) */
-const PROFILE_RESERVED_TARGETS = new Set(["ocx.lock", ".opencode"])
+/** Reserved targets (installer-owned files) */
+const RESERVED_TARGETS = new Set([".ocx", "ocx.lock"])
+
+/** Allowed root-relative prefixes for component files */
+const ALLOWED_PREFIXES = [
+	"plugins/",
+	"agents/",
+	"skills/",
+	"commands/",
+	"tools/",
+	// Root config files (no directory prefix)
+	"ocx.jsonc",
+	"ocx.json",
+	"opencode.jsonc",
+	"opencode.json",
+	"AGENTS.md",
+	"CLAUDE.md",
+	"CONTEXT.md",
+]
 
 /**
- * Target path must be inside .opencode/ with valid subdirectory
+ * V2: Target paths are root-relative (no .opencode/ prefix).
+ * Enforces allowed prefixes: plugins/, agents/, skills/, commands/, tools/, or root config files.
+ * Validates path safety using schema-level checks.
  */
 export const targetPathSchema = z
 	.string()
-	.refine((path) => path.startsWith(".opencode/"), {
-		message: 'Target path must start with ".opencode/"',
-	})
+	.min(1, "Target path cannot be empty")
 	.refine(
 		(path) => {
-			const parts = path.split("/")
-			const dir = parts[1]
-			if (!dir) return false
-			return ["agent", "skills", "plugin", "command", "tool", "philosophy"].includes(dir)
+			// No absolute paths
+			if (path.startsWith("/") || /^[a-zA-Z]:/.test(path)) return false
+			// No null bytes
+			if (path.includes("\0")) return false
+			// No parent directory traversal
+			if (path.includes("..")) return false
+			return true
+		},
+		{
+			message: "Target path must be relative and safe (no .., absolute paths, or null bytes)",
+		},
+	)
+	.refine(
+		(path) => {
+			// Must start with an allowed prefix
+			return ALLOWED_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix))
 		},
 		{
 			message:
-				'Target must be in a valid directory: ".opencode/{agent|skills|plugin|command|tool|philosophy}/..."',
+				"Target path must start with an allowed prefix (plugins/, agents/, skills/, commands/, tools/) or be a root config file (ocx.jsonc, opencode.jsonc, AGENTS.md, etc.)",
 		},
 	)
 
@@ -241,10 +270,8 @@ export type McpServerRef = z.infer<typeof mcpServerRefSchema>
 // =============================================================================
 
 /**
- * Full file configuration object (profile-aware).
+ * Full file configuration object.
  * Target validation is deferred to normalizeFile() where component type is known.
- * For profiles: flat paths (ocx.jsonc, opencode.jsonc, AGENTS.md) or .opencode/... for embedded deps
- * For other types: must be .opencode/...
  */
 export const componentFileObjectSchema = z.object({
 	/** Source path in registry */
@@ -257,7 +284,7 @@ export type ComponentFileObject = z.infer<typeof componentFileObjectSchema>
 
 /**
  * Cargo-style file schema:
- * - String: Path shorthand, target auto-inferred (e.g., "plugin/foo.ts" -> ".opencode/plugin/foo.ts")
+ * - String: Path shorthand, target auto-inferred (e.g., "plugins/foo.ts" -> "plugins/foo.ts")
  * - Object: Full configuration with explicit target
  */
 export const componentFileSchema = z.union([
@@ -571,10 +598,11 @@ export const componentManifestSchema = z.object({
 
 	/**
 	 * Files to install (Cargo-style)
-	 * - String: "plugin/foo.ts" -> auto-infers target as ".opencode/plugin/foo.ts"
+	 * - String: "plugins/foo.ts" -> auto-infers target as "plugins/foo.ts"
 	 * - Object: { path: "...", target: "..." } for explicit control
+	 * - Optional: bundles (deps-only) may have no files
 	 */
-	files: z.array(componentFileSchema),
+	files: z.array(componentFileSchema).default([]),
 
 	/**
 	 * Dependencies on other components (Cargo-style)
@@ -623,67 +651,62 @@ export function validateSafePath(filePath: string): void {
 }
 
 /**
- * Infer target path from source path
- * e.g., "plugin/foo.ts" -> ".opencode/plugin/foo.ts"
+ * V2: Infer target path from source path (root-relative, no prefix).
+ * The path is used as-is since targets are now root-relative.
+ * e.g., "plugins/foo.ts" -> "plugins/foo.ts"
  */
 export function inferTargetPath(sourcePath: string): string {
-	return `.opencode/${sourcePath}`
+	return sourcePath
 }
 
 /**
- * Validate a file target path based on component type.
- * - Profile types: allow flat paths (ocx.jsonc, etc.) OR .opencode/... for embedded deps
- * - Other types: require .opencode/... paths
+ * V2: Validate a file target path.
+ * Checks for reserved paths and uses runtime containment validation.
+ * Component type is inferred from target path (behavior-based, not explicit).
  * @param target - The target path to validate
- * @param componentType - The component type for context-aware validation
- * @throws ValidationError if target is invalid for the component type
+ * @param componentType - Optional type hint for additional validation context
+ * @throws ValidationError if target is invalid
  */
-export function validateFileTarget(target: string, componentType?: ComponentType): void {
-	const isProfile = componentType === "ocx:profile"
+export function validateFileTarget(target: string, _componentType?: ComponentType): void {
+	// Check reserved targets
+	if (RESERVED_TARGETS.has(target)) {
+		throw new ValidationError(`Target "${target}" is reserved for installer use`)
+	}
 
-	if (isProfile) {
-		// Check reserved names
-		if (PROFILE_RESERVED_TARGETS.has(target)) {
-			throw new ValidationError(`Target "${target}" is reserved for installer use`)
+	// Validate path safety using battle-tested validation
+	try {
+		validatePath("/dummy/base", target) // Just validates the path structure
+	} catch (error) {
+		if (error instanceof PathValidationError) {
+			throw new ValidationError(`Invalid target "${target}": ${error.message}`)
 		}
+		throw error
+	}
 
-		// Validate path safety using battle-tested validation
-		try {
-			validatePath("/dummy/base", target) // Just validates the path structure
-		} catch (error) {
-			if (error instanceof PathValidationError) {
-				throw new ValidationError(`Invalid profile target "${target}": ${error.message}`)
-			}
-			throw error
-		}
-
-		return // No further restrictions for profiles - trust the user
-	} else {
-		// Non-profile types require .opencode/... paths
-		const parseResult = targetPathSchema.safeParse(target)
-		if (!parseResult.success) {
-			throw new ValidationError(
-				`Invalid target: "${target}". ${parseResult.error.errors[0]?.message}`,
-			)
-		}
+	// Validate allowed prefix
+	const hasAllowedPrefix = ALLOWED_PREFIXES.some(
+		(prefix) => target === prefix || target.startsWith(prefix),
+	)
+	if (!hasAllowedPrefix) {
+		throw new ValidationError(
+			`Target "${target}" must start with an allowed prefix (plugins/, agents/, skills/, commands/, tools/) or be a root config file`,
+		)
 	}
 }
 
 /**
- * Normalize a file entry from string shorthand to full object.
- * Handles profile type differently - uses flat paths without .opencode/ prefix.
+ * V2: Normalize a file entry from string shorthand to full object.
+ * All targets are root-relative (no .opencode/ prefix logic).
  * @param file - The file entry to normalize
- * @param componentType - Component type to determine path behavior and validation
+ * @param componentType - Optional component type for validation context
  */
 export function normalizeFile(
 	file: ComponentFile,
 	componentType?: ComponentType,
 ): ComponentFileObject {
-	const isProfile = componentType === "ocx:profile"
-
 	if (typeof file === "string") {
 		validateSafePath(file)
-		const target = isProfile ? file : inferTargetPath(file)
+		const target = inferTargetPath(file)
 		validateFileTarget(target, componentType)
 		return {
 			path: file,
@@ -767,16 +790,17 @@ const semverRegex = /^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$/
 
 export const registrySchema = z
 	.object({
-		/** Registry name */
-		name: z.string().min(1, "Registry name cannot be empty"),
+		/** JSON Schema URL for IDE support */
+		$schema: z.string().optional(),
+
+		/** Registry display name */
+		name: z.string().min(1, "Registry name cannot be empty").optional(),
+
+		/** Registry version (semver) */
+		version: z.string().regex(semverRegex, { message: "Version must be valid semver" }).optional(),
 
 		/** Registry namespace - used in qualified component references (e.g., kdco/researcher) */
 		namespace: namespaceSchema,
-
-		/** Registry version (semver) */
-		version: z.string().regex(semverRegex, {
-			message: "Version must be valid semver (e.g., '1.0.0', '2.1.0-beta.1')",
-		}),
 
 		/** Registry author */
 		author: z.string().min(1, "Author cannot be empty"),
@@ -848,10 +872,13 @@ export type Packument = z.infer<typeof packumentSchema>
 // =============================================================================
 
 export const registryIndexSchema = z.object({
-	/** Registry metadata */
-	name: z.string(),
+	/** JSON Schema URL for IDE support */
+	$schema: z.string().optional(),
+
+	/** Registry namespace */
 	namespace: namespaceSchema,
-	version: z.string(),
+
+	/** Registry author */
 	author: z.string(),
 
 	/** Minimum OpenCode version required */

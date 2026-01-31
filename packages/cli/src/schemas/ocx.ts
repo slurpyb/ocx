@@ -1,11 +1,11 @@
 /**
  * OCX Profile Config Schema
  *
- * Schema for ocx.jsonc (within profiles) - the global OCX configuration file
+ * V2: Schema for ocx.jsonc (within profiles) - the OCX configuration file
  * stored at ~/.config/opencode/profiles/<name>/ocx.jsonc (XDG-compliant).
  *
- * OCX profiles allow working without project-local config files
- * by storing registries globally.
+ * Profiles layer with local configs of the same name.
+ * Visibility is controlled by include/exclude patterns (no isolation flag).
  */
 
 import { Glob } from "bun"
@@ -33,10 +33,11 @@ const globPatternSchema = z.string().refine(
 // =============================================================================
 
 /**
- * OCX profile configuration schema
+ * V2: OCX profile configuration schema
  *
  * Contains OCX-specific settings (registries, componentPath).
  * OpenCode configuration is stored separately in opencode.jsonc.
+ * Profiles layer: global base + local overlay of same name (overlay wins).
  */
 export const profileOcxConfigSchema = z.object({
 	/** Schema URL for IDE support */
@@ -68,8 +69,8 @@ export const profileOcxConfigSchema = z.object({
 		.describe("Set terminal/tmux window name when launching OpenCode"),
 
 	/**
-	 * Glob patterns for project files to exclude from OpenCode discovery.
-	 * Prevents OCX profiles from loading project-local configuration files.
+	 * V2: Glob patterns for project files to exclude from OpenCode discovery.
+	 * Controls visibility of local config files.
 	 * Note: AGENTS.md is NOT excluded by default - uncomment in ocx.jsonc to exclude.
 	 */
 	exclude: z
@@ -84,7 +85,7 @@ export const profileOcxConfigSchema = z.object({
 		.describe("Glob patterns for project files to exclude from OpenCode discovery"),
 
 	/**
-	 * Glob patterns for project files to include (overrides exclude).
+	 * V2: Glob patterns for project files to include (overrides exclude).
 	 * Use when you need specific files from otherwise excluded patterns.
 	 */
 	include: z

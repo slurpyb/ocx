@@ -54,8 +54,7 @@ export function registerBuildCommand(program: Command): void {
 					outputJson({
 						success: true,
 						data: {
-							name: result.name,
-							version: result.version,
+							namespace: result.namespace,
 							components: result.componentsCount,
 							output: result.outputPath,
 						},

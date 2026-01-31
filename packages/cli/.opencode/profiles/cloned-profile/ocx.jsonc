@@ -1,0 +1,10 @@
+{
+	"registries": {
+		"custom": {
+			"url": "https://custom.registry.com"
+		}
+	},
+	"renameWindow": true,
+	"exclude": ["**/SECRET.md"],
+	"include": []
+}

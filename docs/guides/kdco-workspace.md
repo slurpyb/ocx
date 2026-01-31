@@ -9,8 +9,20 @@ Set up the KDCO Workspace multi-agent harness with OCX profiles for a fully port
 ### 1. Add the registries (one-time)
 
 ```bash
+# One-command install (ephemeral registry)
+ocx profile add ws --from https://ocx-kit.kdco.dev/ws
+
+# Or add registries first, then install
 ocx registry add https://ocx-kit.kdco.dev --name kit --global
-ocx registry add https://registry.kdco.dev --name kdco --global
+ocx profile add ws --from kit/ws
+```
+
+### 2. Install the ws profile
+
+```bash
+# Already installed if using --from above
+# Otherwise:
+ocx profile add ws --from kit/ws
 ```
 
 ### 2. Install the ws profile

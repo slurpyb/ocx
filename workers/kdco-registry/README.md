@@ -5,7 +5,10 @@
 ## Quick Start
 
 ```bash
-ocx init
+# One-command install (ephemeral registry, no config changes)
+ocx add kdco/workspace --from https://registry.kdco.dev
+
+# Or add registry first, then install
 ocx registry add https://registry.kdco.dev --name kdco
 ocx add kdco/workspace
 ```
