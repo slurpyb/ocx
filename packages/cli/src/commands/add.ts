@@ -465,6 +465,7 @@ async function runRegistryAddCore(
 			component: ResolvedComponent
 			files: { path: string; content: Buffer }[]
 			computedHash: string
+			canonicalId: string
 		}[] = []
 
 		for (const component of resolved.components) {
@@ -485,20 +486,37 @@ async function runRegistryAddCore(
 				assertPathInside(targetPath, cwd)
 			}
 
-			// V2: Check if already installed with canonical ID
+			// V2: Check if already installed with canonical ID (use hash as revision)
+			// Integrity check: Look for ANY existing entry for this component (any revision)
+			// If found with different hash, fail - registry content changed unexpectedly
+			const existingEntries = Object.entries(receipt.installed).filter(
+				([_id, entry]) =>
+					entry.registryUrl.replace(/\/$/, "") === component.baseUrl.replace(/\/$/, "") &&
+					entry.namespace === component.registryName &&
+					entry.name === component.name,
+			)
+
+			if (existingEntries.length > 0) {
+				const existingPair = existingEntries[0]
+				if (existingPair) {
+					const [existingId, existingEntry] = existingPair
+					if (existingEntry.hash !== computedHash) {
+						fetchSpin?.fail("Integrity check failed")
+						throw new IntegrityError(existingId, existingEntry.hash, computedHash)
+					}
+					// Hash matches - component already installed, will be skipped later
+				}
+			}
+
+			// V2: Create canonical ID with hash-based revision
 			const canonicalId = createCanonicalId(
 				component.baseUrl,
 				component.registryName,
 				component.name,
-				"1.0.0", // TODO: Get actual revision from resolved component
+				`sha256:${computedHash}`,
 			)
-			const existingEntry = receipt.installed[canonicalId]
-			if (existingEntry && existingEntry.hash !== computedHash) {
-				fetchSpin?.fail("Integrity check failed")
-				throw new IntegrityError(canonicalId, existingEntry.hash, computedHash)
-			}
 
-			componentBundles.push({ component, files, computedHash })
+			componentBundles.push({ component, files, computedHash, canonicalId })
 		}
 
 		fetchSpin?.succeed(`Fetched ${resolved.components.length} components`)
@@ -545,7 +563,7 @@ async function runRegistryAddCore(
 		const installSpin = options.quiet ? null : createSpinner({ text: "Installing components..." })
 		installSpin?.start()
 
-		for (const { component, files, computedHash } of componentBundles) {
+		for (const { component, files, computedHash, canonicalId } of componentBundles) {
 			// Install component
 			const installResult = await installComponent(component, files, cwd, isFlattened, {
 				force: options.force,
@@ -574,14 +592,6 @@ async function runRegistryAddCore(
 				)
 			}
 
-			// V2: Create canonical ID and update receipt
-			const canonicalId = createCanonicalId(
-				component.baseUrl,
-				component.registryName,
-				component.name,
-				"1.0.0", // TODO: Get actual revision
-			)
-
 			// Compute individual file hashes (store resolved paths in receipt)
 			const fileHashes: Array<{ path: string; hash: string }> = []
 			for (const file of files) {
@@ -598,7 +608,7 @@ async function runRegistryAddCore(
 				registryUrl: component.baseUrl,
 				namespace: component.registryName,
 				name: component.name,
-				revision: "1.0.0", // TODO: Get actual revision
+				revision: `sha256:${computedHash}`,
 				hash: computedHash,
 				files: fileHashes,
 				installedAt: new Date().toISOString(),

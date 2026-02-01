@@ -213,7 +213,6 @@ export async function runUpdateCore(
 			// Fetch component (specific version or latest)
 			const fetchResult = await fetchComponentVersion(regConfig.url, componentName, spec.version)
 			const manifest = fetchResult.manifest
-			const version = fetchResult.version
 
 			const normalizedManifest = normalizeComponentManifest(manifest)
 
@@ -225,27 +224,28 @@ export async function runUpdateCore(
 			}
 
 			const newHash = await hashBundle(files)
+			const newVersion = `sha256:${newHash}` // Use hash as version/revision
 
 			// Compare hashes
 			if (newHash === entry.hash) {
 				results.push({
 					qualifiedName: canonicalId,
 					oldVersion: entry.revision,
-					newVersion: version,
+					newVersion: newVersion,
 					status: "up-to-date",
 				})
 			} else if (options.dryRun) {
 				results.push({
 					qualifiedName: canonicalId,
 					oldVersion: entry.revision,
-					newVersion: version,
+					newVersion: newVersion,
 					status: "would-update",
 				})
 			} else {
 				results.push({
 					qualifiedName: canonicalId,
 					oldVersion: entry.revision,
-					newVersion: version,
+					newVersion: newVersion,
 					status: "updated",
 				})
 				updates.push({
@@ -253,7 +253,7 @@ export async function runUpdateCore(
 					component: normalizedManifest,
 					files,
 					newHash,
-					newVersion: version,
+					newVersion: newVersion,
 					baseUrl: regConfig.url,
 					namespace,
 					name: componentName,

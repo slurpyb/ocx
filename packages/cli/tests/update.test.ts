@@ -256,7 +256,8 @@ describe("ocx update", () => {
 		// V2: Find entry containing test-plugin
 		const pluginEntry = Object.entries(installed).find(([id]) => id.includes("test-plugin"))
 		expect(pluginEntry).toBeDefined()
-		expect(pluginEntry?.[1].revision).toBe("1.0.0")
+		// V2: Revision should be sha256:hash format
+		expect(pluginEntry?.[1].revision).toMatch(/^sha256:[a-f0-9]{64}$/)
 	})
 
 	it("should allow multiple components with different versions", async () => {
@@ -288,8 +289,9 @@ describe("ocx update", () => {
 		const skillEntry = Object.entries(installed).find(([id]) => id.includes("test-skill"))
 		expect(pluginEntry).toBeDefined()
 		expect(skillEntry).toBeDefined()
-		expect(pluginEntry?.[1].revision).toBe("1.0.0")
-		expect(skillEntry?.[1].revision).toBe("1.0.0")
+		// V2: Revision should be sha256:hash format
+		expect(pluginEntry?.[1].revision).toMatch(/^sha256:[a-f0-9]{64}$/)
+		expect(skillEntry?.[1].revision).toMatch(/^sha256:[a-f0-9]{64}$/)
 	})
 
 	it("should fail with empty version specifier", async () => {

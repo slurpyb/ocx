@@ -233,7 +233,7 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 			installedFrom: {
 				registry: namespace,
 				component,
-				version: "1.0.0", // V2: Use default version (registry has no version field)
+				version: `sha256:${profileHash}`,
 				hash: profileHash,
 				installedAt: new Date().toISOString(),
 			},
