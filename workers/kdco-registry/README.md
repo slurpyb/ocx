@@ -5,7 +5,7 @@
 ## Quick Start
 
 ```bash
-# One-command install (ephemeral registry, no config changes)
+# One-command install with ephemeral registry
 ocx add kdco/workspace --from https://registry.kdco.dev
 
 # Or add registry first, then install
@@ -13,7 +13,7 @@ ocx registry add https://registry.kdco.dev --name kdco
 ocx add kdco/workspace
 ```
 
-> **Tip:** Use `--global` to add the registry to your global config (used when no profile is active).
+> **Tip:** Use `--global` to add the registry to your global config for profile management.
 
 Browse available components with `ocx search kdco/`.
 
@@ -85,11 +85,11 @@ Reference in config with `{file:~/.secrets/service-api-key}`.
 
 #### Example: Kagi
 
-[Kagi](https://kagi.com) provides privacy-focused search (requires a paid subscription).
+[Kagi](https://kagi.com) provides privacy-focused search (requires paid subscription).
 
 1. **Get your session token** from Kagi's settings
 
-2. **Create a secret file** (requires Node.js 22+ for `npx`):
+2. **Create a secret file** (requires Node.js 22+):
    ```bash
    mkdir -p ~/.secrets && chmod 700 ~/.secrets
    echo "YOUR_KAGI_SESSION_TOKEN" > ~/.secrets/kagi-session-token

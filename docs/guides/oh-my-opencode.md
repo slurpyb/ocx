@@ -9,7 +9,7 @@ Set up [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) with OCX
 ### 1. Install the omo profile
 
 ```bash
-# One-command install (ephemeral registry)
+# One-command install with ephemeral registry
 ocx profile add omo --from https://ocx-kit.kdco.dev/omo
 
 # Or add registry first, then install

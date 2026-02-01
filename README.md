@@ -66,7 +66,10 @@ Add components to local projects with automatic dependency resolution.
 ![OCX Components Demo](./assets/components-demo.gif)
 
 ```bash
-# One-command install (ephemeral registry, no config changes)
+# Initialize local config if not present
+ocx init
+
+# One-command install with ephemeral registry
 ocx add kdco/workspace --from https://registry.kdco.dev
 
 # Or install npm plugins directly

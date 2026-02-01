@@ -21,7 +21,7 @@ bun run deploy
 ## Using the Registry
 
 ```bash
-# One-command install (ephemeral registry)
+# One-command install with ephemeral registry
 ocx profile add omo --from https://ocx-kit.your-domain.workers.dev/omo
 
 # Or add registry first, then install

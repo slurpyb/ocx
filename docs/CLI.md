@@ -50,13 +50,12 @@ ocx init [directory] [options]
 
 | Option | Description |
 |--------|-------------|
-| `-f, --force` | Skip prompts and use defaults |
+| `-f, --force` | Overwrite existing files (registry mode only) |
 | `--cwd <path>` | Working directory (default: current directory) |
 | `-q, --quiet` | Suppress output |
 | `-v, --verbose` | Verbose output |
 | `--json` | Output as JSON |
-| `--global` | Initialize global configuration with default profile |
-| `--local` | Initialize local configuration (default behavior) |
+| `-g, --global` | Initialize global configuration with default profile |
 | `--registry` | Scaffold a new OCX registry project |
 | `--namespace <name>` | Registry namespace (e.g., `my-org`) |
 | `--author <name>` | Author name for the registry |
@@ -150,7 +149,7 @@ ocx add <components...> [options]
 | `-f, --force` | Overwrite existing components/plugins without prompting |
 | `--trust` | Skip plugin validation for npm packages (allows non-ESM packages) |
 | `--dry-run` | Show what would be installed without making changes |
-| `--from <url>` | Use ephemeral registry for one-command install (no config changes) |
+| `--from <url>` | Use ephemeral registry (not saved to config) |
 | `-p, --profile <name>` | Use specific global profile for registry resolution |
 | `--cwd <path>` | Working directory (default: current directory) |
 | `-q, --quiet` | Suppress output |
@@ -180,7 +179,7 @@ ocx add kdco/agents kdco/skills kdco/plugins
 # Add a registry component (requires registry to be configured)
 ocx add kdco/background-agents
 
-# One-command install with ephemeral registry (no config changes)
+# One-command install with ephemeral registry
 ocx add kdco/workspace --from https://registry.kdco.dev
 
 # Add using a specific profile
@@ -552,7 +551,7 @@ ocx registry add <url> [options]
 | `--name <name>` | Registry alias (defaults to hostname) |
 | `--version <version>` | Pin to specific version |
 | `-f, --force` | Overwrite existing registry |
-| `-g, --global` | Add to global config (~/.config/opencode). **Default is local.** |
+| `-g, --global` | Add to global config (~/.config/opencode) |
 | `-p, --profile <name>` | Use specific global profile for registry resolution |
 | `--cwd <path>` | Working directory (default: current directory) |
 | `--json` | Output as JSON |
@@ -582,10 +581,10 @@ ocx registry add https://new-url.example.com --name myregistry --force
 By default, `ocx registry add` modifies your **local** project config (`.opencode/ocx.jsonc`). Use `--global` to add to the global config instead:
 
 ```bash
-# Add to local config (default)
+# Add to local config
 ocx registry add https://registry.example.com --name myregistry
 
-# Add to global config (explicit --global required)
+# Add to global config
 ocx registry add https://registry.example.com --name myregistry --global
 ```
 
@@ -621,7 +620,7 @@ ocx registry remove <name> [options]
 
 | Option | Description |
 |--------|-------------|
-| `-g, --global` | Remove from global config (default is local) |
+| `-g, --global` | Remove from global config |
 | `-p, --profile <name>` | Use specific global profile for registry resolution |
 | `--cwd <path>` | Working directory (default: current directory) |
 | `--json` | Output as JSON |
@@ -664,7 +663,7 @@ ocx registry list [options]
 
 | Option | Description |
 |--------|-------------|
-| `-g, --global` | List registries from global config (default is local) |
+| `-g, --global` | List registries from global config |
 | `-p, --profile <name>` | Use specific global profile for registry resolution |
 | `--cwd <path>` | Working directory (default: current directory) |
 | `--json` | Output as JSON |
@@ -1339,7 +1338,7 @@ Configuration sources:
 
 ### ocx config edit
 
-Edit configuration file in `$EDITOR`. **Local-first**: edits local config by default; use `--global` for global config.
+Edit configuration file in `$EDITOR`.
 
 #### Usage
 
@@ -1351,7 +1350,7 @@ ocx config edit [options]
 
 | Option | Description |
 |--------|-------------|
-| `--global` | Edit global config (default is local) |
+| `--global` | Edit global config |
 | `-p, --profile <name>` | Edit specific profile's config (implies --global) |
 
 #### Environment
@@ -1374,9 +1373,9 @@ ocx config edit -p work
 
 #### Notes
 
-- Local config: `.opencode/ocx.jsonc` (default, local-first)
-- Global config: `~/.config/opencode/ocx.jsonc` (requires `--global`)
-- Profile config: `~/.config/opencode/profiles/<name>/ocx.jsonc` (use `-p`)
+- Local config: `.opencode/ocx.jsonc`
+- Global config: `~/.config/opencode/ocx.jsonc`
+- Profile config: `~/.config/opencode/profiles/<name>/ocx.jsonc`
 - Falls back to `vi` if neither `$EDITOR` nor `$VISUAL` are set
 
 ---

@@ -138,15 +138,7 @@ When you run `ocx opencode`, OCX:
 
 Files are discovered deepest-first (most specific to most general). Profile instructions come last and have the highest priority.
 
-## Profile Resolution
 
-Profiles are resolved in this order:
-
-1. `--profile <name>` / `-p <name>` flag (explicit override)
-2. `OCX_PROFILE` environment variable
-3. `profile` field in `.opencode/ocx.jsonc`
-4. `default` profile (if it exists)
-5. No profile (base configs only)
 
 **Examples:**
 
@@ -187,7 +179,7 @@ ocx profile add work
 **Install profile from registry:**
 
 ```bash
-# Install directly from registry (one-command, ephemeral)
+# Install directly from registry
 ocx profile add ws --from https://ocx-kit.kdco.dev/ws
 
 # Or first add global registry, then install
@@ -268,17 +260,17 @@ ocx config show -p work
 
 | Command | Description |
 |---------|-------------|
-| `ocx config edit` | Edit local `.opencode/ocx.jsonc` (local-first) |
+| `ocx config edit` | Edit local `.opencode/ocx.jsonc` |
 | `ocx config edit --global` | Edit global `~/.config/opencode/ocx.jsonc` |
 | `ocx config edit -p <name>` | Edit profile config |
 
 **Examples:**
 
 ```bash
-# Edit local project config (default behavior)
+# Edit local project config
 ocx config edit
 
-# Edit global base config (explicit --global required)
+# Edit global base config
 ocx config edit --global
 
 # Edit profile config
@@ -306,8 +298,9 @@ ocx opencode
 # Launch with explicit profile
 ocx opencode -p work
 
-# Launch in specific directory
-ocx opencode ~/projects/my-app
+# Launch in a specific directory - use cd first
+cd ~/projects/my-app
+ocx opencode
 
 # Use environment variable
 OCX_PROFILE=work ocx opencode

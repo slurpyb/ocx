@@ -240,7 +240,7 @@ Users can add your registry using:
 ocx registry add https://example.com/registry --name my
 ```
 
-> **Tip:** Use `--global` to add the registry to your global config. Global registries are primarily for profile management (e.g., `ocx profile add --from registry/profile`). For project work, configure registries in your profile or local config:
+> **Tip:** Use `--global` to add the registry to your global config for profile management (e.g., `ocx profile add --from registry/profile`). For project work, configure registries in your profile or local config:
 > ```bash
 > ocx registry add https://example.com --name my --global
 > ```
