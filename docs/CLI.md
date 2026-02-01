@@ -350,7 +350,7 @@ Run without --dry-run to apply changes.
 | Error | Cause | Solution |
 |-------|-------|----------|
 | `No ocx.jsonc found` | Not initialized | Run `ocx init` first |
-| `Nothing installed yet` | Receipt empty | Run `ocx add <component>` first |
+| `Nothing installed yet` | Lock file empty | Run `ocx add <component>` first |
 | `Specify components, use --all, or use --registry` | No arguments provided | Provide components or use a flag |
 | `Cannot specify components with --all` | Mutually exclusive options | Use one or the other |
 | `Cannot specify components with --registry` | Mutually exclusive options | Use one or the other |
@@ -512,7 +512,7 @@ Installed components (2):
 | Error | Cause | Solution |
 |-------|-------|----------|
 | `No ocx.jsonc found` | Not initialized | Run `ocx init` first |
-| `No components installed` | Receipt empty | Run `ocx add` first |
+| `No components installed` | Lock file empty | Run `ocx add` first |
 
 ---
 
