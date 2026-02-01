@@ -316,26 +316,38 @@ This prevents global registries from injecting components into all projects.
 
 ### Instruction File Discovery
 
-By default, all project instruction files are excluded so only your profile's files are used.
+OCX doesn't exclude anything by default. A clean ocx.jsonc includes all project instruction files. The default profile template ships an exclude list for security.
 
-**Default exclude patterns:**
-- `**/AGENTS.md`
-- `**/CLAUDE.md`
-- `**/CONTEXT.md`
-- `**/.opencode/**`
-- `**/opencode.jsonc`
-- `**/opencode.json`
+**The default profile template uses this exclude list:**
+
+```jsonc
+{
+  "exclude": [
+    "**/AGENTS.md",
+    "**/CLAUDE.md",
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
+  ]
+}
+```
 
 **To include project files**, modify your profile's `ocx.jsonc`:
 
 ```jsonc
 {
-  // Include all project AGENTS.md files
-  "exclude": ["**/CLAUDE.md", "**/CONTEXT.md", "**/.opencode/**", "**/opencode.jsonc", "**/opencode.json"],
-  
-  // Or exclude all but include specific ones (TypeScript/Vite style)
-  "exclude": ["**/AGENTS.md"],
-  "include": ["./docs/AGENTS.md"]
+  // Include all project AGENTS.md files by removing from exclude
+  "exclude": ["**/CLAUDE.md", "**/CONTEXT.md", "**/.opencode/**", "**/opencode.jsonc", "**/opencode.json"]
+}
+```
+
+Or use include patterns to override excludes (TypeScript/Vite style):
+
+```jsonc
+{
+  "exclude": ["**/AGENTS.md", "**/CLAUDE.md", "**/CONTEXT.md", "**/.opencode/**", "**/opencode.jsonc", "**/opencode.json"],
+  "include": ["./docs/AGENTS.md"]  // Include only specific file
 }
 ```
 

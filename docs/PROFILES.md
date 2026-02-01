@@ -72,7 +72,7 @@ The local `exclude` array completely replaces the base profile's `exclude` array
 
 ## Controlling What OpenCode Sees
 
-By default, profiles exclude all project instruction files for maximum security. You control visibility using exclude/include patterns in your profile's `ocx.jsonc`.
+The default profile template ships an exclude list for maximum security. OCX doesn't exclude anything by default - a clean ocx.jsonc includes all project instruction files. You control visibility using exclude/include patterns in your profile's `ocx.jsonc`.
 
 **This is the key power feature.** Use it to protect yourself from untrusted repositories or to curate exactly what context OpenCode receives.
 
@@ -87,7 +87,39 @@ Patterns follow glob syntax (`**/*.md`, `src/**`, etc.). Include patterns always
 
 ### Default Configuration (Secure by Default)
 
-The default profile excludes all project instruction files:
+The default profile template uses this exclude list:
+
+```jsonc
+{
+  "exclude": [
+    "**/AGENTS.md",
+    "**/CLAUDE.md",
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
+  ]
+}
+```
+
+### Trusting Project Files
+
+For trusted repositories, loosen the template's exclude list by removing patterns or adding include overrides:
+
+```jsonc
+{
+  // Remove AGENTS.md from exclude list to trust project files
+  "exclude": [
+    "**/CLAUDE.md",
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
+  ]
+}
+```
+
+Or use include patterns to override excludes:
 
 ```jsonc
 {
@@ -99,32 +131,15 @@ The default profile excludes all project instruction files:
     "**/opencode.jsonc",
     "**/opencode.json"
   ],
-  "include": []
-}
-```
-
-### Trusting Project Files
-
-For trusted repositories, include specific project files:
-
-```jsonc
-{
-  "exclude": [
-    "**/CLAUDE.md",
-    "**/CONTEXT.md",
-    "**/.opencode/**",
-    "**/opencode.jsonc",
-    "**/opencode.json"
-  ],
   "include": [
-    "**/AGENTS.md"  // Allow project AGENTS.md files
+    "**/AGENTS.md"  // Override: allow project AGENTS.md files
   ]
 }
 ```
 
 ### Lock Down Recipe
 
-For maximum isolation (untrusted repos), the default already excludes everything. No changes needed.
+For maximum isolation (untrusted repos), the default profile template already excludes everything. No changes needed.
 
 ### How Discovery Works
 
@@ -389,11 +404,27 @@ When a profile name is specified in `.opencode/ocx.jsonc`:
 
 ### Trusted Repository
 
-The default already excludes all instruction files. For trusted repos, selectively include:
+The default profile template excludes all instruction files. For trusted repos, selectively loosen the exclude list:
+
+```jsonc
+{
+  // Remove AGENTS.md from exclude list
+  "exclude": [
+    "**/CLAUDE.md",
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
+  ]
+}
+```
+
+Or use include overrides:
 
 ```jsonc
 {
   "exclude": [
+    "**/AGENTS.md",
     "**/CLAUDE.md",
     "**/CONTEXT.md",
     "**/.opencode/**",
@@ -401,14 +432,14 @@ The default already excludes all instruction files. For trusted repos, selective
     "**/opencode.json"
   ],
   "include": [
-    "**/AGENTS.md"  // Allow project AGENTS.md files
+    "**/AGENTS.md"  // Override: allow project AGENTS.md files
   ]
 }
 ```
 
 ### Untrusted Repository
 
-Maximum isolation is the default. No changes needed - all project instruction files are excluded.
+Maximum isolation is the default profile template. No changes needed - the template excludes all project instruction files.
 
 ### Selective Inclusion
 

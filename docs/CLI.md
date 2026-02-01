@@ -1477,15 +1477,21 @@ To use a custom OpenCode binary (e.g., development build), set the `bin` option 
 
 ### Instruction File Discovery
 
-By default, all project instruction files are excluded so only profile files are used.
+OCX doesn't exclude anything by default. A clean ocx.jsonc includes all project instruction files. The default profile template ships an exclude list for security.
 
-**Default exclude patterns:**
-- `**/AGENTS.md`
-- `**/CLAUDE.md`
-- `**/CONTEXT.md`
-- `**/.opencode/**`
-- `**/opencode.jsonc`
-- `**/opencode.json`
+**The default profile template uses this exclude list:**
+```jsonc
+{
+  "exclude": [
+    "**/AGENTS.md",
+    "**/CLAUDE.md",
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
+  ]
+}
+```
 
 **To include project files**, modify your profile's `ocx.jsonc`:
 
