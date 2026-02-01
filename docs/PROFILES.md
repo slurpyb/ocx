@@ -372,7 +372,7 @@ OCX configs (`ocx.jsonc`) are **ISOLATED per scope** - they do NOT merge, except
 
 This prevents global registries from injecting components into all projects.
 
-### Profile Layering (V2)
+### Profile Layering
 
 When a profile name is specified in `.opencode/ocx.jsonc`:
 

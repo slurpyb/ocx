@@ -5,7 +5,7 @@
 ## Quick Start
 
 ```bash
-# One-command install with ephemeral registry
+# One-command install (not saved)
 ocx add kdco/workspace --from https://registry.kdco.dev
 
 # Or add registry first, then install

@@ -149,7 +149,7 @@ ocx add <components...> [options]
 | `-f, --force` | Overwrite existing components/plugins without prompting |
 | `--trust` | Skip plugin validation for npm packages (allows non-ESM packages) |
 | `--dry-run` | Show what would be installed without making changes |
-| `--from <url>` | Use ephemeral registry (not saved to config) |
+| `--from <url>` | Use ephemeral registry (not saved) |
 | `-p, --profile <name>` | Use specific global profile for registry resolution |
 | `--cwd <path>` | Working directory (default: current directory) |
 | `-q, --quiet` | Suppress output |
@@ -179,7 +179,7 @@ ocx add kdco/agents kdco/skills kdco/plugins
 # Add a registry component (requires registry to be configured)
 ocx add kdco/background-agents
 
-# One-command install with ephemeral registry
+# One-command install with ephemeral registry (not saved)
 ocx add kdco/workspace --from https://registry.kdco.dev
 
 # Add using a specific profile
@@ -226,7 +226,7 @@ ocx add npm:some-package --trust
 
 ### One-Command Install
 
-Use `--from URL` to install from an ephemeral registry without modifying your config:
+Use `--from URL` to install from an ephemeral registry (not saved) without modifying your config:
 
 ```bash
 ocx add kdco/workspace --from https://registry.kdco.dev
@@ -1119,7 +1119,7 @@ ocx profile add work
 # Clone from existing profile
 ocx profile add client-x --from work
 
-# Install from registry with one command (ephemeral, no config changes)
+# Install from registry with one command (not saved)
 ocx profile add ws --from https://ocx-kit.kdco.dev/ws
 
 # Or first add global registry, then install

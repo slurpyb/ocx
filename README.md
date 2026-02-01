@@ -69,7 +69,7 @@ Add components to local projects with automatic dependency resolution.
 # Initialize local config if not present
 ocx init
 
-# One-command install with ephemeral registry
+# One-command install with ephemeral registry (not saved)
 ocx add kdco/workspace --from https://registry.kdco.dev
 
 # Or install npm plugins directly
@@ -102,7 +102,7 @@ ocx diff kdco/workspace
 | Command | Description |
 |---------|-------------|
 | `ocx add <component>` | Add components or npm plugins (`npm:package`) |
-| `ocx add <component> --from <url>` | One-command install with ephemeral registry |
+| `ocx add <component> --from <url>` | One-command install with ephemeral registry (not saved) |
 | `ocx update [component]` | Update to latest version |
 | `ocx diff [component]` | Show upstream changes before updating |
 | `ocx profile <cmd>` | Manage global profiles (`add`, `list`, `remove`, `show`) |
