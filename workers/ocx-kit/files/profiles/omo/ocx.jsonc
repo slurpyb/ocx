@@ -3,7 +3,8 @@
 	"registries": {},
 	"renameWindow": true,
 	"exclude": [
-		// "**/AGENTS.md",
+		// "**/AGENTS.md" — Commented out = project AGENTS.md files are INCLUDED.
+		// Uncomment this line to exclude all project instruction files.
 		"**/CLAUDE.md",
 		"**/CONTEXT.md",
 		"**/.opencode/**",

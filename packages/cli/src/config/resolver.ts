@@ -22,19 +22,24 @@
  */
 
 import { existsSync, statSync } from "node:fs"
+import { homedir } from "node:os"
 import { join, relative } from "node:path"
 import { Glob } from "bun"
 import { parse as parseJsonc } from "jsonc-parser"
 import { ProfileManager } from "../profile/manager"
 import {
 	findLocalConfigDir,
+	getProfileDir,
 	LOCAL_CONFIG_DIR,
 	OCX_CONFIG_FILE,
 	OPENCODE_CONFIG_FILE,
 } from "../profile/paths"
 import type { Profile } from "../profile/schema"
 import type { RegistryConfig } from "../schemas/config"
+import { readReceipt } from "../schemas/config"
 import { resolveGitRootSync } from "../utils/git-root"
+import { resolveRegistryInstructionPaths } from "../utils/instruction-paths"
+import { getGlobalConfigPath } from "../utils/paths"
 
 // =============================================================================
 // TYPES
@@ -81,31 +86,38 @@ export interface ResolvedConfigWithOrigin extends ResolvedConfig {
 // INSTRUCTION FILE DISCOVERY
 // =============================================================================
 
-const INSTRUCTION_FILES = ["AGENTS.md", "CLAUDE.md", "CONTEXT.md"] as const
+/**
+ * Instruction file types to search for, in priority order.
+ * OpenCode uses "first type wins" pattern - if ANY files of the first type
+ * are found, only those are used (remaining types are not checked).
+ *
+ * Reference: https://github.com/sst/opencode/blob/dev/packages/opencode/src/session/instruction.ts#L75-L84
+ */
+const INSTRUCTION_FILES = [
+	"AGENTS.md",
+	"CLAUDE.md",
+	"CONTEXT.md", // Deprecated - kept for OpenCode compatibility
+] as const
 
 /**
- * Discover instruction files by walking UP from projectDir to gitRoot.
- * Returns repo-relative paths, deepest first, alphabetical within each depth.
+ * Find instruction files of a specific type by walking UP from projectDir to gitRoot.
+ * Returns repo-relative paths in deepest-first order.
  */
-function discoverInstructionFiles(projectDir: string, gitRoot: string): string[] {
-	const root = gitRoot
+function findInstructionsByType(filename: string, projectDir: string, gitRoot: string): string[] {
 	const discovered: string[] = []
 	let currentDir = projectDir
 
 	// Walk up from projectDir to root
 	while (true) {
-		// Check for each instruction file (alphabetical order)
-		for (const filename of INSTRUCTION_FILES) {
-			const filePath = join(currentDir, filename)
-			if (existsSync(filePath) && statSync(filePath).isFile()) {
-				// Store as relative to root
-				const relativePath = relative(root, filePath)
-				discovered.push(relativePath)
-			}
+		const filePath = join(currentDir, filename)
+		if (existsSync(filePath) && statSync(filePath).isFile()) {
+			// Store as relative to root
+			const relativePath = relative(gitRoot, filePath)
+			discovered.push(relativePath)
 		}
 
 		// Stop if we've reached the root
-		if (currentDir === root) break
+		if (currentDir === gitRoot) break
 
 		// Move up one directory
 		const parentDir = join(currentDir, "..")
@@ -113,9 +125,28 @@ function discoverInstructionFiles(projectDir: string, gitRoot: string): string[]
 		currentDir = parentDir
 	}
 
-	// Walk starts at deepest (projectDir) and goes up to root,
-	// so discovered array is already in deepest-first order
 	return discovered
+}
+
+/**
+ * Discover instruction files by walking UP from projectDir to gitRoot.
+ * Implements OpenCode's "first type wins" pattern - searches for AGENTS.md first,
+ * only checks CLAUDE.md if no AGENTS.md found, and CONTEXT.md only if neither found.
+ *
+ * Returns repo-relative paths, deepest first.
+ *
+ * Reference: https://github.com/sst/opencode/blob/dev/packages/opencode/src/session/instruction.ts#L75-L84
+ */
+function discoverInstructionFiles(projectDir: string, gitRoot: string): string[] {
+	// First type wins - check each type in priority order
+	for (const filename of INSTRUCTION_FILES) {
+		const matches = findInstructionsByType(filename, projectDir, gitRoot)
+		if (matches.length > 0) {
+			return matches // Return immediately - first type wins
+		}
+	}
+
+	return []
 }
 
 /**
@@ -151,6 +182,52 @@ function filterByPatterns(files: string[], exclude: string[], include: string[])
 }
 
 // =============================================================================
+// REGISTRY INSTRUCTION LOADING
+// =============================================================================
+
+/**
+ * Load and resolve registry-provided instruction paths from installed components.
+ * Reads the receipt and resolves install-root-relative paths to absolute paths.
+ *
+ * @param installRoot - The install root directory (absolute)
+ * @returns Array of absolute instruction paths (deduplicated)
+ */
+async function loadRegistryInstructionsFromReceipt(installRoot: string): Promise<string[]> {
+	const receipt = await readReceipt(installRoot)
+
+	// Early exit: no receipt or no installed components
+	if (!receipt || Object.keys(receipt.installed).length === 0) {
+		return []
+	}
+
+	const allInstructions: string[] = []
+
+	// Collect all instruction paths from all installed components
+	for (const [canonicalId, entry] of Object.entries(receipt.installed)) {
+		// Guard: Skip components without opencode config
+		if (!entry.opencode?.instructions) {
+			continue
+		}
+
+		const instructions = entry.opencode.instructions
+		// Guard: Skip if not an array
+		if (!Array.isArray(instructions)) {
+			continue
+		}
+
+		// Source description for error messages
+		const source = `${entry.namespace}/${entry.name} (${canonicalId})`
+
+		// Resolve each instruction path (validates and expands globs)
+		const resolved = resolveRegistryInstructionPaths(instructions, installRoot, source)
+		allInstructions.push(...resolved)
+	}
+
+	// Deduplicate (already done in resolveRegistryInstructionPaths, but safe to repeat)
+	return Array.from(new Set(allInstructions))
+}
+
+// =============================================================================
 // CONFIG RESOLVER
 // =============================================================================
 
@@ -161,13 +238,14 @@ function filterByPatterns(files: string[], exclude: string[], include: string[])
  * OpenCode config and instructions use additive merging across scopes.
  *
  * Use the static `create()` factory to construct; it parses at the boundary
- * so that `resolve()` and getter methods can be synchronous and pure.
+ * so that `resolve()` and getter methods are synchronous and pure.
  */
 export class ConfigResolver {
 	private readonly cwd: string
 	private readonly profileName: string | null
 	private readonly profile: Profile | null
 	private readonly localConfigDir: string | null
+	private readonly registryInstructions: string[]
 
 	// Cached resolution (computed lazily, memoized)
 	private cachedConfig: ResolvedConfig | null = null
@@ -177,11 +255,13 @@ export class ConfigResolver {
 		profileName: string | null,
 		profile: Profile | null,
 		localConfigDir: string | null,
+		registryInstructions: string[],
 	) {
 		this.cwd = cwd
 		this.profileName = profileName
 		this.profile = profile
 		this.localConfigDir = localConfigDir
+		this.registryInstructions = registryInstructions
 	}
 
 	/**
@@ -246,7 +326,26 @@ export class ConfigResolver {
 			}
 		}
 
-		return new ConfigResolver(cwd, profileName, profile, localConfigDir)
+		// Load registry-provided instructions from receipt
+		// Install root selection:
+		// - Profile active → profile directory
+		// - Local config exists → project root (parent of .opencode)
+		// - Otherwise → global config directory
+		let installRoot: string
+		if (profile) {
+			// Use resolved profile object, not profileName
+			// profileName could be set but profile failed to load
+			installRoot = getProfileDir(profileName as string)
+		} else if (localConfigDir) {
+			// Project root is parent of .opencode directory
+			installRoot = join(localConfigDir, "..")
+		} else {
+			installRoot = getGlobalConfigPath()
+		}
+
+		const registryInstructions = await loadRegistryInstructionsFromReceipt(installRoot)
+
+		return new ConfigResolver(cwd, profileName, profile, localConfigDir, registryInstructions)
 	}
 
 	/**
@@ -479,30 +578,79 @@ export class ConfigResolver {
 	}
 
 	/**
-	 * Discover instruction files (AGENTS.md, CLAUDE.md, CONTEXT.md).
-	 * Walks up from cwd to git root, filters by exclude/include.
-	 * Profile instructions are appended last (highest priority).
+	 * Discover instruction files matching OpenCode's exact behavior.
+	 *
+	 * Discovery order (top to bottom in merged file):
+	 * 1. Global AGENTS.md (or CLAUDE.md fallback for Claude Code compat)
+	 * 2. Global Profile AGENTS.md (when profile active)
+	 * 3. Registry-provided instructions (from installed components - resolved to absolute)
+	 * 4. Local (Project) files - first file type wins (AGENTS.md > CLAUDE.md > CONTEXT.md)
+	 * 5. Local Profile AGENTS.md (when local profile active - highest priority)
+	 *
+	 * exclude/include patterns apply ONLY to LOCAL (project) files.
+	 *
+	 * References:
+	 * - Global discovery: https://github.com/sst/opencode/blob/dev/packages/opencode/src/session/instruction.ts#L19-L29
+	 * - Project discovery: https://github.com/sst/opencode/blob/dev/packages/opencode/src/session/instruction.ts#L75-L84
 	 */
 	private discoverInstructions(): string[] {
+		const instructions: string[] = []
+
+		// 1. Global AGENTS.md (always first - lowest priority)
+		const globalConfigDir = getGlobalConfigPath()
+		const globalAgents = join(globalConfigDir, "AGENTS.md")
+		if (existsSync(globalAgents)) {
+			instructions.push(globalAgents)
+		} else if (!process.env.OPENCODE_DISABLE_CLAUDE_CODE_PROMPT) {
+			// Claude Code fallback - check ~/.claude/CLAUDE.md
+			const claudeGlobal = join(homedir(), ".claude", "CLAUDE.md")
+			if (existsSync(claudeGlobal)) {
+				instructions.push(claudeGlobal)
+			}
+		}
+
+		// 2. Global Profile AGENTS.md (when profile active)
+		if (this.profile && this.profileName) {
+			const globalProfileAgents = join(getProfileDir(this.profileName), "AGENTS.md")
+			if (existsSync(globalProfileAgents)) {
+				instructions.push(globalProfileAgents)
+			}
+		}
+
+		// 3. Registry-provided instructions (from installed components)
+		// Load from receipt and resolve install-root-relative paths to absolute
+		const registryInstructions = this.loadRegistryInstructions()
+		instructions.push(...registryInstructions)
+
+		// 4. Local (Project) files - first file type wins, filtered by exclude/include
 		const gitRoot = resolveGitRootSync(this.cwd)
 		const discoveredFiles = discoverInstructionFiles(this.cwd, gitRoot)
 
-		// Apply profile exclude/include patterns
+		// Apply profile exclude/include patterns to LOCAL files only
 		const exclude = this.profile?.ocx.exclude ?? []
 		const include = this.profile?.ocx.include ?? []
 		const filteredFiles = filterByPatterns(discoveredFiles, exclude, include)
 
 		// Convert to absolute paths
-		const root = gitRoot
-		const projectInstructions = filteredFiles.map((f) => join(root, f))
+		const projectInstructions = filteredFiles.map((f) => join(gitRoot, f))
+		instructions.push(...projectInstructions)
 
-		// Append profile instructions (profile comes LAST = highest priority)
-		const profileInstructionsRaw = this.profile?.opencode?.instructions
-		const profileInstructions: string[] = Array.isArray(profileInstructionsRaw)
-			? profileInstructionsRaw
-			: []
+		// 5. Local Profile AGENTS.md (when local profile active - highest priority)
+		// Note: Local profiles aren't currently implemented in OCX, but this is where
+		// they would go in the future for consistency with OpenCode's architecture.
+		// When implemented, check for `.opencode/profiles/<profileName>/AGENTS.md`
 
-		return [...projectInstructions, ...profileInstructions]
+		return instructions
+	}
+
+	/**
+	 * Load registry-provided instruction paths from installed components.
+	 * Returns cached data loaded during create().
+	 *
+	 * @returns Array of absolute instruction paths from registry components
+	 */
+	private loadRegistryInstructions(): string[] {
+		return this.registryInstructions
 	}
 
 	/**

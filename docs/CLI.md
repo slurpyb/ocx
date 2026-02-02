@@ -224,6 +224,8 @@ ocx add npm:some-package --trust
 5. **Updates opencode.jsonc** - Merges component configuration
 6. **Updates receipt** - Records installed version and hash in `ocx-receipt.json`
 
+> **Note:** File-based plugins installed to `plugins/` are automatically discovered by OpenCode - no `opencode.jsonc` entry is needed. Only npm plugins (added via `ocx add npm:package`) require explicit registration in the `plugin` array.
+
 ### One-Command Install
 
 Use `--from URL` to install from an ephemeral registry (not saved) without modifying your config:
@@ -1479,6 +1481,13 @@ To use a custom OpenCode binary (e.g., development build), set the `bin` option 
 
 OCX doesn't exclude anything by default. A clean ocx.jsonc includes all project instruction files. The default profile template ships an exclude list for security.
 
+**Instruction file types** (OpenCode's "first type wins" rule):
+- **AGENTS.md** (recommended): If ANY `AGENTS.md` is found in the project tree, all `AGENTS.md` files are used and `CLAUDE.md`/`CONTEXT.md` are **completely ignored**
+- **CLAUDE.md** (fallback): Only used if no `AGENTS.md` exists anywhere in the project
+- **CONTEXT.md** (deprecated, legacy): Only used if neither `AGENTS.md` nor `CLAUDE.md` exist
+
+**Global instructions**: `~/.config/opencode/AGENTS.md` is **always included** regardless of profile or file type.
+
 **The default profile template uses this exclude list:**
 ```jsonc
 {
@@ -1505,6 +1514,8 @@ OCX doesn't exclude anything by default. A clean ocx.jsonc includes all project 
   "include": ["./docs/AGENTS.md"]
 }
 ```
+
+**See also**: [PROFILES.md](./PROFILES.md) for complete instruction discovery details and priority order.
 
 ---
 

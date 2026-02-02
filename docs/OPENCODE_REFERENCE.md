@@ -1024,6 +1024,42 @@ for await (const event of events.stream) {
 
 ## 10. Rules & Instructions
 
+### Instruction File Types
+
+OpenCode discovers instruction files using a **"first type wins"** strategy:
+
+| File Type | Status | Priority | Behavior |
+|-----------|--------|----------|----------|
+| `AGENTS.md` | **Recommended** | Primary | If ANY `AGENTS.md` is found, ALL `AGENTS.md` files are used and other types are **completely ignored** |
+| `CLAUDE.md` | Fallback | Secondary | Only used if NO `AGENTS.md` exists in the project tree |
+| `CONTEXT.md` | **Deprecated (legacy)** | Tertiary | Only used if neither `AGENTS.md` nor `CLAUDE.md` exist. Will be removed. |
+
+**Key rule**: Once any instruction file of a given type is found, OpenCode collects **all files of that type** and ignores other types entirely.
+
+**Example**: If your project has `./src/AGENTS.md`, any `CLAUDE.md` or `CONTEXT.md` files anywhere in the tree are completely ignored.
+
+### Discovery vs Config-Based Instructions
+
+**Discovery-based instructions** (AGENTS.md, CLAUDE.md, CONTEXT.md):
+- Subject to profile `exclude`/`include` patterns (for local project files)
+- Follow "first type wins" rule
+- Discovered by walking project tree
+
+**Config-based instructions** (`instructions` array in `opencode.jsonc`):
+- **Additive** to discovered files (both are loaded)
+- **Bypass** profile `exclude`/`include` filters
+- Always loaded regardless of file type precedence
+- Use deliberately - bypass filtering is intentional
+
+```json
+{
+  "instructions": [
+    "CONTRIBUTING.md",
+    "docs/guidelines.md"
+  ]
+}
+```
+
 ### AGENTS.md
 
 Create `AGENTS.md` in project root for project-specific instructions:
@@ -1049,7 +1085,7 @@ Create `AGENTS.md` in project root for project-specific instructions:
 
 ### Custom Instructions
 
-Reference additional instruction files:
+The `instructions` config field references additional instruction files that are **always loaded** and **bypass profile filters**:
 
 ```json
 {
@@ -1060,6 +1096,17 @@ Reference additional instruction files:
   ]
 }
 ```
+
+**Path Resolution:**
+- **User `opencode.jsonc` files**: Paths are **OpenCode-native (cwd-relative)**
+- **Registry components**: Paths are **install-root-relative** and OCX resolves them at runtime
+  - **Absolute paths are NOT allowed** in registry components
+  - Example: `instructions/style-guide.md` resolves to:
+    - Project: `.opencode/instructions/style-guide.md`
+    - Profile: `~/.config/opencode/profiles/myprofile/instructions/style-guide.md`
+    - Global: `~/.config/opencode/instructions/style-guide.md`
+
+**Important**: These bypass discovery-based filtering and are additive to discovered `AGENTS.md`/`CLAUDE.md`/`CONTEXT.md` files.
 
 ### Initialize AGENTS.md
 
@@ -1180,3 +1227,15 @@ Focus on failing tests and suggest fixes.
    - Start restrictive, allow as needed
    - Use wildcards for grouped permissions
    - Override per-agent when appropriate
+
+---
+
+## Source References
+
+OCX's instruction discovery and configuration align with OpenCode's official implementation:
+
+- **Instruction discovery logic**: https://github.com/sst/opencode/blob/dev/packages/opencode/src/session/instruction.ts
+- **File system traversal**: https://github.com/sst/opencode/blob/dev/packages/opencode/src/util/filesystem.ts
+- **Configuration schema**: https://opencode.ai/config.json
+
+OCX references these sources when updating to ensure continued alignment with OpenCode behavior.

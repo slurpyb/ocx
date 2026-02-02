@@ -14,6 +14,7 @@ import { getProfileDir, getProfileOpencodeConfig } from "../profile/paths"
 import { ProfilesNotInitializedError } from "../utils/errors"
 import { getGitInfo } from "../utils/git-context"
 import { handleError, logger } from "../utils/index"
+import { getGlobalConfigPath } from "../utils/paths"
 import {
 	formatTerminalName,
 	restoreTerminalTitle,
@@ -24,6 +25,32 @@ import {
 interface OpencodeOptions {
 	profile?: string
 	rename?: boolean
+}
+
+/**
+ * Deduplicates an array while preserving last occurrence.
+ * Last-wins behavior: if duplicates exist, keeps the LAST occurrence.
+ *
+ * Example: ["a", "b", "a", "c"] -> ["b", "a", "c"]
+ * (first "a" is removed, last "a" is kept)
+ *
+ * @internal - Exported for testing
+ */
+export function dedupeLastWins<T>(items: T[]): T[] {
+	const seen = new Set<T>()
+	const result: T[] = []
+
+	// Iterate backwards to find last occurrences
+	for (let i = items.length - 1; i >= 0; i--) {
+		// biome-ignore lint/style/noNonNullAssertion: index i is guaranteed valid within bounds
+		const item = items[i]!
+		if (!seen.has(item)) {
+			seen.add(item)
+			result.unshift(item) // Prepend to maintain order
+		}
+	}
+
+	return result
 }
 
 /**
@@ -46,6 +73,7 @@ export function resolveOpenCodeBinary(opts: { configBin?: string; envBin?: strin
  * - Preserves all keys from baseEnv
  * - Overwrites OCX_PROFILE, OPENCODE_* keys with new values
  * - OPENCODE_DISABLE_PROJECT_CONFIG always set to "true" when disableProjectConfig is true
+ * - OPENCODE_CONFIG_DIR always set to base config dir (XDG-aware), never respects user-provided value
  */
 export function buildOpenCodeEnv(opts: {
 	baseEnv: Record<string, string | undefined>
@@ -57,7 +85,7 @@ export function buildOpenCodeEnv(opts: {
 	return {
 		...opts.baseEnv,
 		...(opts.disableProjectConfig && { OPENCODE_DISABLE_PROJECT_CONFIG: "true" }),
-		...(opts.profileDir && { OPENCODE_CONFIG_DIR: opts.profileDir }),
+		OPENCODE_CONFIG_DIR: getGlobalConfigPath(),
 		...(opts.mergedConfig && { OPENCODE_CONFIG_CONTENT: JSON.stringify(opts.mergedConfig) }),
 		...(opts.profileName && { OCX_PROFILE: opts.profileName }),
 	}
@@ -124,11 +152,20 @@ async function runOpencode(args: string[], options: OpencodeOptions): Promise<vo
 	}
 
 	// Build the config to pass to OpenCode
+	// Merge discovered instructions with user-configured instructions
+	// Order: discovered/global/profile/registry/project first, then user config instructions last (highest priority)
+	const userInstructions = Array.isArray(config.opencode.instructions)
+		? config.opencode.instructions
+		: []
+	const allInstructions = [...config.instructions, ...userInstructions]
+	// Deduplicate while preserving last occurrence (last-wins)
+	const dedupedInstructions = dedupeLastWins(allInstructions)
+
 	const configToPass =
-		config.instructions.length > 0 || Object.keys(config.opencode).length > 0
+		dedupedInstructions.length > 0 || Object.keys(config.opencode).length > 0
 			? {
 					...config.opencode,
-					instructions: config.instructions.length > 0 ? config.instructions : undefined,
+					instructions: dedupedInstructions.length > 0 ? dedupedInstructions : undefined,
 				}
 			: undefined
 

@@ -16,6 +16,7 @@ import { tmpdir } from "../fixture"
 describe("instruction discovery", () => {
 	let originalXdgConfigHome: string | undefined
 	let originalOcxProfile: string | undefined
+	let originalDisableClaudeCode: string | undefined
 	let xdgDir: string
 
 	beforeEach(async () => {
@@ -26,8 +27,11 @@ describe("instruction discovery", () => {
 		// Save and override environment
 		originalXdgConfigHome = process.env.XDG_CONFIG_HOME
 		originalOcxProfile = process.env.OCX_PROFILE
+		originalDisableClaudeCode = process.env.OPENCODE_DISABLE_CLAUDE_CODE_PROMPT
 		process.env.XDG_CONFIG_HOME = xdgDir
 		delete process.env.OCX_PROFILE
+		// Disable Claude Code fallback for isolated testing
+		process.env.OPENCODE_DISABLE_CLAUDE_CODE_PROMPT = "1"
 	})
 
 	afterEach(async () => {
@@ -41,6 +45,11 @@ describe("instruction discovery", () => {
 			delete process.env.OCX_PROFILE
 		} else {
 			process.env.OCX_PROFILE = originalOcxProfile
+		}
+		if (originalDisableClaudeCode === undefined) {
+			delete process.env.OPENCODE_DISABLE_CLAUDE_CODE_PROMPT
+		} else {
+			process.env.OPENCODE_DISABLE_CLAUDE_CODE_PROMPT = originalDisableClaudeCode
 		}
 		// Cleanup XDG directory
 		await fs.rm(xdgDir, { recursive: true, force: true })
@@ -211,5 +220,43 @@ describe("instruction discovery", () => {
 			(p) => p.endsWith("AGENTS.md") || p.endsWith("CLAUDE.md") || p.endsWith("CONTEXT.md"),
 		)
 		expect(projectInstructions.length).toBe(0)
+	})
+
+	it("includes profile AGENTS.md when profile is active", async () => {
+		await using tmp = await tmpdir({
+			gitInit: true,
+			profile: {
+				name: "test-profile",
+				ocxConfig: {
+					registries: {},
+					exclude: [],
+					include: [],
+				},
+				agentsMd: "# Profile instructions",
+			},
+		})
+
+		// Create project AGENTS.md
+		await Bun.write(path.join(tmp.path, "AGENTS.md"), "# Project instructions")
+
+		// Pass profile explicitly to ensure it's resolved
+		const resolver = await ConfigResolver.create(tmp.path, { profile: "test-profile" })
+		const config = resolver.resolve()
+
+		// Verify profile was resolved
+		expect(config.profileName).toBe("test-profile")
+
+		// Should include both profile and project AGENTS.md
+		const profileDir = path.join(xdgDir, "opencode", "profiles", "test-profile")
+		const profileAgentsPath = path.join(profileDir, "AGENTS.md")
+		const projectAgentsPath = path.join(tmp.path, "AGENTS.md")
+
+		expect(config.instructions).toContain(profileAgentsPath)
+		expect(config.instructions).toContain(projectAgentsPath)
+
+		// Profile AGENTS should come BEFORE project AGENTS (lower priority)
+		const profileIdx = config.instructions.indexOf(profileAgentsPath)
+		const projectIdx = config.instructions.indexOf(projectAgentsPath)
+		expect(profileIdx).toBeLessThan(projectIdx)
 	})
 })

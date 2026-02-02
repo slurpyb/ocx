@@ -50,7 +50,7 @@ Returns registry metadata and a list of available components. Must conform to [`
   "components": [
     {
       "name": "my-skill",
-      "type": "ocx:skill",
+      "type": "skill",
       "version": "1.0.0",
       "description": "A helpful skill"
     }
@@ -86,7 +86,7 @@ Returns full component metadata in npm-style packument format.
   "versions": {
     "1.0.0": {
       "name": "my-skill",
-      "type": "ocx:skill",
+      "type": "skill",
       "version": "1.0.0",
       "description": "A helpful skill",
       "files": [
@@ -131,13 +131,13 @@ Returns raw file content for installation.
 
 | Type | Install Location | Description |
 |------|------------------|-------------|
-| `ocx:skill` | `skills/{name}/` | AI behavior instructions |
-| `ocx:plugin` | `plugin/` | OpenCode plugins |
-| `ocx:agent` | `agent/` | Custom agent definitions |
-| `ocx:command` | `command/` | Custom CLI commands |
-| `ocx:tool` | `tool/` | Custom tools |
-| `ocx:bundle` | (varies) | Meta-package grouping other components |
-| `ocx:profile` | `~/.config/opencode/profiles/{name}/` | Shareable profile configuration |
+| `skill` | `skills/{name}/` | AI behavior instructions |
+| `plugin` | `plugin/` | OpenCode plugins |
+| `agent` | `agent/` | Custom agent definitions |
+| `command` | `command/` | Custom CLI commands |
+| `tool` | `tool/` | Custom tools |
+| `bundle` | (varies) | Meta-package grouping other components |
+| `profile` | `~/.config/opencode/profiles/{name}/` | Shareable profile configuration |
 
 **Note:** Targets in registry files are root-relative. The OCX CLI resolves them to the appropriate `.opencode/` subdirectory based on component type.
 
@@ -158,7 +158,7 @@ Returns raw file content for installation.
   "version": "1.0.0",
   "author": "Your Name",
   "components": [
-    { "name": "my-skill", "type": "ocx:skill", "version": "1.0.0" }
+    { "name": "my-skill", "type": "skill", "version": "1.0.0" }
   ]
 }
 ```
@@ -172,7 +172,7 @@ Returns raw file content for installation.
   "versions": {
     "1.0.0": {
       "name": "my-skill",
-      "type": "ocx:skill",
+      "type": "skill",
       "version": "1.0.0",
       "files": [{ "path": "SKILL.md" }]
     }

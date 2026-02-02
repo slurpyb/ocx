@@ -58,7 +58,7 @@ OCX uses **Cargo-style union types** for a clean developer experience: use strin
   "components": [
     {
       "name": "cool-plugin",
-      "type": "ocx:plugin",
+      "type": "plugin",
       "description": "Does something cool",
       "files": ["plugin/my-cool-plugin.ts"],
       "dependencies": []
@@ -121,10 +121,59 @@ MCP servers are configured inside the `opencode` block using URL shorthand for r
 
 Components can specify settings to merge into the user's `opencode.jsonc`:
 
+## Plugin Discovery vs Registration
+
+OpenCode handles plugins in two different ways depending on how they're installed:
+
+### File-Based Plugins (Auto-Discovered)
+
+Registry components with `type: "plugin"` install files to the `plugins/` directory. OpenCode **automatically discovers** these plugins - no configuration needed.
+
+```bash
+ocx add kdco/workspace-plugin
+# Installs to: plugins/workspace-plugin.ts
+# OpenCode auto-discovers it - no opencode.jsonc entry needed
+```
+
+### npm Plugins (Explicitly Registered)
+
+npm plugins are installed via `ocx add npm:package-name` and require registration in `opencode.jsonc`:
+
+```bash
+ocx add npm:@franlol/opencode-md-table-formatter
+# Installs to: node_modules/
+# Adds to opencode.jsonc: {"plugin": ["@franlol/opencode-md-table-formatter"]}
+```
+
+### The `opencode` Field in Component Manifests
+
+When a component manifest includes an `opencode` field, it specifies **configuration to merge** into the user's `opencode.jsonc`. This is used for:
+
+- **npm dependencies** the component needs (via `opencode.plugin`)
+- **Permissions** the component requires (via `opencode.permission`)
+- **Other OpenCode settings** the component wants to configure
+
+```jsonc
+{
+  "name": "background-agents",
+  "type": "plugin",
+  "files": ["plugins/background-agents.ts"],
+  "opencode": {
+    "permission": {
+      "task": "deny"  // This permission gets merged into opencode.jsonc
+    }
+  }
+}
+```
+
+The component itself does NOT need to be listed in `opencode.plugin` - it's auto-discovered from the `plugins/` directory.
+
+---
+
 ```json
 {
   "name": "my-agent",
-  "type": "ocx:agent",
+  "type": "agent",
   "files": ["agent/my-agent.md"],
   "dependencies": [],
   "opencode": {
@@ -162,13 +211,13 @@ Components can specify settings to merge into the user's `opencode.jsonc`:
 
 | Type | Target Directory | Description |
 |------|-----------------|-------------|
-| `ocx:agent` | `agent/` | Markdown files defining specialized agents. |
-| `ocx:skill` | `skills/` | Instruction sets (must follow `.opencode/skills/<name>/SKILL.md`). |
-| `ocx:plugin` | `plugin/` | TypeScript/JavaScript extensions for tools and hooks. |
-| `ocx:command` | `command/` | Markdown templates for TUI commands. |
-| `ocx:tool` | `tool/` | Custom tool implementations. |
-| `ocx:bundle` | N/A | Virtual components that install multiple other components. |
-| `ocx:profile` | N/A | Shareable profile configuration. |
+| `agent` | `agent/` | Markdown files defining specialized agents. |
+| `skill` | `skills/` | Instruction sets (must follow `skills/<name>/SKILL.md`). |
+| `plugin` | `plugin/` | TypeScript/JavaScript extensions for tools and hooks. |
+| `command` | `command/` | Markdown templates for TUI commands. |
+| `tool` | `tool/` | Custom tool implementations. |
+| `bundle` | N/A | Virtual components that install multiple other components. |
+| `profile` | N/A | Shareable profile configuration. |
 
 ## Building
 
@@ -252,6 +301,64 @@ ocx add my/cool-plugin
 
 ## Dependencies
 
+### Instruction Files for Registry Components
+
+Registry components can provide instruction files in two ways: **discovery-based** and **config-based**.
+
+#### Discovery-Based Instructions (Not Recommended for Registries)
+
+**Do NOT install to `AGENTS.md`, `CLAUDE.md`, or `CONTEXT.md` in standard locations:**
+- `.opencode/AGENTS.md` or project root `AGENTS.md` are reserved for user's project-specific instructions
+- Subject to OpenCode's "first type wins" discovery and profile `exclude`/`include` filtering
+- Can conflict with user's own instruction files
+
+#### Config-Based Instructions (Recommended)
+
+Use custom paths with the `instructions` config field instead:
+
+```jsonc
+{
+  "name": "my-component",
+  "type": "bundle",
+  "files": ["instructions/my-guidelines.md"],
+  "opencode": {
+    "instructions": ["instructions/my-guidelines.md"]
+  }
+}
+```
+
+**Path Resolution for Registry Components:**
+- Registry `opencode.instructions` paths are **install-root-relative** (not cwd-relative)
+- OCX resolves them to absolute paths at runtime based on installation scope (project, profile, or global)
+- **Absolute paths are NOT allowed** in registry components
+- User-defined `opencode.jsonc` instructions remain OpenCode-native (cwd-relative)
+
+**Example:**
+```jsonc
+{
+  "name": "coding-standards",
+  "files": ["instructions/style-guide.md"],
+  "opencode": {
+    "instructions": ["instructions/style-guide.md"]
+  }
+}
+```
+
+When installed via `ocx add`, the path `instructions/style-guide.md` resolves to:
+- **Project**: `.opencode/instructions/style-guide.md`
+- **Profile**: `~/.config/opencode/profiles/myprofile/instructions/style-guide.md`
+- **Global**: `~/.config/opencode/instructions/style-guide.md`
+
+**Benefits of config-based approach:**
+- **Bypass filtering**: Config-based instructions are **always loaded** and **bypass** profile `exclude`/`include` patterns
+- **No conflicts**: Avoids overwriting user's `AGENTS.md`
+- **Explicit loading**: Clear what gets loaded via `opencode.jsonc`
+- **Additive**: Works alongside discovered instruction files
+
+**Caution**: Because config-based instructions bypass filtering, users installing your component will load these instructions even in untrusted repositories. Design your instruction files accordingly.
+
+## Dependencies
+
 ### Same-Namespace Dependencies
 
 Use bare component names for dependencies within the same registry:
@@ -285,7 +392,7 @@ If a user tries to install a component that would overwrite an existing file fro
 ```bash
 $ ocx add acme/researcher
 Error: File conflict detected
-  .opencode/agent/researcher.md already exists (installed from kdco/researcher)
+  agent/researcher.md already exists (installed from kdco/researcher)
 
 To resolve:
   1. Remove existing file and update ocx-receipt.json

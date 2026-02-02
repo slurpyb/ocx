@@ -612,6 +612,8 @@ async function runRegistryAddCore(
 				hash: computedHash,
 				files: fileHashes,
 				installedAt: new Date().toISOString(),
+				// Store component's opencode config for runtime instruction path resolution
+				...(component.opencode && { opencode: component.opencode as Record<string, unknown> }),
 			}
 		}
 

@@ -108,6 +108,13 @@ export const installedComponentSchema = z.object({
 			id: z.string().optional(),
 		})
 		.optional(),
+
+	/**
+	 * OpenCode config provided by this component.
+	 * Stored for runtime instruction path resolution.
+	 * Install-root-relative paths in instructions array are resolved at runtime.
+	 */
+	opencode: z.record(z.unknown()).optional(),
 })
 
 export type InstalledComponent = z.infer<typeof installedComponentSchema>

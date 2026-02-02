@@ -340,6 +340,10 @@ export async function runUpdateCore(
 				files: fileHashes,
 				installedAt: existingEntry.installedAt,
 				updatedAt: new Date().toISOString(),
+				// Update opencode config if component provides it
+				...(update.component.opencode && {
+					opencode: update.component.opencode as Record<string, unknown>,
+				}),
 			}
 		}
 

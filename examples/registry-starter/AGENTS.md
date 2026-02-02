@@ -148,6 +148,16 @@ The registry manifest defines your components:
 
 ---
 
+## Installation Scopes
+
+Components can be installed at different scopes depending on their purpose:
+
+- **Profile scope** (`ocx add <component> --profile <name>`) - Installs to `~/.config/opencode/profiles/<name>/`. Used for global settings, instructions, and MCP servers that apply across projects.
+- **Project scope** (`ocx add <component>`) - Installs to `.opencode/` in the current project. Used for project-specific components.
+- **Profile components** (`type: "profile"`) - Special components that create/update entire profiles with their own `ocx.jsonc`, `opencode.jsonc`, and instruction files.
+
+---
+
 ## Component Types
 
 OCX supports the following component types:
@@ -356,6 +366,50 @@ Bundles aggregate multiple components for easy installation.
 }
 ```
 
+### Profiles (profile)
+
+Profiles are shareable configurations that include OCX settings, OpenCode config, and instruction files. They're installed to `~/.config/opencode/profiles/<name>/`.
+
+**Structure:**
+```
+files/profiles/my-profile/
+├── ocx.jsonc          # OCX settings (registries, exclude/include patterns)
+├── opencode.jsonc     # OpenCode config (MCP servers, tools, etc.)
+└── AGENTS.md          # Profile-level instructions
+```
+
+**Registry component:**
+```json
+{
+  "name": "my-profile",
+  "type": "profile",
+  "description": "My custom development profile",
+  "files": [
+    {
+      "source": "profiles/my-profile/ocx.jsonc",
+      "target": "ocx.jsonc"
+    },
+    {
+      "source": "profiles/my-profile/opencode.jsonc",
+      "target": "opencode.jsonc"
+    },
+    {
+      "source": "profiles/my-profile/AGENTS.md",
+      "target": "AGENTS.md"
+    }
+  ]
+}
+```
+
+**Usage:**
+```bash
+# Install profile from registry
+ocx profile add my-profile --from namespace/my-profile
+
+# Use the profile
+ocx opencode -p my-profile
+```
+
 ---
 
 ## OpenCode Configuration
@@ -412,6 +466,32 @@ config: {
 }
 ```
 
+### Custom Instructions
+
+Use the `instructions` array to load instruction files from custom paths instead of root AGENTS.md:
+
+```typescript
+config: {
+  instructions: [
+    "instructions/coding-standards.md",
+    "instructions/api-guidelines.md"
+  ]
+}
+```
+
+**Path Resolution for Registry Components:**
+- Registry `opencode.instructions` paths are **install-root-relative** (not cwd-relative)
+- OCX resolves them to absolute paths at runtime based on installation scope
+- **Absolute paths are NOT allowed** in registry components
+- User-defined `opencode.jsonc` instructions remain OpenCode-native (cwd-relative)
+
+**Example**: `instructions/style-guide.md` resolves to:
+- **Project**: `.opencode/instructions/style-guide.md`
+- **Profile**: `~/.config/opencode/profiles/myprofile/instructions/style-guide.md`
+- **Global**: `~/.config/opencode/instructions/style-guide.md`
+
+This prevents registry components from polluting the root instruction file.
+
 ---
 
 ## File Patterns
@@ -437,7 +517,7 @@ For advanced control:
   "files": [
     {
       "source": "skills/my-skill/SKILL.md",
-      "target": ".opencode/skills/my-skill.md",
+      "target": "skills/my-skill.md",
       "transform": "minify"
     }
   ]
@@ -526,6 +606,34 @@ For comprehensive documentation, refer to:
 ---
 
 ## Best Practices
+
+### Instruction Files (AGENTS.md, CLAUDE.md, CONTEXT.md)
+
+OpenCode supports multiple instruction file types, but follow these guidelines:
+
+1. **Use AGENTS.md as primary** - Modern standard, clearly scoped for AI agents
+2. **CLAUDE.md as fallback** - For legacy compatibility only
+3. **Avoid CONTEXT.md** - Deprecated, ambiguous naming
+
+**"First type wins" behavior:**
+- When OpenCode discovers instruction files, it uses the **first type** it finds at each directory level
+- If `AGENTS.md` exists, `CLAUDE.md` and `CONTEXT.md` in the **same directory** are ignored
+- Priority: `AGENTS.md` > `CLAUDE.md` > `CONTEXT.md`
+
+**Registry component guidelines:**
+- **DO NOT** install instruction files to root `AGENTS.md` from registry components
+- **DO** use custom paths with the `instructions` config option:
+  ```typescript
+  config: {
+    instructions: [
+      "instructions/my-component-guide.md",
+      "instructions/my-plugin-guidelines.md"
+    ]
+  }
+  ```
+- Paths are **install-root-relative** and OCX resolves them at runtime
+- **Absolute paths are NOT allowed** in registry components
+- This prevents registry components from polluting root instruction files and gives users explicit control
 
 ### Skills
 

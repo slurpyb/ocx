@@ -55,7 +55,7 @@ ocx oc                      # Uses work profile automatically
 
 Profile settings control what OpenCode sees through `exclude`/`include` patterns. Registries are isolated per profile for security. OpenCode config merges safely between profile and local settings.
 
-> **Security Note:** The default profile template ships an exclude list for security. OCX doesn't exclude anything by default - a clean ocx.jsonc includes all project instruction files. For trusted repos, edit your profile to loosen the template's exclude list. See [Lock Down Recipe](./docs/PROFILES.md#lock-down-recipe).
+> **Security Note:** An empty exclude list includes all project instruction files; the default profile template ships a secure exclude list. For trusted repos, edit your profile to loosen the template's exclude list. See [Lock Down Recipe](./docs/PROFILES.md#lock-down-recipe).
 
 **[Full Profile Guide →](./docs/PROFILES.md)**
 

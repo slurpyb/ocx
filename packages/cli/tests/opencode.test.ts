@@ -1,6 +1,50 @@
 import { describe, expect, it } from "bun:test"
-import { buildOpenCodeEnv, resolveOpenCodeBinary } from "../src/commands/opencode"
+import { buildOpenCodeEnv, dedupeLastWins, resolveOpenCodeBinary } from "../src/commands/opencode"
 import { runCLI } from "./helpers"
+
+describe("dedupeLastWins", () => {
+	it("preserves last occurrence when duplicates exist", () => {
+		const result = dedupeLastWins(["a", "b", "a", "c"])
+		expect(result).toEqual(["b", "a", "c"])
+	})
+
+	it("handles no duplicates", () => {
+		const result = dedupeLastWins(["a", "b", "c"])
+		expect(result).toEqual(["a", "b", "c"])
+	})
+
+	it("handles all duplicates", () => {
+		const result = dedupeLastWins(["a", "a", "a"])
+		expect(result).toEqual(["a"])
+	})
+
+	it("handles empty array", () => {
+		const result = dedupeLastWins([])
+		expect(result).toEqual([])
+	})
+
+	it("preserves order of last occurrences", () => {
+		const result = dedupeLastWins(["x", "y", "z", "x", "y"])
+		// Last "x" is at index 3, last "y" is at index 4, "z" is unique at index 2
+		// Order should be: z, x, y (based on last occurrence positions)
+		expect(result).toEqual(["z", "x", "y"])
+	})
+
+	it("handles instruction path deduplication (real-world case)", () => {
+		const discovered = ["/global/AGENTS.md", "/profile/AGENTS.md", "/project/AGENTS.md"]
+		const userConfig = ["/project/AGENTS.md", "/custom/AGENTS.md"]
+		const combined = [...discovered, ...userConfig]
+		const result = dedupeLastWins(combined)
+
+		// Last occurrence of /project/AGENTS.md should win
+		expect(result).toEqual([
+			"/global/AGENTS.md",
+			"/profile/AGENTS.md",
+			"/project/AGENTS.md",
+			"/custom/AGENTS.md",
+		])
+	})
+})
 
 describe("resolveOpenCodeBinary", () => {
 	// Table-driven with DIFFERENT values to prove precedence

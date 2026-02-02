@@ -32,12 +32,12 @@ Your `registry.jsonc` defines a namespace for all components:
   "components": [
     {
       "name": "component",
-      "type": "ocx:plugin",
+      "type": "plugin",
       "description": "What it does",
       "files": [
         {
           "path": "plugin/my-plugin.ts",
-          "target": ".opencode/plugin/component.ts"
+          "target": "plugin/component.ts"
         }
       ],
       "dependencies": []

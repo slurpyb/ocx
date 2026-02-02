@@ -394,8 +394,11 @@
 			"name": "philosophy",
 			"type": "bundle",
 			"description": "Full KDCO Philosophy enforcement",
-			"files": ["AGENTS.md"],
-			"dependencies": ["code-philosophy", "frontend-philosophy"]
+			"files": ["tools/philosophy.md"],
+			"dependencies": ["code-philosophy", "frontend-philosophy"],
+			"opencode": {
+				"instructions": ["./tools/philosophy.md"]
+			}
 		}
 	]
 }

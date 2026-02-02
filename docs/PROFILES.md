@@ -49,7 +49,7 @@ Profiles are resolved in this order:
 When a profile is active:
 
 - **Global base profile** (`~/.config/opencode/profiles/<name>/`): Provides default settings
-- **Local overlay** (`.opencode/profiles/<name>/` or via `profile` field): Overrides base settings
+- **Local overlay** (settings in `.opencode/ocx.jsonc` when `profile` field is set): Overrides base settings
 - **Local wins**: Any setting in the local overlay takes precedence
 
 **Example:**
@@ -152,6 +152,46 @@ When you run `ocx opencode`, OCX:
 5. Launches OpenCode with the filtered config and instructions
 
 Files are discovered deepest-first (most specific to most general). Profile instructions come last and have the highest priority.
+
+## Instruction File Discovery
+
+OCX discovers instruction files in this exact order (low to high priority), matching OpenCode's behavior:
+
+| Order | Scope           | Path                                         | Priority | Filtering |
+| ----- | --------------- | -------------------------------------------- | -------- | --------- |
+| 1     | Global          | `~/.config/opencode/AGENTS.md`                 | Lowest   | Always included |
+| 2     | Global Profile  | `~/.config/opencode/profiles/<name>/AGENTS.md` | ↓        | Always included |
+| 3     | Local (Project) | `./AGENTS.md`, `./src/AGENTS.md`, etc.         | ↓        | Filtered by patterns |
+| 4     | Local Profile   | `.opencode/profiles/<name>/AGENTS.md`          | Highest  | Always included |
+
+**Discovery details:**
+- Local project files are discovered **deepest-first** (walking up from current directory to git root)
+- Profile instructions come last and have the highest priority
+- Global `AGENTS.md` is **always included** regardless of profile selection
+- **Claude Code compatibility**: If no global `AGENTS.md` exists, OCX checks `~/.claude/CLAUDE.md` as a fallback (disable with `OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1`)
+
+### File Type Priority ("First Type Wins")
+
+OpenCode uses a **"first type wins"** discovery strategy:
+
+1. **Search for `AGENTS.md`** first (walking up the project tree)
+2. **If any `AGENTS.md` is found**: Collect **all** `AGENTS.md` files and **STOP** (ignore `CLAUDE.md` and `CONTEXT.md` entirely)
+3. **If no `AGENTS.md`**: Search for `CLAUDE.md` (and ignore `CONTEXT.md`)
+4. **If no `CLAUDE.md`**: Search for `CONTEXT.md` (**deprecated**, will be removed)
+
+**Example:** If your project contains any `AGENTS.md` file, all `CLAUDE.md` files in the tree are completely ignored.
+
+**Recommendation:** Use `AGENTS.md` (preferred). `CLAUDE.md` is a fallback. `CONTEXT.md` is **deprecated** and legacy-only.
+
+### Pattern Filtering (Local Files Only)
+
+Profile `exclude` and `include` patterns apply **ONLY to local (project) instruction files**. Global and profile instruction files are **always included** regardless of patterns.
+
+### Source Alignment
+
+OCX's instruction discovery aligns with OpenCode's implementation. See:
+- **Instruction discovery logic**: https://github.com/sst/opencode/blob/dev/packages/opencode/src/session/instruction.ts
+- **File system traversal**: https://github.com/sst/opencode/blob/dev/packages/opencode/src/util/filesystem.ts
 
 
 
