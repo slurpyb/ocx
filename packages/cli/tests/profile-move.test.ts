@@ -68,7 +68,10 @@ describe("ocx profile move", () => {
 		expect(existsSync(oldDir)).toBe(true)
 		expect(existsSync(newDir)).toBe(false)
 
-		const { exitCode, output } = await runCLI(["profile", "move", "foo", "bar"], testDir)
+		const { exitCode, output } = await runCLI(
+			["profile", "move", "foo", "bar", "--global"],
+			testDir,
+		)
 
 		// Exact exit code assertion
 		expect(exitCode).toBe(0)
@@ -91,7 +94,10 @@ describe("ocx profile move", () => {
 	})
 
 	it("should fail with invalid old name containing path traversal", async () => {
-		const { exitCode, output } = await runCLI(["profile", "move", "../evil", "bar"], testDir)
+		const { exitCode, output } = await runCLI(
+			["profile", "move", "../evil", "bar", "--global"],
+			testDir,
+		)
 
 		// Invalid name = validation error = exit 1
 		expect(exitCode).toBe(1)
@@ -99,7 +105,10 @@ describe("ocx profile move", () => {
 	})
 
 	it("should fail with invalid new name containing path separator", async () => {
-		const { exitCode, output } = await runCLI(["profile", "move", "foo", "bad/path"], testDir)
+		const { exitCode, output } = await runCLI(
+			["profile", "move", "foo", "bad/path", "--global"],
+			testDir,
+		)
 
 		// Invalid name = validation error = exit 1
 		expect(exitCode).toBe(1)
@@ -107,7 +116,10 @@ describe("ocx profile move", () => {
 	})
 
 	it("should fail when source profile not found", async () => {
-		const { exitCode, output } = await runCLI(["profile", "move", "nonexistent", "bar"], testDir)
+		const { exitCode, output } = await runCLI(
+			["profile", "move", "nonexistent", "bar", "--global"],
+			testDir,
+		)
 
 		// Not found = exit 66
 		expect(exitCode).toBe(66)
@@ -122,7 +134,10 @@ describe("ocx profile move", () => {
 		await mkdir(barDir, { recursive: true })
 		await Bun.write(join(barDir, "ocx.jsonc"), BAR_CONTENT)
 
-		const { exitCode, output } = await runCLI(["profile", "move", "foo", "bar"], testDir)
+		const { exitCode, output } = await runCLI(
+			["profile", "move", "foo", "bar", "--global"],
+			testDir,
+		)
 
 		// Conflict = exit 6
 		expect(exitCode).toBe(6)
@@ -145,7 +160,7 @@ describe("ocx profile move", () => {
 		// Precondition: source exists
 		expect(existsSync(oldDir)).toBe(true)
 
-		const { exitCode, output } = await runCLI(["p", "mv", "foo", "renamed"], testDir)
+		const { exitCode, output } = await runCLI(["p", "mv", "foo", "renamed", "--global"], testDir)
 
 		expect(exitCode).toBe(0)
 		expect(output).toContain("Moved")
@@ -162,7 +177,10 @@ describe("ocx profile move", () => {
 		// Precondition: profile exists
 		expect(existsSync(profileDir)).toBe(true)
 
-		const { exitCode, output } = await runCLI(["profile", "move", "foo", "foo"], testDir)
+		const { exitCode, output } = await runCLI(
+			["profile", "move", "foo", "foo", "--global"],
+			testDir,
+		)
 
 		// Exact exit code: success
 		expect(exitCode).toBe(0)
@@ -179,7 +197,7 @@ describe("ocx profile move", () => {
 
 	it("should fail self-move when profile does not exist", async () => {
 		const { exitCode, output } = await runCLI(
-			["profile", "move", "nonexistent", "nonexistent"],
+			["profile", "move", "nonexistent", "nonexistent", "--global"],
 			testDir,
 		)
 
@@ -196,7 +214,10 @@ describe("ocx profile move", () => {
 		// Precondition: default exists
 		expect(existsSync(oldDir)).toBe(true)
 
-		const { exitCode, output } = await runCLI(["profile", "move", "default", "primary"], testDir)
+		const { exitCode, output } = await runCLI(
+			["profile", "move", "default", "primary", "--global"],
+			testDir,
+		)
 
 		// Exact exit code
 		expect(exitCode).toBe(0)
@@ -217,9 +238,13 @@ describe("ocx profile move", () => {
 		const configDir = join(testDir, "opencode")
 		const newDir = join(configDir, "profiles", "bar")
 
-		const { exitCode, output } = await runCLI(["profile", "move", "foo", "bar"], testDir, {
-			env: { OCX_PROFILE: "foo" },
-		})
+		const { exitCode, output } = await runCLI(
+			["profile", "move", "foo", "bar", "--global"],
+			testDir,
+			{
+				env: { OCX_PROFILE: "foo" },
+			},
+		)
 
 		expect(exitCode).toBe(0)
 		expect(output).toContain("Moved")
@@ -238,31 +263,46 @@ describe("ocx profile move", () => {
 	describe("boundary conditions", () => {
 		// Path traversal - old name
 		it("should reject path traversal in old name (../)", async () => {
-			const { exitCode, output } = await runCLI(["profile", "move", "../evil", "bar"], testDir)
+			const { exitCode, output } = await runCLI(
+				["profile", "move", "../evil", "bar", "--global"],
+				testDir,
+			)
 			expect(exitCode).toBe(1)
 			expect(output).toContain('Invalid profile name "../evil"')
 		})
 
 		it("should reject dotdot as old name", async () => {
-			const { exitCode, output } = await runCLI(["profile", "move", "..", "bar"], testDir)
+			const { exitCode, output } = await runCLI(
+				["profile", "move", "..", "bar", "--global"],
+				testDir,
+			)
 			expect(exitCode).toBe(1)
 			expect(output).toContain('Invalid profile name ".."')
 		})
 
 		it("should reject dot as old name", async () => {
-			const { exitCode, output } = await runCLI(["profile", "move", ".", "bar"], testDir)
+			const { exitCode, output } = await runCLI(
+				["profile", "move", ".", "bar", "--global"],
+				testDir,
+			)
 			expect(exitCode).toBe(1)
 			expect(output).toContain('Invalid profile name "."')
 		})
 
 		it("should reject forward slash in name", async () => {
-			const { exitCode, output } = await runCLI(["profile", "move", "a/b", "bar"], testDir)
+			const { exitCode, output } = await runCLI(
+				["profile", "move", "a/b", "bar", "--global"],
+				testDir,
+			)
 			expect(exitCode).toBe(1)
 			expect(output).toContain('Invalid profile name "a/b"')
 		})
 
 		it("should reject backslash in name", async () => {
-			const { exitCode, output } = await runCLI(["profile", "move", "a\\b", "bar"], testDir)
+			const { exitCode, output } = await runCLI(
+				["profile", "move", "a\\b", "bar", "--global"],
+				testDir,
+			)
 			expect(exitCode).toBe(1)
 			expect(output).toContain("Invalid profile name")
 		})
@@ -275,7 +315,7 @@ describe("ocx profile move", () => {
 			await mkdir(profileDir, { recursive: true })
 			await Bun.write(join(profileDir, "ocx.jsonc"), "{}")
 
-			const { exitCode } = await runCLI(["profile", "move", "x", "y"], testDir)
+			const { exitCode } = await runCLI(["profile", "move", "x", "y", "--global"], testDir)
 			expect(exitCode).toBe(0)
 		})
 
@@ -286,13 +326,16 @@ describe("ocx profile move", () => {
 			await mkdir(profileDir, { recursive: true })
 			await Bun.write(join(profileDir, "ocx.jsonc"), "{}")
 
-			const { exitCode } = await runCLI(["profile", "move", "src", longName], testDir)
+			const { exitCode } = await runCLI(["profile", "move", "src", longName, "--global"], testDir)
 			expect(exitCode).toBe(0)
 		})
 
 		it("should reject name over 32 chars", async () => {
 			const tooLong = "a".repeat(33)
-			const { exitCode, output } = await runCLI(["profile", "move", "foo", tooLong], testDir)
+			const { exitCode, output } = await runCLI(
+				["profile", "move", "foo", tooLong, "--global"],
+				testDir,
+			)
 			expect(exitCode).toBe(1)
 			expect(output).toContain("Invalid profile name")
 		})
@@ -304,18 +347,24 @@ describe("ocx profile move", () => {
 			await mkdir(profileDir, { recursive: true })
 			await Bun.write(join(profileDir, "ocx.jsonc"), "{}")
 
-			const { exitCode } = await runCLI(["profile", "move", "src", "a.b_c-d"], testDir)
+			const { exitCode } = await runCLI(["profile", "move", "src", "a.b_c-d", "--global"], testDir)
 			expect(exitCode).toBe(0)
 		})
 
 		it("should reject name starting with number", async () => {
-			const { exitCode, output } = await runCLI(["profile", "move", "foo", "1abc"], testDir)
+			const { exitCode, output } = await runCLI(
+				["profile", "move", "foo", "1abc", "--global"],
+				testDir,
+			)
 			expect(exitCode).toBe(1)
 			expect(output).toContain("Invalid profile name")
 		})
 
 		it("should reject name with space", async () => {
-			const { exitCode, output } = await runCLI(["profile", "move", "foo", "a b"], testDir)
+			const { exitCode, output } = await runCLI(
+				["profile", "move", "foo", "a b", "--global"],
+				testDir,
+			)
 			expect(exitCode).toBe(1)
 			expect(output).toContain("Invalid profile name")
 		})

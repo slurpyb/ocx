@@ -81,7 +81,10 @@ describe("ocx profile remove", () => {
 		// Precondition: profile exists
 		expect(existsSync(profileDir)).toBe(true)
 
-		const { exitCode, output } = await runCLI(["profile", "remove", "test-profile"], testDir)
+		const { exitCode, output } = await runCLI(
+			["profile", "remove", "test-profile", "--global"],
+			testDir,
+		)
 
 		expect(exitCode).toBe(0)
 		expect(output).toContain("Deleted")
@@ -96,7 +99,10 @@ describe("ocx profile remove", () => {
 	})
 
 	it("should fail when removing non-existent profile", async () => {
-		const { exitCode, output } = await runCLI(["profile", "remove", "nonexistent"], testDir)
+		const { exitCode, output } = await runCLI(
+			["profile", "remove", "nonexistent", "--global"],
+			testDir,
+		)
 
 		expect(exitCode).not.toBe(0)
 		expect(output).toContain("nonexistent")
@@ -109,7 +115,10 @@ describe("ocx profile remove", () => {
 		// Precondition: profile exists
 		expect(existsSync(profileDir)).toBe(true)
 
-		const { exitCode, output } = await runCLI(["profile", "rm", "other-profile"], testDir)
+		const { exitCode, output } = await runCLI(
+			["profile", "rm", "other-profile", "--global"],
+			testDir,
+		)
 
 		expect(exitCode).toBe(0)
 		expect(output).toContain("Deleted")
@@ -120,11 +129,11 @@ describe("ocx profile remove", () => {
 		const configDir = join(testDir, "opencode")
 
 		// Remove all but one profile
-		await runCLI(["profile", "rm", "test-profile"], testDir)
-		await runCLI(["profile", "rm", "other-profile"], testDir)
+		await runCLI(["profile", "rm", "test-profile", "--global"], testDir)
+		await runCLI(["profile", "rm", "other-profile", "--global"], testDir)
 
 		// Attempt to remove the last profile
-		const { exitCode, output } = await runCLI(["profile", "rm", "default"], testDir)
+		const { exitCode, output } = await runCLI(["profile", "rm", "default", "--global"], testDir)
 
 		expect(exitCode).not.toBe(0)
 		expect(output).toContain("last profile")
