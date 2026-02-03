@@ -19,16 +19,6 @@ When `lockRegistries` is `true`, `ocx registry add` and `ocx registry remove` wi
 
 > **Note:** The `lockRegistries` setting applies to the config file where it's defined. If set in your global config (`~/.config/opencode/ocx.jsonc`), it prevents `ocx registry add --global` and `ocx registry remove --global` from modifying global registries. If set in a local project config, it only affects local registry operations. When using profiles, `lockRegistries` in a profile's `ocx.jsonc` locks that profile's registries.
 
-## Version Pinning
-
-You can pin a registry to a specific version to ensure reproducible environments:
-
-```bash
-ocx registry add https://registry.kdco.dev --version 0.1.0
-```
-
-This ensures that `ocx add` and updates will only pull components compatible with version `0.1.0` of that registry.
-
 ## Security Audit with `ocx-receipt.json`
 
 OCX automatically generates an `ocx-receipt.json` file. This file acts as an audit log and provenance record for your installed extensions.
@@ -46,15 +36,7 @@ OCX automatically generates an `ocx-receipt.json` file. This file acts as an aud
 OCX uses **receipt semantics** rather than strict lockfile semantics:
 
 - **Receipts are advisory** - They record what was installed but don't enforce strict reproducibility
-- **Version pinning in config** - For reproducible builds, pin versions in `ocx.jsonc`:
-  ```jsonc
-  {
-    "registries": {
-      "kdco": { "url": "https://registry.kdco.dev", "version": "1.2.0" }
-    }
-  }
-  ```
-- **Component-level pinning** - Pin individual components: `ocx add kdco/agents@1.2.0`
+- **Component-level pinning** - Pin individual components to ensure reproducible builds: `ocx add kdco/agents@1.2.0`
 
 This approach gives you flexibility while maintaining auditability.
 
