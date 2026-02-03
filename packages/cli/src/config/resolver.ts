@@ -283,7 +283,7 @@ export class ConfigResolver {
 	 * @throws ProfileNotFoundError if specified profile doesn't exist
 	 */
 	static async create(cwd: string, options?: { profile?: string }): Promise<ConfigResolver> {
-		const manager = ProfileManager.create()
+		const manager = ProfileManager.create(cwd)
 
 		// V2: Check local config for profile selection first
 		let profileName: string | null = null

@@ -206,7 +206,9 @@ export function startMockRegistry(): MockRegistry {
 				}
 				if (name === "test-profile-with-deps") {
 					if (filePath === "ocx.jsonc") {
-						return new Response(JSON.stringify({ registries: {} }, null, 2))
+						// Use req.url to get the base URL dynamically
+						const baseUrl = `http://${url.host}`
+						return new Response(JSON.stringify({ registries: { kdco: { url: baseUrl } } }, null, 2))
 					}
 					if (filePath === "opencode.jsonc") {
 						return new Response(JSON.stringify({}, null, 2))
