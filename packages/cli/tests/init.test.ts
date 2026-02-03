@@ -75,6 +75,7 @@ describe("init --registry", () => {
 			[
 				"init",
 				"--registry",
+				testDir,
 				"--local",
 				REGISTRY_FIXTURE,
 				"--namespace",
@@ -108,7 +109,17 @@ describe("init --registry", () => {
 		testDir = await createTempDir("init-registry-output")
 
 		const { exitCode, output } = await runCLI(
-			["init", "--registry", "--local", REGISTRY_FIXTURE, "--namespace", "my-ns", "--author", "Me"],
+			[
+				"init",
+				"--registry",
+				testDir,
+				"--local",
+				REGISTRY_FIXTURE,
+				"--namespace",
+				"my-ns",
+				"--author",
+				"Me",
+			],
 			testDir,
 		)
 
@@ -125,6 +136,7 @@ describe("init --registry", () => {
 			[
 				"init",
 				"--registry",
+				testDir,
 				"--local",
 				REGISTRY_FIXTURE,
 				"--namespace",
