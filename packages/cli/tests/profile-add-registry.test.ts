@@ -269,7 +269,10 @@ describe("ocx profile add (conflict detection)", () => {
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
 
-		const { exitCode, output } = await runCLI(["profile", "add", "existing-profile"], workDir)
+		const { exitCode, output } = await runCLI(
+			["profile", "add", "existing-profile", "--global"],
+			workDir,
+		)
 
 		expect(exitCode).toBe(6)
 		// Verify error message contains key information for user action
@@ -304,10 +307,14 @@ describe("ocx profile add (conflict detection)", () => {
 		const env = { XDG_CONFIG_HOME: testDir }
 
 		// Remove the profile
-		const { exitCode: rmExitCode } = await runCLI(["profile", "rm", "existing-profile"], workDir, {
-			env,
-			isolated: true,
-		})
+		const { exitCode: rmExitCode } = await runCLI(
+			["profile", "rm", "existing-profile", "--global"],
+			workDir,
+			{
+				env,
+				isolated: true,
+			},
+		)
 		expect(rmExitCode).toBe(0)
 
 		// Then add the profile fresh (V2: with --global flag)
