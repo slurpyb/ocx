@@ -97,7 +97,14 @@ export async function runUpdateCore(
 	// Guard: No receipt file (nothing installed yet)
 	const receipt = await readReceipt(provider.cwd)
 	if (!receipt || Object.keys(receipt.installed).length === 0) {
-		throw new ValidationError("Nothing installed yet. Run 'ocx add <component>' first.")
+		// If user specified components, give specific error
+		if (componentNames.length > 0) {
+			throw new NotFoundError(
+				`Component '${componentNames[0]}' is not installed. Run 'ocx add ${componentNames[0]}' first.`,
+			)
+		}
+		// Generic case for --all or --registry
+		throw new NotFoundError("No components installed. Run 'ocx add <component>' first.")
 	}
 
 	// Guard: No args and no flags

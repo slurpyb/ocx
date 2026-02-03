@@ -1678,7 +1678,7 @@ Common errors from CLI.md error tables.
 - [ ] **Setup:** Components installed
 - [ ] **Command:** `ocx update --all --registry kdco`
 - [ ] **Expected:** Error: "Cannot use --all with --registry"
-- [ ] **Verify:** Exit code 78 (CONFIG)
+- [ ] **Verify:** Exit code 1 (GENERAL)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 17.8 Error: Profile Not Found (Move)

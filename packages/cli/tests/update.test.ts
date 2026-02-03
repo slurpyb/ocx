@@ -292,8 +292,8 @@ describe("ocx update", () => {
 		// Don't install anything (no lock file will exist)
 		const { exitCode, output } = await runCLI(["update", "kdco/test-plugin"], testDir)
 
-		expect(exitCode).not.toBe(0)
-		expect(output).toContain("Nothing installed yet")
+		expect(exitCode).toBe(66) // NotFoundError exit code
+		expect(output).toContain("Component 'kdco/test-plugin' is not installed")
 	})
 
 	// =========================================================================

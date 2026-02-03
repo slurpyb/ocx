@@ -13,13 +13,7 @@ import {
 	type OpencodeConfig,
 	parseQualifiedComponent,
 } from "../schemas/registry"
-import {
-	ConfigError,
-	NetworkError,
-	NotFoundError,
-	OCXError,
-	ValidationError,
-} from "../utils/errors"
+import { NetworkError, NotFoundError, OCXError, ValidationError } from "../utils/errors"
 import { fetchComponent } from "./fetcher"
 import { mergeOpencodeConfig } from "./merge"
 
@@ -106,8 +100,8 @@ export async function resolveDependencies(
 		// Look up the registry for this namespace
 		const regConfig = registries[componentNamespace]
 		if (!regConfig) {
-			throw new ConfigError(
-				`Registry '${componentNamespace}' not configured. Add it to ocx.jsonc registries.`,
+			throw new NotFoundError(
+				`Registry '${componentNamespace}' not found. Add it with 'ocx registry add <url> --name ${componentNamespace}'.`,
 			)
 		}
 

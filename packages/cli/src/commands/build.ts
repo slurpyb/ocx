@@ -4,7 +4,7 @@
  * CLI wrapper around the buildRegistry library function.
  */
 
-import { join, relative } from "node:path"
+import { relative, resolve } from "node:path"
 import type { Command } from "commander"
 import kleur from "kleur"
 import { BuildRegistryError, buildRegistry } from "../lib/build-registry"
@@ -28,8 +28,8 @@ export function registerBuildCommand(program: Command): void {
 		.option("-q, --quiet", "Suppress output", false)
 		.action(async (path: string, options: BuildOptions) => {
 			try {
-				const sourcePath = join(options.cwd, path)
-				const outPath = join(options.cwd, options.out)
+				const sourcePath = resolve(options.cwd, path)
+				const outPath = resolve(options.cwd, options.out)
 
 				const spinner = createSpinner({
 					text: "Building registry...",
