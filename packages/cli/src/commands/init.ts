@@ -33,34 +33,32 @@ interface InitOptions {
 	quiet?: boolean
 	verbose?: boolean
 	json?: boolean
-	registry?: boolean
+	registry?: string
 	namespace?: string
 	author?: string
 	canary?: boolean
 	local?: string
-	force?: boolean // Only used for --registry mode
 	global?: boolean
 }
 
 export function registerInitCommand(program: Command): void {
 	program
-		.command("init [directory]")
+		.command("init")
 		.description("Initialize OCX configuration in your project")
 		.option("--cwd <path>", "Working directory", process.cwd())
 		.option("-q, --quiet", "Suppress output")
 		.option("-v, --verbose", "Verbose output")
 		.option("--json", "Output as JSON")
-		.option("--registry", "Scaffold a new OCX registry project")
+		.option("--registry <path>", "Scaffold a new OCX registry project at path")
 		.option("--namespace <name>", "Registry namespace (e.g., my-org)")
 		.option("--author <name>", "Author name for the registry")
 		.option("--canary", "Use canary (main branch) instead of latest release")
 		.option("--local <path>", "Use local template directory instead of fetching")
-		.option("-f, --force", "Overwrite existing files (registry mode only)")
 		.option("-g, --global", "Initialize in global OpenCode config (~/.config/opencode)")
-		.action(async (directory: string | undefined, options: InitOptions) => {
+		.action(async (options: InitOptions) => {
 			try {
 				if (options.registry) {
-					await runInitRegistry(directory, options)
+					await runInitRegistry(options.registry, options)
 				} else if (options.global) {
 					await runInitGlobal(options)
 				} else {
@@ -241,8 +239,8 @@ async function runInitGlobal(options: InitOptions): Promise<void> {
 	}
 }
 
-async function runInitRegistry(directory: string | undefined, options: InitOptions): Promise<void> {
-	const cwd = directory ?? options.cwd ?? process.cwd()
+async function runInitRegistry(registryPath: string, options: InitOptions): Promise<void> {
+	const cwd = registryPath
 	const namespace = options.namespace ?? "my-registry"
 	const author = options.author ?? "Your Name"
 
@@ -257,8 +255,10 @@ async function runInitRegistry(directory: string | undefined, options: InitOptio
 	const existingFiles = await readdir(cwd).catch(() => [])
 	const hasVisibleFiles = existingFiles.some((f) => !f.startsWith("."))
 
-	if (hasVisibleFiles && !options.force) {
-		throw new ConflictError("Directory is not empty. Use --force to overwrite existing files.")
+	if (hasVisibleFiles) {
+		throw new ConflictError(
+			"Directory is not empty. Remove existing files or choose a different directory.",
+		)
 	}
 
 	const spin = options.quiet ? null : createSpinner({ text: "Scaffolding registry..." })

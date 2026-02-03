@@ -371,51 +371,50 @@ All variations from CLI.md lines 33-126.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 5.3 `ocx init -f` (Force No Prompts)
+### 5.3 `ocx init` (Default Behavior)
 
 - [ ] **Setup:** Test project directory
-- [ ] **Command:** `ocx init -f`
-- [ ] **Expected:** Creates config without prompts
+- [ ] **Command:** `ocx init`
+- [ ] **Expected:** Creates config with defaults, no prompts required
 - [ ] **Verify:** `.opencode/` created with defaults
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 5.4 `ocx init --force` (Overwrite Existing)
+### 5.4 `ocx init` (Error on Existing)
 
 - [ ] **Setup:** Existing `.opencode/` directory
 - [ ] **Commands:**
   ```bash
   ocx init
-  echo "test" > .opencode/test.txt
-  ocx init --force
+  ocx init  # Run again
   ```
-- [ ] **Expected:** Overwrites existing config files
+- [ ] **Expected:** Second run fails with error (config already exists)
 - [ ] **Verify:**
   ```bash
-  ls .opencode/  # test.txt should remain
-  cat .opencode/ocx.jsonc  # Should be fresh template
+  # Should error: ocx.jsonc already exists
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 5.5 `ocx init ./my-project`
+### 5.5 `ocx init --registry <path>` (Registry Scaffold Only)
 
 - [ ] **Setup:** Parent directory
 - [ ] **Commands:**
   ```bash
   cd /tmp
-  ocx init ./ocx-test-subdir
+  ocx init --registry ./ocx-test-registry --namespace my-org
   ```
-- [ ] **Expected:** Creates `.opencode/` in specified directory
+- [ ] **Expected:** Creates registry project at specified path
 - [ ] **Verify:**
   ```bash
-  ls ./ocx-test-subdir/.opencode/
-  rm -rf ./ocx-test-subdir
+  ls ./ocx-test-registry/
+  cat ./ocx-test-registry/registry.jsonc
+  rm -rf ./ocx-test-registry
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 5.6 `ocx init --registry` (Scaffold Registry)
 
 - [ ] **Setup:** Empty directory for registry
-- [ ] **Command:** `ocx init my-registry --registry --namespace my-org`
+- [ ] **Command:** `ocx init --registry my-registry --namespace my-org`
 - [ ] **Expected:** Scaffolds complete registry project
 - [ ] **Verify:**
   ```bash
@@ -428,7 +427,7 @@ All variations from CLI.md lines 33-126.
 ### 5.7 `ocx init --registry` with Author
 
 - [ ] **Setup:** Empty directory
-- [ ] **Command:** `ocx init my-registry --registry --namespace acme --author "Acme Corp"`
+- [ ] **Command:** `ocx init --registry my-registry --namespace acme --author "Acme Corp"`
 - [ ] **Expected:** Scaffolds registry with custom author
 - [ ] **Verify:**
   ```bash
@@ -440,7 +439,7 @@ All variations from CLI.md lines 33-126.
 ### 5.8 `ocx init --registry --canary`
 
 - [ ] **Setup:** Empty directory
-- [ ] **Command:** `ocx init my-registry --registry --canary`
+- [ ] **Command:** `ocx init --registry my-registry --canary --namespace test`
 - [ ] **Expected:** Uses canary template (main branch)
 - [ ] **Verify:** Registry scaffolded successfully
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -829,18 +828,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.3 `ocx registry add` with Version Pin
-
-- [ ] **Setup:** Local config initialized
-- [ ] **Command:** `ocx registry add http://localhost:8787 --name kdco --version 1.0.0`
-- [ ] **Expected:** Registry pinned to version 1.0.0
-- [ ] **Verify:**
-  ```bash
-  cat .opencode/ocx.jsonc  # Should show version: "1.0.0"
-  ```
-- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
-
-### 10.4 `ocx registry add --global`
+### 10.3 `ocx registry add --global`
 
 - [ ] **Setup:** Global profiles initialized
 - [ ] **Command:** `ocx registry add http://localhost:8787 --name kdco --global`
@@ -852,7 +840,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.5 `ocx registry add --force` (Update Existing)
+### 10.4 `ocx registry add --force` (Update Existing)
 
 - [ ] **Setup:** Registry already configured
 - [ ] **Command:** `ocx registry add https://new-url.kdco.dev --name kdco --force`
@@ -863,7 +851,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.6 `ocx registry add` with `--json` Output
+### 10.5 `ocx registry add` with `--json` Output
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `ocx registry add http://localhost:8787 --name kdco --json`
@@ -871,7 +859,7 @@ All subcommands from CLI.md lines 519-705.
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.7 `ocx registry remove` (Local)
+### 10.6 `ocx registry remove` (Local)
 
 - [ ] **Setup:** Registry configured locally
 - [ ] **Command:** `ocx registry remove kdco`
@@ -883,7 +871,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.8 `ocx registry remove --global`
+### 10.7 `ocx registry remove --global`
 
 - [ ] **Setup:** Registry configured globally
 - [ ] **Command:** `ocx registry remove kdco --global`
@@ -894,7 +882,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.9 `ocx registry list` (Local)
+### 10.8 `ocx registry list` (Local)
 
 - [ ] **Setup:** Registries configured locally
 - [ ] **Command:** `ocx registry list`
@@ -902,7 +890,7 @@ All subcommands from CLI.md lines 519-705.
 - [ ] **Verify:** Output matches `.opencode/ocx.jsonc` content
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.10 `ocx registry list --global`
+### 10.9 `ocx registry list --global`
 
 - [ ] **Setup:** Registries configured globally
 - [ ] **Command:** `ocx registry list --global`
@@ -910,7 +898,7 @@ All subcommands from CLI.md lines 519-705.
 - [ ] **Verify:** Output matches global config
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.11 `ocx registry list --json`
+### 10.10 `ocx registry list --json`
 
 - [ ] **Setup:** Registries configured
 - [ ] **Command:** `ocx registry list --json`

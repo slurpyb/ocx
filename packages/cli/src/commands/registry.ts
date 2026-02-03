@@ -37,7 +37,6 @@ export interface RegistryOptions {
 
 export interface RegistryAddOptions extends RegistryOptions {
 	name?: string
-	version?: string
 	force?: boolean
 }
 
@@ -105,7 +104,6 @@ export async function runRegistryAddCore(
 
 	await callbacks.setRegistry(name, {
 		url: trimmedUrl,
-		version: options.version,
 	})
 
 	return { name, url: trimmedUrl, updated: isUpdate }
@@ -249,7 +247,6 @@ export function registerRegistryCommand(program: Command): void {
 		.description("Add a registry")
 		.argument("<url>", "Registry URL")
 		.option("--name <name>", "Registry alias (defaults to hostname)")
-		.option("--version <version>", "Pin to specific version")
 		.option("-f, --force", "Overwrite existing registry")
 
 	addGlobalOption(addCmd)

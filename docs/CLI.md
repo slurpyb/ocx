@@ -37,26 +37,20 @@ Initialize OCX configuration locally or globally with profile support.
 ### Usage
 
 ```bash
-ocx init [directory] [options]
+ocx init [options]
+ocx init --registry <path> [options]
 ```
-
-### Arguments
-
-| Argument | Description |
-|----------|-------------|
-| `directory` | Target directory (default: current directory) |
 
 ### Options
 
 | Option | Description |
 |--------|-------------|
-| `-f, --force` | Overwrite existing files (registry mode only) |
 | `--cwd <path>` | Working directory (default: current directory) |
 | `-q, --quiet` | Suppress output |
 | `-v, --verbose` | Verbose output |
 | `--json` | Output as JSON |
 | `-g, --global` | Initialize global configuration with default profile |
-| `--registry` | Scaffold a new OCX registry project |
+| `--registry <path>` | Scaffold a new OCX registry project at path |
 | `--namespace <name>` | Registry namespace (e.g., `my-org`) |
 | `--author <name>` | Author name for the registry |
 | `--canary` | Use canary (main branch) instead of latest release |
@@ -70,28 +64,19 @@ ocx init
 
 # Initialize global profiles
 ocx init --global
-
-# Initialize with defaults (no prompts)
-ocx init -f
-
-# Overwrite existing configuration
-ocx init --force
-
-# Initialize in a specific directory
-ocx init ./my-project
 ```
 
 ### Scaffolding a Registry
 
 ```bash
 # Create a new registry project
-ocx init my-registry --registry --namespace my-org
+ocx init --registry my-registry --namespace my-org
 
 # Use custom author
-ocx init my-registry --registry --namespace acme --author "Acme Corp"
+ocx init --registry my-registry --namespace acme --author "Acme Corp"
 
 # Use latest development version
-ocx init my-registry --registry --canary
+ocx init --registry my-registry --canary
 ```
 
 ### Output Files
@@ -120,9 +105,9 @@ ocx init my-registry --registry --canary
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| `ocx.jsonc already exists` | Config file exists | Use `--force` to overwrite |
+| `ocx.jsonc already exists` | Config file exists | Delete the config and run init again |
 | `Invalid namespace format` | Namespace contains invalid characters | Use lowercase letters, numbers, and hyphens only |
-| `Directory is not empty` | Target directory has files | Use `--force` to proceed anyway |
+| `Directory is not empty` | Target directory has files | Remove existing files or choose a different directory |
 
 ---
 
@@ -551,7 +536,6 @@ ocx registry add <url> [options]
 | Option | Description |
 |--------|-------------|
 | `--name <name>` | Registry alias (defaults to hostname) |
-| `--version <version>` | Pin to specific version |
 | `-f, --force` | Overwrite existing registry |
 | `-g, --global` | Add to global config (~/.config/opencode) |
 | `-p, --profile <name>` | Use specific global profile for registry resolution |
@@ -567,9 +551,6 @@ ocx registry add https://registry.example.com
 
 # Add with custom name
 ocx registry add https://registry.example.com --name myregistry
-
-# Pin to specific version
-ocx registry add https://registry.example.com --name myregistry --version 1.0.0
 
 # Get machine-readable output
 ocx registry add https://registry.example.com --json
@@ -914,8 +895,7 @@ Local project configuration created by `ocx init`:
   "$schema": "https://ocx.kdco.dev/schemas/ocx.json",
   "registries": {
     "kdco": {
-      "url": "https://ocx.kdco.dev",
-      "version": "1.0.0"  // optional: pin version
+      "url": "https://ocx.kdco.dev"
     }
   },
   "lockRegistries": false  // prevent registry modification
