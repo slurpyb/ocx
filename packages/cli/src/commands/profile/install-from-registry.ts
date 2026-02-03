@@ -15,7 +15,7 @@ import { parse } from "jsonc-parser"
 import type { ConfigProvider } from "../../config/provider"
 import { getProfileDir, getProfilesDir } from "../../profile/paths"
 import { profileNameSchema } from "../../profile/schema"
-import { fetchComponent, fetchFileContent } from "../../registry/fetcher"
+import { fetchComponent, fetchFileContent, fetchRegistryIndex } from "../../registry/fetcher"
 import type { RegistryConfig } from "../../schemas/config"
 import { type OcxLock, writeOcxLock } from "../../schemas/config"
 import { normalizeComponentManifest } from "../../schemas/registry"
@@ -28,8 +28,8 @@ import { runAddCore } from "../add"
 // =============================================================================
 
 export interface InstallProfileOptions {
-	/** Registry namespace (e.g., "kdco") */
-	namespace: string
+	/** Registry namespace (e.g., "kdco"). Optional - will be fetched from registry index if not provided. */
+	namespace?: string
 	/** Component name (e.g., "minimal") */
 	component: string
 	/** Local profile name (e.g., "work") */
@@ -84,7 +84,7 @@ function hashBundle(files: { path: string; content: Buffer }[]): string {
  * @throws ConflictError if profile exists and force is not set
  */
 export async function installProfileFromRegistry(options: InstallProfileOptions): Promise<void> {
-	const { namespace, component, profileName, registryUrl, quiet } = options
+	const { namespace: providedNamespace, component, profileName, registryUrl, quiet } = options
 
 	// ==========================================================================
 	// Guard: Validate profile name at boundary (Law 2: Parse Don't Validate)
@@ -96,6 +96,31 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 			`Invalid profile name: "${profileName}". ` +
 				`Profile names must start with a letter and contain only alphanumeric characters, dots, underscores, or hyphens.`,
 		)
+	}
+
+	// ==========================================================================
+	// Phase 0: Fetch namespace from registry if not provided (URL installs)
+	// ==========================================================================
+
+	let namespace: string
+	if (providedNamespace) {
+		namespace = providedNamespace
+	} else {
+		// Fetch registry index to get the actual namespace
+		const indexSpin = quiet ? null : createSpinner({ text: "Fetching registry metadata..." })
+		indexSpin?.start()
+
+		try {
+			const registryIndex = await fetchRegistryIndex(registryUrl)
+			namespace = registryIndex.namespace
+			indexSpin?.succeed(`Registry namespace: ${namespace}`)
+		} catch (error) {
+			indexSpin?.fail("Failed to fetch registry metadata")
+			throw new ValidationError(
+				`Failed to fetch registry metadata from "${registryUrl}". ` +
+					`Cannot determine namespace for URL-based install. Error: ${error instanceof Error ? error.message : String(error)}`,
+			)
+		}
 	}
 
 	const profileDir = getProfileDir(profileName)

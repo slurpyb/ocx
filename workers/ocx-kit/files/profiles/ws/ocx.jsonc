@@ -1,7 +1,7 @@
 {
 	"$schema": "https://ocx.kdco.dev/schemas/profile.json",
 	"registries": {
-		"kdco": { "url": "https://registry.kdco.dev" }
+		"kdco": { "url": "http://localhost:8787" }
 	},
 	"renameWindow": true,
 	"exclude": [

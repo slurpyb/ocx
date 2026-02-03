@@ -243,7 +243,6 @@ async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<
 
 			// Install profile from URL
 			await installProfileFromRegistry({
-				namespace: "__url__", // Placeholder namespace for URL installs
 				component,
 				profileName: name,
 				registryUrl,
