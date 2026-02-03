@@ -10,7 +10,7 @@
 import type { Command } from "commander"
 import { ConfigResolver } from "../config/resolver"
 import { ProfileManager } from "../profile/manager"
-import { getProfileDir, getProfileOpencodeConfig } from "../profile/paths"
+import { getProfileOpencodeConfig } from "../profile/paths"
 import { ProfilesNotInitializedError } from "../utils/errors"
 import { getGitInfo } from "../utils/git-context"
 import { handleError, logger } from "../utils/index"
@@ -77,7 +77,6 @@ export function resolveOpenCodeBinary(opts: { configBin?: string; envBin?: strin
  */
 export function buildOpenCodeEnv(opts: {
 	baseEnv: Record<string, string | undefined>
-	profileDir?: string
 	profileName?: string
 	mergedConfig?: object
 	disableProjectConfig: boolean
@@ -135,9 +134,6 @@ async function runOpencode(args: string[], options: OpencodeOptions): Promise<vo
 	// Precedence: CLI flag > config > default(true)
 	const ocxConfig = profile?.ocx
 	const shouldRename = options.rename !== false && ocxConfig?.renameWindow !== false
-
-	// Get profile directory if we have a profile
-	const profileDir = config.profileName ? getProfileDir(config.profileName) : undefined
 
 	// Check for profile's opencode.jsonc (optional)
 	if (config.profileName) {
@@ -226,7 +222,6 @@ async function runOpencode(args: string[], options: OpencodeOptions): Promise<vo
 		cwd: projectDir,
 		env: buildOpenCodeEnv({
 			baseEnv: process.env as Record<string, string | undefined>,
-			profileDir,
 			profileName: config.profileName ?? undefined,
 			mergedConfig: configToPass,
 			disableProjectConfig: true,

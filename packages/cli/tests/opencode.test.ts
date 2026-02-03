@@ -113,13 +113,15 @@ describe("buildOpenCodeEnv", () => {
 		expect(result.OPENCODE_DISABLE_PROJECT_CONFIG).toBeUndefined()
 	})
 
-	it("sets OPENCODE_CONFIG_DIR to profileDir when provided", () => {
+	it("sets OPENCODE_CONFIG_DIR to global config path", () => {
 		const result = buildOpenCodeEnv({
 			baseEnv: {},
-			profileDir: "/home/user/.config/opencode/profiles/work",
 			disableProjectConfig: true,
 		})
-		expect(result.OPENCODE_CONFIG_DIR).toBe("/home/user/.config/opencode/profiles/work")
+		// Should always use getGlobalConfigPath() - no longer accepts profileDir
+		expect(result.OPENCODE_CONFIG_DIR).toBeDefined()
+		// Can't test exact value since it's XDG-aware, but should be set
+		expect(typeof result.OPENCODE_CONFIG_DIR).toBe("string")
 	})
 
 	it("sets OPENCODE_CONFIG_CONTENT as JSON when mergedConfig provided", () => {
@@ -169,12 +171,13 @@ describe("buildOpenCodeEnv", () => {
 		const result = buildOpenCodeEnv({
 			baseEnv,
 			profileName: "new-profile",
-			profileDir: "/new/path",
 			disableProjectConfig: true,
 		})
 		// Overwritten keys
 		expect(result.OCX_PROFILE).toBe("new-profile")
-		expect(result.OPENCODE_CONFIG_DIR).toBe("/new/path")
+		// OPENCODE_CONFIG_DIR always uses getGlobalConfigPath(), overwriting baseEnv value
+		expect(result.OPENCODE_CONFIG_DIR).toBeDefined()
+		expect(result.OPENCODE_CONFIG_DIR).not.toBe("/old/path")
 		// Preserved keys
 		expect(result.PATH).toBe("/usr/bin")
 	})
