@@ -457,13 +457,13 @@ All variations from CLI.md lines 129-253.
   ```bash
   ocx init
   ocx registry add http://localhost:8787 --name kdco
-  ocx add kdco/agents
+  ocx add kdco/researcher
   ```
 - [ ] **Expected:** Component installed to `.opencode/`
 - [ ] **Verify:**
   ```bash
   ls .opencode/
-  cat .opencode/ocx-receipt.json  # Should list kdco/agents
+  cat .opencode/ocx-receipt.json  # Should list kdco/researcher
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -482,7 +482,7 @@ All variations from CLI.md lines 129-253.
 ### 6.3 Add with Specific Profile
 
 - [ ] **Setup:** Profile configured with registry
-- [ ] **Command:** `ocx add kdco/agents --profile work`
+- [ ] **Command:** `ocx add kdco/researcher --profile work`
 - [ ] **Expected:** Uses profile's registry for resolution
 - [ ] **Verify:** Component installed successfully
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -525,7 +525,7 @@ All variations from CLI.md lines 129-253.
 ### 6.7 Add Multiple Components
 
 - [ ] **Setup:** Registry configured
-- [ ] **Command:** `ocx add kdco/agents kdco/skills kdco/plugins`
+- [ ] **Command:** `ocx add kdco/researcher kdco/code-philosophy kdco/notify`
 - [ ] **Expected:** Installs all three components
 - [ ] **Verify:**
   ```bash
@@ -537,7 +537,7 @@ All variations from CLI.md lines 129-253.
 ### 6.8 Add with `--dry-run`
 
 - [ ] **Setup:** Registry configured
-- [ ] **Command:** `ocx add kdco/agents --dry-run`
+- [ ] **Command:** `ocx add kdco/researcher --dry-run`
 - [ ] **Expected:** Shows what would be installed without making changes
 - [ ] **Verify:**
   ```bash
@@ -551,9 +551,9 @@ All variations from CLI.md lines 129-253.
 - [ ] **Setup:** Component already installed
 - [ ] **Commands:**
   ```bash
-  ocx add kdco/agents
+  ocx add kdco/researcher
   echo "// modified" >> .opencode/agents/some-file.md
-  ocx add kdco/agents --force
+  ocx add kdco/researcher --force
   ```
 - [ ] **Expected:** Overwrites without prompting
 - [ ] **Verify:** Local modifications overwritten
@@ -570,7 +570,7 @@ All variations from CLI.md lines 129-253.
 ### 6.11 Add with `--json` Output
 
 - [ ] **Setup:** Registry configured
-- [ ] **Command:** `ocx add kdco/agents --json`
+- [ ] **Command:** `ocx add kdco/researcher --json`
 - [ ] **Expected:** Outputs machine-readable JSON
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -578,7 +578,7 @@ All variations from CLI.md lines 129-253.
 ### 6.12 Add with `--verbose`
 
 - [ ] **Setup:** Registry configured
-- [ ] **Command:** `ocx add kdco/agents --verbose`
+- [ ] **Command:** `ocx add kdco/researcher --verbose`
 - [ ] **Expected:** Shows detailed file operations
 - [ ] **Verify:** Verbose output includes file paths
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -592,7 +592,7 @@ All variations from CLI.md lines 256-361.
 ### 7.1 Update Specific Component
 
 - [ ] **Setup:** Component installed
-- [ ] **Command:** `ocx update kdco/agents`
+- [ ] **Command:** `ocx update kdco/researcher`
 - [ ] **Expected:** Updates to latest version
 - [ ] **Verify:**
   ```bash
@@ -603,7 +603,7 @@ All variations from CLI.md lines 256-361.
 ### 7.2 Update Multiple Components
 
 - [ ] **Setup:** Multiple components installed
-- [ ] **Command:** `ocx update kdco/agents kdco/plugins`
+- [ ] **Command:** `ocx update kdco/researcher kdco/notify`
 - [ ] **Expected:** Updates both components
 - [ ] **Verify:**
   ```bash
@@ -645,32 +645,10 @@ All variations from CLI.md lines 256-361.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 7.6 Pin to Specific Version
+---
 
 - [ ] **Setup:** Component installed
-- [ ] **Command:** `ocx update kdco/agents@1.2.0`
-- [ ] **Expected:** Updates/downgrades to version 1.2.0
-- [ ] **Verify:**
-  ```bash
-  cat .opencode/ocx-receipt.json  # Should show version 1.2.0
-  ```
-- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
-
-### 7.7 Pin Multiple with Different Versions
-
-- [ ] **Setup:** Multiple components installed
-- [ ] **Command:** `ocx update kdco/agents@1.2.0 kdco/skills@2.0.0`
-- [ ] **Expected:** Updates each to specified version
-- [ ] **Verify:**
-  ```bash
-  cat .opencode/ocx-receipt.json  # Versions match specified
-  ```
-- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
-
-### 7.8 Update with `--json` Output
-
-- [ ] **Setup:** Component installed
-- [ ] **Command:** `ocx update kdco/agents --json`
+- [ ] **Command:** `ocx update kdco/researcher --json`
 - [ ] **Expected:** Machine-readable JSON output
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -678,7 +656,7 @@ All variations from CLI.md lines 256-361.
 ### 7.9 Update with `--verbose`
 
 - [ ] **Setup:** Component installed
-- [ ] **Command:** `ocx update kdco/agents --verbose`
+- [ ] **Command:** `ocx update kdco/researcher --verbose`
 - [ ] **Expected:** Detailed file change information
 - [ ] **Verify:** Verbose output shows file operations
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -700,7 +678,7 @@ All variations from CLI.md lines 364-436.
 ### 8.2 Diff Specific Component (No Changes)
 
 - [ ] **Setup:** Component installed, unmodified
-- [ ] **Command:** `ocx diff kdco/agents`
+- [ ] **Command:** `ocx diff kdco/researcher`
 - [ ] **Expected:** Shows "No changes"
 - [ ] **Verify:** Output confirms no modifications
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -711,18 +689,26 @@ All variations from CLI.md lines 364-436.
 - [ ] **Commands:**
   ```bash
   echo "// test" >> .opencode/agents/file.md
-  ocx diff kdco/agents
+  ocx diff kdco/researcher
   ```
 - [ ] **Expected:** Shows unified diff with modifications
 - [ ] **Verify:** Diff shows added comment
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.4 Diff with `--json` Output
+### 7.6 Update with `--json` Output
 
-- [ ] **Setup:** Components installed
-- [ ] **Command:** `ocx diff --json`
-- [ ] **Expected:** Machine-readable JSON with diff info
+- [ ] **Setup:** Component installed
+- [ ] **Command:** `ocx update kdco/researcher --json`
+- [ ] **Expected:** Machine-readable JSON output
 - [ ] **Verify:** Output is valid JSON
+- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
+
+### 7.7 Update with `--verbose`
+
+- [ ] **Setup:** Component installed
+- [ ] **Command:** `ocx update kdco/researcher --verbose`
+- [ ] **Expected:** Detailed file change information
+- [ ] **Verify:** Verbose output shows file operations
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 8.5 Diff with `--quiet` (Only Differences)
@@ -1607,7 +1593,7 @@ Common errors from CLI.md error tables.
 ### 17.1 Error: No ocx.jsonc Found (Init)
 
 - [ ] **Setup:** Empty directory, no config
-- [ ] **Command:** `ocx add kdco/agents`
+- [ ] **Command:** `ocx add kdco/researcher`
 - [ ] **Expected:** Error: "No ocx.jsonc found"
 - [ ] **Verify:** Exit code 78 (CONFIG error)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1623,8 +1609,8 @@ Common errors from CLI.md error tables.
 ### 17.3 Error: Component Not Installed (Update)
 
 - [ ] **Setup:** Config initialized, component not installed
-- [ ] **Command:** `ocx update kdco/agents`
-- [ ] **Expected:** Error: "Component 'kdco/agents' is not installed"
+- [ ] **Command:** `ocx update kdco/researcher`
+- [ ] **Expected:** Error: "Component 'kdco/researcher' is not installed"
 - [ ] **Verify:** Exit code 66 (NOT_FOUND)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -1633,9 +1619,9 @@ Common errors from CLI.md error tables.
 - [ ] **Setup:** Component already installed, modified locally
 - [ ] **Commands:**
   ```bash
-  ocx add kdco/agents
+  ocx add kdco/researcher
   echo "// modified" >> .opencode/agents/file.md
-  ocx add kdco/agents
+  ocx add kdco/researcher
   ```
 - [ ] **Expected:** Error: "File conflicts detected"
 - [ ] **Verify:** Exit code 6 (CONFLICT)
@@ -1656,7 +1642,7 @@ Common errors from CLI.md error tables.
 ### 17.6 Error: Invalid Version Specifier (Update)
 
 - [ ] **Setup:** Component installed
-- [ ] **Command:** `ocx update kdco/agents@`
+- [ ] **Command:** `ocx update kdco/researcher@`
 - [ ] **Expected:** Error: "Invalid version specifier"
 - [ ] **Verify:** Exit code 78 (CONFIG)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1696,7 +1682,7 @@ Common errors from CLI.md error tables.
 - [ ] **Commands:**
   ```bash
   # Manually corrupt hash in receipt
-  ocx update kdco/agents
+  ocx update kdco/researcher
   ```
 - [ ] **Expected:** Error: "Integrity check failed"
 - [ ] **Verify:** Exit code indicates integrity failure

@@ -22,10 +22,6 @@
 						"format": "uri",
 						"description": "The base URL of the registry"
 					},
-					"version": {
-						"type": "string",
-						"description": "Optional version pin for this registry"
-					},
 					"headers": {
 						"type": "object",
 						"description": "Optional HTTP headers for authentication",

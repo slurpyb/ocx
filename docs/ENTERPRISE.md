@@ -36,7 +36,7 @@ OCX automatically generates an `ocx-receipt.json` file. This file acts as an aud
 OCX uses **receipt semantics** rather than strict lockfile semantics:
 
 - **Receipts are advisory** - They record what was installed but don't enforce strict reproducibility
-- **Component-level pinning** - Pin individual components to ensure reproducible builds: `ocx add kdco/agents@1.2.0`
+- **Component-level pinning** - Pin individual components to ensure reproducible builds: `ocx add kdco/researcher@1.2.0`
 
 This approach gives you flexibility while maintaining auditability.
 
@@ -56,10 +56,10 @@ The `IntegrityError` is a security feature, not a bug. When you need to update a
 
 ```bash
 # Preview what will change
-ocx update kdco/agents --dry-run
+ocx update kdco/researcher --dry-run
 
 # Apply the update
-ocx update kdco/agents
+ocx update kdco/researcher
 
 # Update all components
 ocx update --all --dry-run
@@ -68,27 +68,13 @@ ocx update --all
 
 This explicit workflow ensures that component updates are always intentional and auditable.
 
-### Component Version Pinning
-
-Pin components to specific audited versions using the `@version` syntax:
-
-```bash
-# Pin to a security-audited version
-ocx update kdco/agents@1.2.0
-
-# Add a component at a specific version
-ocx add kdco/agents@1.2.0
-```
-
-This ensures reproducible deployments with known-good versions that have passed your security review.
-
 ### Update Audit Trail
 
 The receipt file tracks the complete update history for each component:
 
 ```jsonc
 {
-  "kdco/agents": {
+  "kdco/researcher": {
     "version": "1.2.0",
     "hash": "sha256-...",
     "installedAt": "2026-01-01T00:00:00.000Z",

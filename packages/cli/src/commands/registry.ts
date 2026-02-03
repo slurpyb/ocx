@@ -143,14 +143,13 @@ export async function runRegistryRemoveCore(
 export function runRegistryListCore(callbacks: {
 	getRegistries: () => Record<string, RegistryConfig>
 	isLocked?: () => boolean
-}): { registries: Array<{ name: string; url: string; version: string }>; locked: boolean } {
+}): { registries: Array<{ name: string; url: string }>; locked: boolean } {
 	const registries = callbacks.getRegistries()
 	const locked = callbacks.isLocked?.() ?? false
 
 	const list = Object.entries(registries).map(([name, cfg]) => ({
 		name,
 		url: cfg.url,
-		version: cfg.version || "latest",
 	}))
 
 	return { registries: list, locked }
@@ -400,7 +399,7 @@ export function registerRegistryCommand(program: Command): void {
 						`Configured registries${scopeLabel}${result.locked ? kleur.yellow(" (locked)") : ""}:`,
 					)
 					for (const reg of result.registries) {
-						console.log(`  ${kleur.cyan(reg.name)}: ${reg.url} ${kleur.dim(`(${reg.version})`)}`)
+						console.log(`  ${kleur.cyan(reg.name)}: ${reg.url}`)
 					}
 				}
 			}

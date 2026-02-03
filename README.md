@@ -11,7 +11,7 @@ Your OpenCode config, anywhere.
 
 - 📁 **Profiles** — Work in any repo with YOUR config. Control exactly what OpenCode sees.
 - 📦 **Registries** — npm plugins, MCP servers, components from curated registries.
-- 🔒 **Auditable** — SHA-256 verified, version-pinned, code you own.
+- 🔒 **Auditable** — SHA-verified, code you own.
 
 ![OCX Profiles Demo](./assets/profiles-demo.gif)
 
@@ -89,7 +89,7 @@ ocx add kdco/workspace
 
 OCX follows the **ShadCN model**: components are copied into your project (`.opencode/`), not hidden in `node_modules`. You own the code—customize freely.
 
-Like **Cargo**, OCX resolves dependencies, pins versions, and verifies integrity. Every component is SHA-256 verified and version-pinned. See changes before updating:
+Like **Cargo**, OCX resolves dependencies and verifies integrity. Every component is SHA-256 verified. See changes before updating:
 
 ```bash
 ocx diff kdco/workspace

@@ -196,7 +196,6 @@ Key test scenarios:
 - `--all` flag updates all components
 - `--registry` flag scopes to registry
 - `--dry-run` previews without changes
-- `@version` syntax pins to specific version
 - Error cases (conflicts, missing components)
 
 > **Note:** For quick manual testing or AI-driven testing, prefer Profile Mode Testing above.

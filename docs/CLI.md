@@ -147,7 +147,7 @@ Components can be specified in multiple formats:
 
 ```bash
 # Registry component (fully qualified)
-ocx add kdco/agents
+ocx add kdco/researcher
 
 # npm plugin (direct from npm registry)
 ocx add npm:opencode-plugin-foo
@@ -155,7 +155,7 @@ ocx add npm:@scope/plugin-name
 ocx add npm:some-plugin@1.0.0
 
 # Multiple components
-ocx add kdco/agents kdco/skills kdco/plugins
+ocx add kdco/researcher kdco/code-philosophy kdco/notify
 ```
 
 ### Examples
@@ -168,7 +168,7 @@ ocx add kdco/background-agents
 ocx add kdco/workspace --from https://registry.kdco.dev
 
 # Add using a specific profile
-ocx add kdco/agents --profile work
+ocx add kdco/researcher --profile work
 
 # Add an npm plugin directly
 ocx add npm:@franlol/opencode-md-table-formatter
@@ -180,16 +180,16 @@ ocx add npm:some-plugin@1.0.0
 ocx add kdco/researcher npm:opencode-plugin-foo
 
 # Preview installation
-ocx add kdco/agents --dry-run
+ocx add kdco/researcher --dry-run
 
 # Overwrite existing files without prompts
-ocx add kdco/agents --force
+ocx add kdco/researcher --force
 
 # Get machine-readable output
-ocx add kdco/agents --json
+ocx add kdco/researcher --json
 
 # Verbose output showing all file operations
-ocx add kdco/agents --verbose
+ocx add kdco/researcher --verbose
 ```
 
 ### Bypassing Plugin Validation
@@ -242,7 +242,7 @@ The `--from` URL can be:
 
 ## ocx update
 
-Update installed components to their latest versions or pin to specific versions.
+Update installed components to their latest versions.
 
 ### Usage
 
@@ -269,18 +269,6 @@ ocx update [components...] [options]
 | `-v, --verbose` | Verbose output |
 | `--json` | Output as JSON |
 
-### Version Pinning
-
-Use the `@version` syntax (like npm/bun) to pin to a specific version:
-
-```bash
-# Pin to specific version
-ocx update kdco/agents@1.2.0
-
-# Multiple components with different versions
-ocx update kdco/agents@1.2.0 kdco/skills@2.0.0
-```
-
 ### Examples
 
 ```bash
@@ -288,7 +276,7 @@ ocx update kdco/agents@1.2.0 kdco/skills@2.0.0
 ocx update kdco/background-agents
 
 # Update multiple components
-ocx update kdco/agents kdco/plugins
+ocx update kdco/researcher kdco/notify
 
 # Update all installed components
 ocx update --all
@@ -299,14 +287,11 @@ ocx update --all --dry-run
 # Update all components from one registry
 ocx update --registry kdco
 
-# Pin to a specific version
-ocx update kdco/agents@1.2.0
-
 # Get machine-readable output
 ocx update --all --json
 
 # Verbose output showing file changes
-ocx update kdco/agents --verbose
+ocx update kdco/researcher --verbose
 ```
 
 ### Behavior
@@ -323,11 +308,11 @@ ocx update kdco/agents --verbose
 $ ocx update --all --dry-run
 
 Would update:
-  kdco/agents (1.0.0 → 1.2.0)
-  kdco/plugins (0.5.0 → 0.6.0)
+  kdco/researcher (1.0.0 → 1.2.0)
+  kdco/notify (0.5.0 → 0.6.0)
 
 Already up to date:
-  kdco/skills
+  kdco/code-philosophy
 
 Run without --dry-run to apply changes.
 ```
@@ -342,9 +327,8 @@ Run without --dry-run to apply changes.
 | `Cannot specify components with --all` | Mutually exclusive options | Use one or the other |
 | `Cannot specify components with --registry` | Mutually exclusive options | Use one or the other |
 | `Cannot use --all with --registry` | Mutually exclusive options | Use one or the other |
-| `Component 'name' must include a registry prefix` | Missing namespace | Use fully qualified name (e.g., `kdco/agents`) |
+| `Component 'name' must include a registry prefix` | Missing namespace | Use fully qualified name (e.g., `kdco/researcher`) |
 | `Component 'name' is not installed` | Not in receipt | Install first with `ocx add` |
-| `Invalid version specifier` | Empty version after `@` | Provide version or omit `@` |
 
 ---
 
@@ -379,7 +363,7 @@ ocx diff [component] [options]
 ocx diff
 
 # Diff a specific component
-ocx diff kdco/agents
+ocx diff kdco/researcher
 
 # Get machine-readable output
 ocx diff --json
@@ -393,16 +377,16 @@ ocx diff --quiet
 Components without changes show a success message:
 
 ```bash
-$ ocx diff kdco/agents
-kdco/agents: No changes
+$ ocx diff kdco/researcher
+kdco/researcher: No changes
 ```
 
 Modified components show a unified diff:
 
 ```bash
-$ ocx diff kdco/plugins
+$ ocx diff kdco/notify
 
-Diff for kdco/plugins:
+Diff for kdco/notify:
 --- upstream
 +++ local
 @@ -10,6 +10,7 @@
@@ -484,14 +468,14 @@ ocx search agents --verbose
 ```bash
 $ ocx search agent
 Found 3 components:
-  kdco/agents (agent) - AI agent definitions
+  kdco/researcher (agent) - AI agent definitions
   kdco/background-agents (plugin) - Background agent sync plugin
   acme/agent-utils (lib) - Agent utility functions
 
 $ ocx search --installed
 Installed components (2):
-  kdco/agents v1.2.0 from kdco
-  kdco/plugins v0.5.0 from kdco
+  kdco/researcher v1.2.0 from kdco
+  kdco/notify v0.5.0 from kdco
 ```
 
 ### Errors
@@ -972,7 +956,7 @@ Receipt tracking installed components (managed automatically):
 {
   "version": 1,
   "installed": {
-    "kdco/agents": {
+    "kdco/researcher": {
       "registry": "kdco",
       "version": "1.2.0",
       "hash": "abc123...",

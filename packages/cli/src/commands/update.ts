@@ -36,7 +36,6 @@ export interface UpdateOptions {
 
 interface ComponentSpec {
 	component: string
-	version?: string
 }
 
 interface UpdateResult {
@@ -53,9 +52,7 @@ interface UpdateResult {
 export function registerUpdateCommand(program: Command): void {
 	program
 		.command("update [components...]")
-		.description(
-			"Update installed components (use @version suffix to pin, e.g., kdco/agents@1.2.0)",
-		)
+		.description("Update installed components")
 		.option("--all", "Update all installed components")
 		.option("--registry <name>", "Update all components from a specific registry")
 		.option("--dry-run", "Preview changes without applying")
@@ -142,20 +139,10 @@ export async function runUpdateCore(
 	}
 
 	// -------------------------------------------------------------------------
-	// Parse component specs and validate versions
+	// Parse component specs
 	// -------------------------------------------------------------------------
 
 	const parsedComponents = componentNames.map(parseComponentSpec)
-
-	// Guard: Invalid version specifier (e.g., kdco/agents@ or kdco/agents@@1.2.0)
-	for (const spec of parsedComponents) {
-		if (spec.version !== undefined && spec.version === "") {
-			throw new ValidationError(
-				`Invalid version specifier in '${spec.component}@'.` +
-					"\nVersion cannot be empty. Use 'kdco/agents@1.2.0' or omit the version for latest.",
-			)
-		}
-	}
 
 	// -------------------------------------------------------------------------
 	// Determine which components to update
@@ -210,8 +197,8 @@ export async function runUpdateCore(
 				)
 			}
 
-			// Fetch component (specific version or latest)
-			const fetchResult = await fetchComponentVersion(regConfig.url, componentName, spec.version)
+			// Fetch component (latest version)
+			const fetchResult = await fetchComponentVersion(regConfig.url, componentName, undefined)
 			const manifest = fetchResult.manifest
 
 			const normalizedManifest = normalizeComponentManifest(manifest)
@@ -391,24 +378,14 @@ export async function runUpdateCore(
 // =============================================================================
 
 /**
- * Parse a component specifier into component name and optional version.
- * Uses lastIndexOf to handle edge cases like kdco@agents@1.2.0.
+ * Parse a component specifier (just returns the spec as-is).
  * Law 2: Parse at boundary, trust internally.
  *
  * @example
- * parseComponentSpec("kdco/agents@1.2.0") // { component: "kdco/agents", version: "1.2.0" }
- * parseComponentSpec("kdco/agents")       // { component: "kdco/agents" }
+ * parseComponentSpec("kdco/agents") // { component: "kdco/agents" }
  */
 function parseComponentSpec(spec: string): ComponentSpec {
-	const atIndex = spec.lastIndexOf("@")
-	// @ at start or not found means no version
-	if (atIndex <= 0) {
-		return { component: spec }
-	}
-	return {
-		component: spec.slice(0, atIndex),
-		version: spec.slice(atIndex + 1),
-	}
+	return { component: spec }
 }
 
 /**
@@ -482,7 +459,11 @@ function resolveComponentsToUpdate(
 		}
 
 		// Use the first matching canonical ID (there should only be one per namespace/name pair)
-		result.push({ component: matchingIds[0], version: spec.version } as ComponentSpec)
+		const canonicalId = matchingIds[0]
+		if (!canonicalId) {
+			throw new Error(`Unexpected: matchingIds has length but first element is undefined`)
+		}
+		result.push({ component: canonicalId })
 	}
 
 	return result

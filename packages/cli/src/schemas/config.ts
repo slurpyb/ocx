@@ -23,9 +23,6 @@ export const registryConfigSchema = z.object({
 	/** Registry URL */
 	url: z.string().url("Registry URL must be a valid URL"),
 
-	/** Optional version pin */
-	version: z.string().optional(),
-
 	/** Optional auth headers (supports ${ENV_VAR} expansion) */
 	headers: z.record(z.string()).optional(),
 })
