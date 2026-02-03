@@ -18,7 +18,7 @@ describe("ocx registry", () => {
 	beforeEach(async () => {
 		testDir = await createTempDir("registry-test")
 		registry = startMockRegistry()
-		await runCLI(["init", "--force"], testDir)
+		await runCLI(["init"], testDir)
 	})
 
 	afterEach(async () => {
@@ -92,7 +92,7 @@ describe("registry add --force", () => {
 	beforeEach(async () => {
 		testDir = await createTempDir("registry-force-test")
 		registry = startMockRegistry()
-		await runCLI(["init", "--force"], testDir)
+		await runCLI(["init"], testDir)
 	})
 
 	afterEach(async () => {

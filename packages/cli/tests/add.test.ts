@@ -34,7 +34,7 @@ describe("ocx add", () => {
 		testDir = await createTempDir("add-basic")
 
 		// Init and add registry
-		await runCLI(["init", "--force"], testDir)
+		await runCLI(["init"], testDir)
 
 		// Manually add registry to config since 'ocx registry add' might be flaky in parallel tests
 		const configPath = join(testDir, ".opencode", "ocx.jsonc")
@@ -80,7 +80,7 @@ describe("ocx add", () => {
 		testDir = await createTempDir("add-skip-identical")
 
 		// Init and add registry
-		await runCLI(["init", "--force"], testDir)
+		await runCLI(["init"], testDir)
 
 		const configPath = join(testDir, ".opencode", "ocx.jsonc")
 		const config = parseJsonc(await readFile(configPath, "utf-8"))
@@ -107,7 +107,7 @@ describe("ocx add", () => {
 		testDir = await createTempDir("add-conflict-no-yes")
 
 		// Init and add registry
-		await runCLI(["init", "--force"], testDir)
+		await runCLI(["init"], testDir)
 
 		const configPath = join(testDir, ".opencode", "ocx.jsonc")
 		const config = parseJsonc(await readFile(configPath, "utf-8"))
@@ -134,7 +134,7 @@ describe("ocx add", () => {
 		testDir = await createTempDir("add-overwrite-yes")
 
 		// Init and add registry
-		await runCLI(["init", "--force"], testDir)
+		await runCLI(["init"], testDir)
 
 		const configPath = join(testDir, ".opencode", "ocx.jsonc")
 		const config = parseJsonc(await readFile(configPath, "utf-8"))
@@ -163,7 +163,7 @@ describe("ocx add", () => {
 		testDir = await createTempDir("add-mcp-regression")
 
 		// Init and add registry
-		await runCLI(["init", "--force"], testDir)
+		await runCLI(["init"], testDir)
 
 		const configPath = join(testDir, ".opencode", "ocx.jsonc")
 		const config = parseJsonc(await readFile(configPath, "utf-8"))
@@ -201,7 +201,7 @@ describe("ocx add", () => {
 		testDir = await createTempDir("add-plugin-concat")
 
 		// Init and add registry
-		await runCLI(["init", "--force"], testDir)
+		await runCLI(["init"], testDir)
 
 		const configPath = join(testDir, ".opencode", "ocx.jsonc")
 		const config = parseJsonc(await readFile(configPath, "utf-8"))
@@ -232,7 +232,7 @@ describe("ocx add", () => {
 		testDir = await createTempDir("add-integrity-fail")
 
 		// Init and add registry
-		await runCLI(["init", "--force"], testDir)
+		await runCLI(["init"], testDir)
 
 		const configPath = join(testDir, ".opencode", "ocx.jsonc")
 		const config = parseJsonc(await readFile(configPath, "utf-8"))

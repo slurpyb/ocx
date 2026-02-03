@@ -279,7 +279,7 @@ describe("npm plugin integration", () => {
 		testDir = await createTempDir("npm-dry-run")
 
 		// Init the project
-		await runCLI(["init", "--force"], testDir)
+		await runCLI(["init"], testDir)
 
 		// Use dry-run which still parses and routes npm: but may fail on validation
 		// This tests the parsing and routing logic
@@ -294,7 +294,7 @@ describe("npm plugin integration", () => {
 		testDir = await createTempDir("npm-plugin-parsing")
 
 		// Init the project
-		await runCLI(["init", "--force"], testDir)
+		await runCLI(["init"], testDir)
 
 		// Create an opencode.jsonc with plugin entries
 		const opencodePath = join(testDir, "opencode.jsonc")
@@ -317,7 +317,7 @@ describe("npm plugin integration", () => {
 		testDir = await createTempDir("npm-invalid")
 
 		// Init the project
-		await runCLI(["init", "--force"], testDir)
+		await runCLI(["init"], testDir)
 
 		// Try to add with invalid npm specifier (empty package name)
 		const { exitCode, output } = await runCLI(["add", "npm:"], testDir)
@@ -330,7 +330,7 @@ describe("npm plugin integration", () => {
 		testDir = await createTempDir("npm-traversal")
 
 		// Init the project
-		await runCLI(["init", "--force"], testDir)
+		await runCLI(["init"], testDir)
 
 		// Try to add with path traversal
 		const { exitCode, output } = await runCLI(["add", "npm:../malicious"], testDir)

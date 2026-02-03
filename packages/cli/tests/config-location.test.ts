@@ -28,7 +28,7 @@ describe("config file locations", () => {
 	 */
 	async function setupWithRegistry(name: string): Promise<string> {
 		const dir = await createTempDir(name)
-		await runCLI(["init", "--force"], dir)
+		await runCLI(["init"], dir)
 
 		const configPath = join(dir, ".opencode", "ocx.jsonc")
 		const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
@@ -96,7 +96,7 @@ describe("config file locations", () => {
 		it("registry add updates config in .opencode/", async () => {
 			testDir = await createTempDir("loc-registry")
 			// V2: Need to init first to create config directory
-			await runCLI(["init", "--force"], testDir)
+			await runCLI(["init"], testDir)
 
 			// Run registry add (V2: use namespace as name to match registry)
 			const { exitCode } = await runCLI(
