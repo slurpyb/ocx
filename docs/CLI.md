@@ -1039,14 +1039,13 @@ ocx p ls --json
 ```bash
 $ ocx profile list
 Available profiles:
-  * default
-    work
-    client-x
+  default
+  work
+  client-x
 
 $ ocx profile list --json
 {
-  "profiles": ["default", "work", "client-x"],
-  "current": "default"
+  "profiles": ["default", "work", "client-x"]
 }
 ```
 
@@ -1074,7 +1073,6 @@ ocx p add <name> [options]  # alias
 | Option | Description |
 |--------|-------------|
 | `--from <source>` | Clone from existing profile, install from registry (e.g., kit/ws), or full URL |
-| `-f, --force` | Overwrite existing profile |
 | `-g, --global` | Create global profile (default is local) |
 
 #### Examples
@@ -1093,8 +1091,9 @@ ocx profile add ws --from https://ocx-kit.kdco.dev/ws --global
 ocx registry add https://ocx-kit.kdco.dev --name kit --global
 ocx profile add ws --from kit/ws --global
 
-# Force overwrite existing profile
-ocx profile add ws --from kit/ws --force --global
+# Overwrite existing profile (remove and add again)
+ocx profile remove ws --global
+ocx profile add ws --from kit/ws --global
 
 # Using alias
 ocx p add personal --global
@@ -1105,19 +1104,19 @@ ocx p add personal --global
 - Profile names must be valid filesystem names
 - Spaces are automatically converted to hyphens
 - `--from` accepts: existing profile name, `registry/component` shorthand, or full URL
-- Use `--force` to overwrite existing profiles
+- To overwrite an existing profile, remove it first with `ocx profile rm <name>`, then add again
 
 ---
 
 ### ocx profile remove
 
-Delete a global profile.
+Delete a profile (local by default, global with `--global`).
 
 #### Usage
 
 ```bash
-ocx profile remove <name>
-ocx p rm <name>  # alias
+ocx profile remove <name> [options]
+ocx p rm <name> [options]  # alias
 ```
 
 #### Arguments
@@ -1126,29 +1125,39 @@ ocx p rm <name>  # alias
 |----------|-------------|
 | `name` | Profile name to delete (required) |
 
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `-g, --global` | Remove global profile (default: local) |
+
 #### Examples
 
 ```bash
-# Remove a profile
+# Remove a local profile
 ocx profile remove old-profile
+
+# Remove a global profile
+ocx profile remove old-profile --global
 ```
 
 #### Notes
 
 - Deletion is immediate (Cargo-style, no confirmation prompt)
 - Cannot delete the last remaining profile
+- Default is local profiles; use `--global` for global profiles
 
 ---
 
 ### ocx profile move
 
-Rename a global profile.
+Rename a profile (local by default, global with `--global`).
 
 #### Usage
 
 ```bash
-ocx profile move <old-name> <new-name>
-ocx p mv <old-name> <new-name>  # alias
+ocx profile move <old-name> <new-name> [options]
+ocx p mv <old-name> <new-name> [options]  # alias
 ```
 
 #### Arguments
@@ -1158,11 +1167,20 @@ ocx p mv <old-name> <new-name>  # alias
 | `old-name` | Current profile name (required) |
 | `new-name` | New profile name (required)     |
 
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `-g, --global` | Move global profile (default: local) |
+
 #### Examples
 
 ```bash
-# Rename a profile
+# Rename a local profile
 ocx profile move work client-work
+
+# Rename a global profile
+ocx profile move work client-work --global
 
 # Using alias
 ocx p mv personal home
@@ -1174,6 +1192,7 @@ ocx p mv personal home
 - Cannot rename to a name that already exists (remove target first)
 - Warns if renaming the active profile (update `OCX_PROFILE` env var)
 - Self-rename (same old and new name) is a silent no-op
+- Default is local profiles; use `--global` for global profiles
 
 #### Errors
 

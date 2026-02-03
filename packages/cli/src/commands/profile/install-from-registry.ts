@@ -11,6 +11,7 @@ import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
+import { parse } from "jsonc-parser"
 import type { ConfigProvider } from "../../config/provider"
 import { getProfileDir, getProfilesDir } from "../../profile/paths"
 import { profileNameSchema } from "../../profile/schema"
@@ -35,8 +36,6 @@ export interface InstallProfileOptions {
 	profileName: string
 	/** Resolved registry URL */
 	registryUrl: string
-	/** All configured registries (for dependency resolution) */
-	registries: Record<string, RegistryConfig>
 	/** Suppress output */
 	quiet?: boolean
 }
@@ -85,7 +84,7 @@ function hashBundle(files: { path: string; content: Buffer }[]): string {
  * @throws ConflictError if profile exists and force is not set
  */
 export async function installProfileFromRegistry(options: InstallProfileOptions): Promise<void> {
-	const { namespace, component, profileName, registryUrl, registries, quiet } = options
+	const { namespace, component, profileName, registryUrl, quiet } = options
 
 	// ==========================================================================
 	// Guard: Validate profile name at boundary (Law 2: Parse Don't Validate)
@@ -271,10 +270,59 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 					dep.includes("/") ? dep : `${namespace}/${dep}`,
 				)
 
-				// Create provider for the installed profile (same pattern as GlobalConfigProvider)
+				// ========================================================================
+				// Law 2: Parse Don't Validate - Extract and validate profile's registries
+				// ========================================================================
+
+				// 1. Parse the profile's ocx.jsonc to get its registry declarations
+				const profileOcxConfigPath = join(profileDir, "ocx.jsonc")
+				let profileRegistries: Record<string, RegistryConfig> = {}
+
+				if (existsSync(profileOcxConfigPath)) {
+					const profileOcxFile = Bun.file(profileOcxConfigPath)
+					const profileOcxContent = await profileOcxFile.text()
+					const profileOcxRaw = parse(profileOcxContent)
+
+					// Extract registries field (if present)
+					if (profileOcxRaw && typeof profileOcxRaw === "object" && "registries" in profileOcxRaw) {
+						const regsRaw = profileOcxRaw.registries
+						if (regsRaw && typeof regsRaw === "object") {
+							profileRegistries = regsRaw as Record<string, RegistryConfig>
+						}
+					}
+				}
+
+				// 2. Extract required namespaces from dependencies
+				const requiredNamespaces = new Set<string>()
+				for (const depRef of depRefs) {
+					// Split "kdco/workspace" -> "kdco"
+					const parts = depRef.split("/")
+					if (parts.length === 2 && parts[0]) {
+						requiredNamespaces.add(parts[0])
+					}
+				}
+
+				// 3. Build minimal registry map for required namespaces ONLY
+				const minimalRegistries: Record<string, RegistryConfig> = {}
+				for (const ns of requiredNamespaces) {
+					if (profileRegistries[ns]) {
+						minimalRegistries[ns] = profileRegistries[ns]
+					} else {
+						// Law 4: Fail Fast - Required registry not declared in profile
+						depsSpin?.fail("Missing registry declaration")
+						throw new ValidationError(
+							`Profile requires registry "${ns}" for dependency resolution, ` +
+								`but it is not declared in the profile's ocx.jsonc.\n\n` +
+								`The profile is missing this registry declaration. ` +
+								`Contact the profile author to fix this issue.`,
+						)
+					}
+				}
+
+				// Create provider with ONLY the profile's declared registries
 				const provider: ConfigProvider = {
 					cwd: profileDir,
-					getRegistries: () => registries,
+					getRegistries: () => minimalRegistries,
 					getComponentPath: () => "", // Flat install - no .opencode/ prefix
 				}
 

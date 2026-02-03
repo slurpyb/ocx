@@ -222,7 +222,6 @@ async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<
 				component: fromInput.component,
 				profileName: name,
 				registryUrl,
-				registries,
 			})
 			break
 		}

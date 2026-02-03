@@ -1015,7 +1015,7 @@ All subcommands from CLI.md lines 1024-1273.
 
 - [ ] **Setup:** Global profiles initialized
 - [ ] **Command:** `ocx profile list`
-- [ ] **Expected:** Lists all profiles, marks active one
+- [ ] **Expected:** Lists all profiles (no active indicator)
 - [ ] **Verify:**
   ```bash
   # Output should show at least "default"
@@ -1085,11 +1085,15 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.8 `ocx profile add --force` (Overwrite Existing)
+### 13.8 `ocx profile add` (Remove and Add to Overwrite)
 
 - [ ] **Setup:** Profile "ws" already exists
-- [ ] **Command:** `ocx profile add ws --from kit/ws --force --global`
-- [ ] **Expected:** Overwrites existing profile
+- [ ] **Commands:**
+  ```bash
+  ocx profile remove ws --global
+  ocx profile add ws --from kit/ws --global
+  ```
+- [ ] **Expected:** Removes and reinstalls profile
 - [ ] **Verify:**
   ```bash
   ocx p show ws  # Should show fresh content
@@ -1107,19 +1111,30 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.10 `ocx profile remove work`
+### 13.10 `ocx profile remove work` (Local Default)
 
-- [ ] **Setup:** Profile "work" exists, not active
+- [ ] **Setup:** Local profile "work" exists
 - [ ] **Command:** `ocx profile remove work`
-- [ ] **Expected:** Deletes profile immediately (no confirmation)
+- [ ] **Expected:** Deletes local profile immediately (no confirmation)
 - [ ] **Verify:**
   ```bash
-  ocx p ls  # Should NOT show work
-  ls $XDG_CONFIG_HOME/opencode/profiles/  # work/ should be gone
+  ls .opencode/profiles/  # work/ should be gone
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.11 `ocx p rm` (Alias)
+### 13.11 `ocx profile remove --global`
+
+- [ ] **Setup:** Global profile "old-profile" exists
+- [ ] **Command:** `ocx profile remove old-profile --global`
+- [ ] **Expected:** Deletes global profile (no confirmation)
+- [ ] **Verify:**
+  ```bash
+  ocx p ls  # Should NOT show old-profile
+  ls $XDG_CONFIG_HOME/opencode/profiles/  # old-profile/ should be gone
+  ```
+- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
+
+### 13.12 `ocx p rm` (Alias)
 
 - [ ] **Setup:** Profile exists
 - [ ] **Command:** `ocx p rm old-profile`
@@ -1127,11 +1142,22 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Verify:** Profile deleted
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.12 `ocx profile move work client-work`
+### 13.13 `ocx profile move work client-work` (Local Default)
 
-- [ ] **Setup:** Profile "work" exists
+- [ ] **Setup:** Local profile "work" exists
 - [ ] **Command:** `ocx profile move work client-work`
-- [ ] **Expected:** Renames profile from work to client-work
+- [ ] **Expected:** Renames local profile from work to client-work
+- [ ] **Verify:**
+  ```bash
+  ls .opencode/profiles/  # client-work/ exists, work/ gone
+  ```
+- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
+
+### 13.14 `ocx profile move --global`
+
+- [ ] **Setup:** Global profile "work" exists
+- [ ] **Command:** `ocx profile move work client-work --global`
+- [ ] **Expected:** Renames global profile from work to client-work
 - [ ] **Verify:**
   ```bash
   ocx p ls  # Should show client-work, NOT work
@@ -1139,7 +1165,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.13 `ocx p mv` (Alias)
+### 13.15 `ocx p mv` (Alias)
 
 - [ ] **Setup:** Profile exists
 - [ ] **Command:** `ocx p mv personal home`
@@ -1150,7 +1176,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.14 `ocx profile show` (Current Profile)
+### 13.16 `ocx profile show` (Current Profile)
 
 - [ ] **Setup:** Profile active via environment or flag
 - [ ] **Command:** `OCX_PROFILE=work ocx profile show`
@@ -1158,7 +1184,7 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Verify:** Output displays work profile info
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.15 `ocx profile show work`
+### 13.17 `ocx profile show work`
 
 - [ ] **Setup:** Profile "work" exists
 - [ ] **Command:** `ocx profile show work`
@@ -1169,7 +1195,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.16 `ocx p show` (Alias)
+### 13.18 `ocx p show` (Alias)
 
 - [ ] **Setup:** Profile exists
 - [ ] **Command:** `ocx p show work`
@@ -1177,7 +1203,7 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Verify:** Profile details displayed
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.17 `ocx profile show --json`
+### 13.19 `ocx profile show --json`
 
 - [ ] **Setup:** Profile exists
 - [ ] **Command:** `ocx profile show work --json`

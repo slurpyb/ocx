@@ -407,9 +407,10 @@ export class ProfileManager {
 	/**
 	 * Remove a profile.
 	 * @param name - Profile name
+	 * @param global - Whether to remove global profile (default: true for backward compatibility)
 	 */
-	async remove(name: string): Promise<void> {
-		if (!(await this.exists(name))) {
+	async remove(name: string, global = true): Promise<void> {
+		if (!(await this.exists(name, global))) {
 			throw new ProfileNotFoundError(name)
 		}
 
@@ -419,7 +420,7 @@ export class ProfileManager {
 			throw new Error("Cannot delete the last profile. At least one profile must exist.")
 		}
 
-		const dir = getProfileDir(name)
+		const dir = global ? getProfileDir(name) : getLocalProfileDir(name, this.cwd)
 		await rm(dir, { recursive: true })
 	}
 
@@ -427,9 +428,14 @@ export class ProfileManager {
 	 * Move (rename) a profile atomically.
 	 * @param oldName - Current profile name
 	 * @param newName - New profile name
+	 * @param global - Whether to move global profile (default: true for backward compatibility)
 	 * @returns Object indicating if active profile warning should be shown
 	 */
-	async move(oldName: string, newName: string): Promise<{ warnActiveProfile: boolean }> {
+	async move(
+		oldName: string,
+		newName: string,
+		global = true,
+	): Promise<{ warnActiveProfile: boolean }> {
 		// 1. Validate oldName format
 		const oldResult = profileNameSchema.safeParse(oldName)
 		if (!oldResult.success) {
@@ -452,7 +458,7 @@ export class ProfileManager {
 		await this.ensureInitialized()
 
 		// 4. Check source exists
-		if (!(await this.exists(oldName))) {
+		if (!(await this.exists(oldName, global))) {
 			throw new ProfileNotFoundError(oldName)
 		}
 
@@ -462,7 +468,7 @@ export class ProfileManager {
 		}
 
 		// 6. Check target doesn't exist
-		if (await this.exists(newName)) {
+		if (await this.exists(newName, global)) {
 			throw new ConflictError(
 				`Cannot move: profile "${newName}" already exists. Remove it first with 'ocx p rm ${newName}'.`,
 			)
@@ -472,8 +478,8 @@ export class ProfileManager {
 		const warnActiveProfile = process.env.OCX_PROFILE === oldName
 
 		// 8. Atomic rename (with race condition handling)
-		const oldDir = getProfileDir(oldName)
-		const newDir = getProfileDir(newName)
+		const oldDir = global ? getProfileDir(oldName) : getLocalProfileDir(oldName, this.cwd)
+		const newDir = global ? getProfileDir(newName) : getLocalProfileDir(newName, this.cwd)
 		try {
 			await rename(oldDir, newDir)
 		} catch (error) {
