@@ -268,7 +268,7 @@ Test cases from README.md lines 66-86.
   ls -la .opencode/
   cat .opencode/ocx.jsonc
   cat .opencode/opencode.jsonc
-  cat .opencode/ocx-receipt.json
+  cat .ocx/receipt.jsonc
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -280,7 +280,7 @@ Test cases from README.md lines 66-86.
 - [ ] **Verify:**
   ```bash
   ls .opencode/  # Should contain workspace files
-  cat .opencode/ocx-receipt.json  # Should list kdco/workspace
+  cat .ocx/receipt.jsonc  # Should list kdco/workspace
   cat .opencode/ocx.jsonc  # Should NOT contain registry.kdco.dev
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -294,7 +294,7 @@ Test cases from README.md lines 66-86.
   ```bash
   ls .opencode/plugins/  # Should contain plugin files
   cat .opencode/opencode.jsonc  # npm plugins appear in "plugin" array; registry plugins are auto-discovered
-  cat .opencode/ocx-receipt.json  # Should list npm plugin
+  cat .ocx/receipt.jsonc  # Should list npm plugin
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -463,7 +463,7 @@ All variations from CLI.md lines 129-253.
 - [ ] **Verify:**
   ```bash
   ls .opencode/
-  cat .opencode/ocx-receipt.json  # Should list kdco/researcher
+  cat .ocx/receipt.jsonc  # Should list kdco/researcher
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -475,7 +475,7 @@ All variations from CLI.md lines 129-253.
 - [ ] **Verify:**
   ```bash
   cat .opencode/ocx.jsonc  # Should NOT contain registry
-  cat .opencode/ocx-receipt.json  # Should list component
+  cat .ocx/receipt.jsonc  # Should list component
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -507,7 +507,7 @@ All variations from CLI.md lines 129-253.
 - [ ] **Verify:**
   ```bash
   ls .opencode/plugins/
-  cat .opencode/ocx-receipt.json
+  cat .ocx/receipt.jsonc
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -518,7 +518,7 @@ All variations from CLI.md lines 129-253.
 - [ ] **Expected:** Installs specific version
 - [ ] **Verify:**
   ```bash
-  cat .opencode/ocx-receipt.json  # Should show version 1.0.0
+  cat .ocx/receipt.jsonc  # Should show version 1.0.0
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -529,7 +529,7 @@ All variations from CLI.md lines 129-253.
 - [ ] **Expected:** Installs all three components
 - [ ] **Verify:**
   ```bash
-  cat .opencode/ocx-receipt.json  # Should list all three
+  cat .ocx/receipt.jsonc  # Should list all three
   ls .opencode/
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -541,7 +541,7 @@ All variations from CLI.md lines 129-253.
 - [ ] **Expected:** Shows what would be installed without making changes
 - [ ] **Verify:**
   ```bash
-  cat .opencode/ocx-receipt.json  # Should NOT list component
+  cat .ocx/receipt.jsonc  # Should NOT list component
   ls .opencode/  # Should NOT contain component files
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -596,7 +596,7 @@ All variations from CLI.md lines 256-361.
 - [ ] **Expected:** Updates to latest version
 - [ ] **Verify:**
   ```bash
-  cat .opencode/ocx-receipt.json  # Version should update
+  cat .ocx/receipt.jsonc  # Version should update
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -607,7 +607,7 @@ All variations from CLI.md lines 256-361.
 - [ ] **Expected:** Updates both components
 - [ ] **Verify:**
   ```bash
-  cat .opencode/ocx-receipt.json  # Both versions updated
+  cat .ocx/receipt.jsonc  # Both versions updated
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -618,7 +618,7 @@ All variations from CLI.md lines 256-361.
 - [ ] **Expected:** Updates all installed components
 - [ ] **Verify:**
   ```bash
-  cat .opencode/ocx-receipt.json  # All versions updated
+  cat .ocx/receipt.jsonc  # All versions updated
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -630,7 +630,7 @@ All variations from CLI.md lines 256-361.
 - [ ] **Verify:**
   ```bash
   # Output should list pending updates
-  cat .opencode/ocx-receipt.json  # Versions should NOT change
+  cat .ocx/receipt.jsonc  # Versions should NOT change
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -641,7 +641,7 @@ All variations from CLI.md lines 256-361.
 - [ ] **Expected:** Updates only kdco components
 - [ ] **Verify:**
   ```bash
-  cat .opencode/ocx-receipt.json  # Only kdco components updated
+  cat .ocx/receipt.jsonc  # Only kdco components updated
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -756,8 +756,8 @@ All variations from CLI.md lines 439-516.
 - [ ] **Expected:** Shows only installed components with versions
 - [ ] **Verify:**
   ```bash
-  # Output should match ocx-receipt.json contents
-  cat .opencode/ocx-receipt.json
+  # Output should match receipt.jsonc contents
+  cat .ocx/receipt.jsonc
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 

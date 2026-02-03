@@ -19,9 +19,9 @@ When `lockRegistries` is `true`, `ocx registry add` and `ocx registry remove` wi
 
 > **Note:** The `lockRegistries` setting applies to the config file where it's defined. If set in your global config (`~/.config/opencode/ocx.jsonc`), it prevents `ocx registry add --global` and `ocx registry remove --global` from modifying global registries. If set in a local project config, it only affects local registry operations. When using profiles, `lockRegistries` in a profile's `ocx.jsonc` locks that profile's registries.
 
-## Security Audit with `ocx-receipt.json`
+## Security Audit with Receipt File
 
-OCX automatically generates an `ocx-receipt.json` file. This file acts as an audit log and provenance record for your installed extensions.
+OCX automatically generates a `.ocx/receipt.jsonc` file. This file acts as an audit log and provenance record for your installed extensions.
 
 | Field | Purpose |
 |-------|---------|
@@ -46,7 +46,7 @@ OCX provides both proactive and reactive integrity verification to protect again
 
 ### Install-Time Verification (Proactive)
 
-When you run `ocx add`, OCX automatically verifies the integrity of the component before writing any files to your project. If a component is already present in your `ocx-receipt.json` file, OCX computes the SHA-256 hash of the incoming content and compares it against the recorded hash.
+When you run `ocx add`, OCX automatically verifies the integrity of the component before writing any files to your project. If a component is already present in your receipt file (`.ocx/receipt.jsonc`), OCX computes the SHA-256 hash of the incoming content and compares it against the recorded hash.
 
 If the hashes do not match, the installation fails immediately with an `INTEGRITY_ERROR`. This prevents malicious or unauthorized updates from silently entering your codebase even if a registry is compromised.
 
@@ -87,7 +87,7 @@ Use `ocx diff` to review changes before updating. The combination of `updatedAt`
 
 ### Security Audit with `ocx diff` (Reactive)
 
-Running `ocx diff` compares your local files against the upstream registry and uses the hash in `ocx-receipt.json` to identify changes. This allows teams to audit exactly what modifications have been made to distributed agents or plugins.
+Running `ocx diff` compares your local files against the upstream registry and uses the hash in `.ocx/receipt.jsonc` to identify changes. This allows teams to audit exactly what modifications have been made to distributed agents or plugins.
 
 ## Air-Gapped Environments
 

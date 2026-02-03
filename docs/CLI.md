@@ -87,7 +87,7 @@ ocx init --registry my-registry --canary
 |------|-------------|
 | `.opencode/ocx.jsonc` | Local project configuration |
 | `.opencode/opencode.jsonc` | OpenCode-specific configuration (optional) |
-| `.opencode/ocx-receipt.json` | Receipt tracking installed components |
+| `.ocx/receipt.jsonc` | Receipt tracking installed components |
 
 **Global initialization** (`--global`) creates:
 
@@ -207,7 +207,7 @@ ocx add npm:some-package --trust
 3. **Conflict detection** - Checks for modified local files
 4. **Writes files** - Installs component files to target paths
 5. **Updates opencode.jsonc** - Merges component configuration
-6. **Updates receipt** - Records installed version and hash in `ocx-receipt.json`
+6. **Updates receipt** - Records installed version and hash in `.ocx/receipt.jsonc`
 
 > **Note:** File-based plugins installed to `plugins/` are automatically discovered by OpenCode - no `opencode.jsonc` entry is needed. Only npm plugins (added via `ocx add npm:package`) require explicit registration in the `plugin` array.
 
@@ -300,7 +300,7 @@ ocx update kdco/researcher --verbose
 2. **Fetches latest versions** - Gets current registry state
 3. **Compares hashes** - Determines which components have changes
 4. **Applies updates** - Writes new files (skipped in dry-run mode)
-5. **Updates receipt** - Records new version and hash in `ocx-receipt.json`
+5. **Updates receipt** - Records new version and hash in `.ocx/receipt.jsonc`
 
 ### Dry Run Output
 
@@ -400,7 +400,7 @@ Diff for kdco/notify:
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| `No ocx-receipt.json found` | No receipt file | Run `ocx add` first |
+| `No receipt found` | No receipt file | Run `ocx add` first |
 | `No ocx.jsonc found` | Not initialized | Run `ocx init` first |
 | `Component 'name' not found in receipt` | Not installed | Check spelling or install first |
 | `Registry 'name' not configured` | Registry removed from config | Add registry back with `ocx registry add` |
@@ -948,11 +948,11 @@ Profile-specific OpenCode configuration:
 
 Profile-specific agent instructions (highest priority).
 
-### .opencode/ocx-receipt.json
+### .ocx/receipt.jsonc
 
 Receipt tracking installed components (managed automatically):
 
-```json
+```jsonc
 {
   "version": 1,
   "installed": {

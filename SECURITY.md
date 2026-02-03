@@ -6,9 +6,9 @@ OCX uses SHA-256 cryptographic hashes to ensure installed components haven't bee
 
 ### How it works
 
-1. **Receipt**: When a component is first installed, its content is hashed and stored in `ocx-receipt.json`.
+1. **Receipt**: When a component is first installed, its content is hashed and stored in `.ocx/receipt.jsonc`.
 2. **Verification**: On subsequent installs or updates, OCX re-hashes the incoming content.
-3. **Protection**: If the new hash doesn't match the one in `ocx-receipt.json`, the installation is aborted with an `INTEGRITY_ERROR`.
+3. **Protection**: If the new hash doesn't match the one in `.ocx/receipt.jsonc`, the installation is aborted with an `INTEGRITY_ERROR`.
 
 This ensures that once a version is approved and locked by your team, it cannot be silently swapped for different content, even if the registry itself is compromised.
 

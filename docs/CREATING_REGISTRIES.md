@@ -29,7 +29,7 @@ OCX follows the **Cargo + ShadCN model**:
 1. **Namespace as Identity**: Every registry declares a `namespace` (e.g., `kdco`). Components are referenced as `namespace/component` (e.g., `kdco/researcher`).
 2. **Clean Component Names**: Components within a registry use clean names (`researcher`, not `kdco-researcher`). The namespace provides provenance.
 3. **Explicit Trust**: Cross-namespace dependencies require the user to have that registry configured. No auto-fetching from unknown sources.
-4. **Own Your Code**: Components are copied into your project with clean filenames. The lockfile tracks provenance.
+4. **Own Your Code**: Components are copied into your project with clean filenames. The receipt file tracks provenance.
 
 ## Structure
 
@@ -395,7 +395,7 @@ Error: File conflict detected
   agent/researcher.md already exists (installed from kdco/researcher)
 
 To resolve:
-  1. Remove existing file and update ocx-receipt.json
+  1. Remove existing file and update receipt
   2. Or rename existing file manually
   3. Then retry: ocx add acme/researcher
 ```
