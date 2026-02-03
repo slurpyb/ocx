@@ -29,6 +29,7 @@ import { parse as parseJsonc } from "jsonc-parser"
 import { ProfileManager } from "../profile/manager"
 import {
 	findLocalConfigDir,
+	getLocalProfileAgents,
 	getProfileDir,
 	LOCAL_CONFIG_DIR,
 	OCX_CONFIG_FILE,
@@ -313,11 +314,11 @@ export class ConfigResolver {
 			try {
 				// If profileName is set, use it; otherwise try to resolve default
 				if (profileName) {
-					profile = await manager.get(profileName)
+					profile = await manager.getLayered(profileName, cwd)
 				} else {
 					// Try default profile
 					profileName = await manager.resolveProfile()
-					profile = await manager.get(profileName)
+					profile = await manager.getLayered(profileName, cwd)
 				}
 			} catch {
 				// No profile resolved - that's OK, we'll just use base configs
@@ -636,9 +637,12 @@ export class ConfigResolver {
 		instructions.push(...projectInstructions)
 
 		// 5. Local Profile AGENTS.md (when local profile active - highest priority)
-		// Note: Local profiles aren't currently implemented in OCX, but this is where
-		// they would go in the future for consistency with OpenCode's architecture.
-		// When implemented, check for `.opencode/profiles/<profileName>/AGENTS.md`
+		if (this.profileName && this.localConfigDir) {
+			const localProfileAgents = getLocalProfileAgents(this.profileName, this.cwd)
+			if (existsSync(localProfileAgents)) {
+				instructions.push(localProfileAgents)
+			}
+		}
 
 		return instructions
 	}

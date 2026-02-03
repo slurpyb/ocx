@@ -1,0 +1,6 @@
+{
+	"registries": { "local-reg": { "url": "https://local.com" } },
+	"exclude": ["*.cache"],
+	"componentPath": "local-path",
+	"renameWindow": false
+}

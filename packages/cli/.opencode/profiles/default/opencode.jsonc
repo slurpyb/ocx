@@ -1,0 +1,1 @@
+{ "model": "local-model", "env": { "LOCAL_VAR": "local-value" }, "plugin": ["local-plugin"] }

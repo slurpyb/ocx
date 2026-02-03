@@ -286,20 +286,19 @@ Profiles are resolved in this order:
 3. `default` profile (if it exists)
 4. No profile (base configs only)
 
-### Configuration Isolation
+### Configuration Merging
 
-OCX configs (`ocx.jsonc`) are **ISOLATED per scope** - they do NOT merge.
+OCX configs (`ocx.jsonc`) **merge when using profiles**:
 
-**Registry Isolation (Security Model):**
-- **Global registries** (in `~/.config/opencode/ocx.jsonc`) - ONLY used for downloading global settings like profiles
-- **Profile registries** (in profile's `ocx.jsonc`) - ONLY available when using that profile
-- **Local registries** (in `.opencode/ocx.jsonc`) - ONLY for that project
+**Profile Layering:**
+- Global profile + local profile (if both exist with same name) = merged config
+- Deep merge with local winning on conflicts
+- Registries merge (local adds to global)
+- Arrays replace (local wins)
 
-This prevents global registries from injecting components into all projects.
-
-**What DOES merge:**
-- OpenCode config files (`opencode.jsonc`) merge: profile → local (if not excluded by patterns)
-- Profile's exclude/include patterns control which project files OpenCode can see
+**Registry Isolation:**
+Global base config registries are ONLY used for downloading profiles, not components.
+When using a profile, registries come from merged profile config.
 
 ### How `ocx opencode` Works
 
@@ -436,13 +435,13 @@ Use profile commands to manage multiple configurations:
 # Initialize global profiles
 ocx init --global
 
-# Create and use a work profile
-ocx profile add work
+# Create and use a global work profile
+ocx profile add work --global
 ocx config edit -p work  # Edit profile settings
 
 # Install profile from registry (requires global registry config)
 ocx registry add https://ocx-kit.kdco.dev --name kit --global
-ocx profile add ws --from kit/ws
+ocx profile add ws --from kit/ws --global
 
 # Force overwrite existing profile
 ocx profile add ws --from kit/ws --force
@@ -454,7 +453,7 @@ ocx opencode -p work
 OCX_PROFILE=work ocx opencode
 
 # Clone settings from existing profile
-ocx profile add client-x --from work
+ocx profile add client-x --from work --global
 
 # View configuration from current scope
 ocx config show

@@ -1111,28 +1111,29 @@ ocx p add <name> [options]  # alias
 |--------|-------------|
 | `--from <source>` | Clone from existing profile, install from registry (e.g., kit/ws), or full URL |
 | `-f, --force` | Overwrite existing profile |
+| `-g, --global` | Create global profile (default is local) |
 
 #### Examples
 
 ```bash
 # Create new empty profile
-ocx profile add work
+ocx profile add work --global
 
 # Clone from existing profile
-ocx profile add client-x --from work
+ocx profile add client-x --from work --global
 
 # Install from registry with one command (not saved)
-ocx profile add ws --from https://ocx-kit.kdco.dev/ws
+ocx profile add ws --from https://ocx-kit.kdco.dev/ws --global
 
 # Or first add global registry, then install
 ocx registry add https://ocx-kit.kdco.dev --name kit --global
-ocx profile add ws --from kit/ws
+ocx profile add ws --from kit/ws --global
 
 # Force overwrite existing profile
-ocx profile add ws --from kit/ws --force
+ocx profile add ws --from kit/ws --force --global
 
 # Using alias
-ocx p add personal
+ocx p add personal --global
 ```
 
 #### Notes
@@ -1442,11 +1443,11 @@ ocx oc -- --help
 ### How It Works
 
 1. **Profile Resolution**: Resolves profile using priority order
-2. **Config Resolution**: Uses registries from active scope only (profile OR local, not merged)
-3. **Instruction Discovery**: Walks up from project directory to git root
-4. **Pattern Filtering**: Applies exclude/include patterns from profile's `ocx.jsonc`
-5. **Window Naming** (optional): Sets terminal/tmux window name
-6. **Launch OpenCode**: Spawns OpenCode with isolated registries and merged OpenCode settings
+2. **Profile Layering**: If both global and local profiles exist with same name, merges them
+3. **Config Merging**: Deep merges profile configs (global + local)
+4. **Instruction Discovery**: Discovers instruction files in priority order
+5. **Pattern Filtering**: Applies exclude/include patterns from merged profile
+6. **Launch OpenCode**: Spawns with merged config and discovered instructions
 
 ### Custom OpenCode Binary
 
@@ -1463,17 +1464,21 @@ To use a custom OpenCode binary (e.g., development build), set the `bin` option 
 2. `OPENCODE_BIN` environment variable
 3. `opencode` (system PATH)
 
-### Configuration Isolation
+### Configuration Merging
 
-**OCX configs (`ocx.jsonc`) are ISOLATED per scope:**
-- When using a profile: ONLY profile's registries are available
-- In normal mode: ONLY local project's registries are available
-- Global registries: ONLY for downloading global settings (like profiles)
+**OCX configs (`ocx.jsonc`) merge when using profiles:**
+- Global profile `ocx.jsonc` (base layer)
+- Local profile `ocx.jsonc` (overlay layer, if exists)
+- Deep merge with local winning on conflicts
 
-**OpenCode configs (`opencode.jsonc`) DO merge:**
-1. Profile's `opencode.jsonc` (if using a profile)
-2. Apply exclude/include patterns from profile
-3. Local `.opencode/opencode.jsonc` (if not excluded)
+**OpenCode configs (`opencode.jsonc`) cascade:**
+1. Global profile's `opencode.jsonc`
+2. Local profile's `opencode.jsonc` (if exists, deep merged)
+3. Local `.opencode/opencode.jsonc` (if not excluded, deep merged)
+
+**Registry Isolation:**
+Global base config registries (`~/.config/opencode/ocx.jsonc`) are ONLY used for downloading profiles, never for components.
+When using a profile, registries come from merged profile config.
 
 **Security:** This isolation prevents global registries from injecting components into all projects.
 

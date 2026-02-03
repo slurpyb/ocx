@@ -38,11 +38,11 @@ Work in any repo without modifying it. Your config, their code.
 ```bash
 # One-time setup
 ocx init --global           # Initialize global profiles
-ocx profile add work        # Create a work profile
+ocx profile add work --global  # Create a global work profile
 
 # Install pre-configured profile (optional)
 ocx registry add https://ocx-kit.kdco.dev --name kit --global
-ocx profile add work --from kit/omo
+ocx profile add work --from kit/omo --global
 
 # Use in any repo
 cd ~/oss/some-project

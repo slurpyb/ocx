@@ -1,7 +1,8 @@
 /**
  * Profile List Command
  *
- * List all available global profiles.
+ * List all available global profiles (~/.config/opencode/profiles/).
+ * Note: Does not list local profiles (.opencode/profiles/).
  */
 
 import type { Command } from "commander"
@@ -17,7 +18,7 @@ export function registerProfileListCommand(parent: Command): void {
 	parent
 		.command("list")
 		.alias("ls")
-		.description("List all global profiles")
+		.description("List all global profiles (~/.config/opencode/profiles/)")
 		.addOption(sharedOptions.json())
 		.action(async (options: ProfileListOptions) => {
 			try {
@@ -40,7 +41,7 @@ async function runProfileList(options: ProfileListOptions): Promise<void> {
 
 	// Guard: Handle empty profiles list
 	if (profiles.length === 0) {
-		console.log("No profiles found. Run 'ocx profile add <name>' to create one.")
+		console.log("No global profiles found. Run 'ocx profile add <name> --global' to create one.")
 		return
 	}
 

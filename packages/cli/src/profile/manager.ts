@@ -134,7 +134,7 @@ export class ProfileManager {
 	/**
 	 * Check if a profile exists.
 	 * @param name - Profile name
-	 * @param global - Whether to check global (default: true for compatibility)
+	 * @param global - Whether to check global location (default: true for backward compatibility with existing commands)
 	 */
 	async exists(name: string, global = true): Promise<boolean> {
 		const dir = global ? getProfileDir(name) : getLocalProfileDir(name, this.cwd)
@@ -188,6 +188,170 @@ export class ProfileManager {
 			opencode,
 			hasAgents,
 		}
+	}
+
+	/**
+	 * Load a profile with global + local layering.
+	 * Global profile is base, local profile overlays on top.
+	 * Matches OpenCode's config merge behavior.
+	 *
+	 * @param name - Profile name
+	 * @param cwd - Current working directory (for local profile lookup)
+	 * @returns Merged profile (global base + local overlay)
+	 * @throws ProfileNotFoundError if global profile doesn't exist
+	 */
+	async getLayered(name: string, cwd: string): Promise<Profile> {
+		// 1. Load global profile (required - base layer)
+		const globalProfile = await this.get(name)
+
+		// 2. Check for local profile (optional - overlay layer)
+		if (!(await this.exists(name, false))) {
+			return globalProfile // No local overlay
+		}
+
+		// 3. Load local profile
+		const localProfile = await this.loadFromLocal(name, cwd)
+
+		// 4. Merge: local wins on conflicts
+		return this.mergeProfiles(globalProfile, localProfile)
+	}
+
+	/**
+	 * Load a profile from local directory.
+	 * @param name - Profile name
+	 * @param cwd - Current working directory
+	 */
+	private async loadFromLocal(name: string, cwd: string): Promise<Profile> {
+		const ocxPath = getLocalProfileOcxConfig(name, cwd)
+		const ocxFile = Bun.file(ocxPath)
+
+		if (!(await ocxFile.exists())) {
+			throw new OcxConfigError(
+				`Local profile "${name}" is missing ocx.jsonc. Expected at: ${ocxPath}`,
+			)
+		}
+
+		const ocxContent = await ocxFile.text()
+		const ocxRaw = parse(ocxContent)
+		const ocx = profileOcxConfigSchema.parse(ocxRaw)
+
+		// Load opencode.jsonc (optional)
+		const opencodePath = getLocalProfileOpencodeConfig(name, cwd)
+		const opencodeFile = Bun.file(opencodePath)
+		let opencode: Record<string, unknown> | undefined
+		if (await opencodeFile.exists()) {
+			const opencodeContent = await opencodeFile.text()
+			opencode = parse(opencodeContent) as Record<string, unknown>
+		}
+
+		// Check for AGENTS.md
+		const agentsPath = getLocalProfileAgents(name, cwd)
+		const agentsFile = Bun.file(agentsPath)
+		const hasAgents = await agentsFile.exists()
+
+		return {
+			name,
+			ocx,
+			opencode,
+			hasAgents,
+		}
+	}
+
+	/**
+	 * Merge two profiles (global base + local overlay).
+	 * Uses deep merge for objects, local wins on conflicts.
+	 * Matches OpenCode's merge behavior:
+	 * - Objects: deep merge recursively
+	 * - Arrays: local replaces global (except plugin/instructions which concatenate)
+	 * - Scalars: local wins
+	 */
+	private mergeProfiles(base: Profile, overlay: Profile): Profile {
+		return {
+			name: base.name,
+			ocx: this.deepMergeOcx(base.ocx, overlay.ocx),
+			opencode: this.deepMerge(base.opencode ?? {}, overlay.opencode ?? {}),
+			hasAgents: base.hasAgents || overlay.hasAgents,
+		}
+	}
+
+	/**
+	 * Deep merge OCX configs.
+	 * Objects merge deeply, arrays replace, scalars replace.
+	 */
+	private deepMergeOcx(base: ProfileOcxConfig, overlay: ProfileOcxConfig): ProfileOcxConfig {
+		const result: ProfileOcxConfig = { ...base }
+
+		// Merge registries (deep merge - local adds to/overrides global)
+		if (overlay.registries) {
+			result.registries = { ...base.registries, ...overlay.registries }
+		}
+
+		// Replace arrays (local wins)
+		if (overlay.exclude !== undefined) {
+			result.exclude = overlay.exclude
+		}
+		if (overlay.include !== undefined) {
+			result.include = overlay.include
+		}
+
+		// Replace scalars (local wins)
+		if (overlay.componentPath !== undefined) {
+			result.componentPath = overlay.componentPath
+		}
+		if (overlay.renameWindow !== undefined) {
+			result.renameWindow = overlay.renameWindow
+		}
+		if (overlay.bin !== undefined) {
+			result.bin = overlay.bin
+		}
+
+		return result
+	}
+
+	/**
+	 * Deep merge for opencode config.
+	 * Matches OpenCode behavior: objects merge, arrays replace (except plugin/instructions).
+	 */
+	private deepMerge(
+		target: Record<string, unknown>,
+		source: Record<string, unknown>,
+	): Record<string, unknown> {
+		const result = { ...target }
+
+		for (const key of Object.keys(source)) {
+			const sourceValue = source[key]
+			const targetValue = result[key]
+
+			// Special handling for plugin and instructions arrays - concatenate + dedupe
+			if (
+				(key === "plugin" || key === "instructions") &&
+				Array.isArray(sourceValue) &&
+				Array.isArray(targetValue)
+			) {
+				result[key] = Array.from(new Set([...targetValue, ...sourceValue]))
+				continue
+			}
+
+			// If both are plain objects, recurse
+			if (this.isPlainObject(sourceValue) && this.isPlainObject(targetValue)) {
+				result[key] = this.deepMerge(
+					targetValue as Record<string, unknown>,
+					sourceValue as Record<string, unknown>,
+				)
+			} else {
+				// Arrays and scalars: source wins (last-write-wins)
+				result[key] = sourceValue
+			}
+		}
+
+		return result
+	}
+
+	/**
+	 * Check if value is a plain object (not array, not null).
+	 */
+	private isPlainObject(value: unknown): value is Record<string, unknown> {
+		return typeof value === "object" && value !== null && !Array.isArray(value)
 	}
 
 	/**

@@ -1,7 +1,7 @@
 /**
  * Profile Add Command
  *
- * Create a new global profile.
+ * Create a new profile (local by default, or global with --global flag).
  * Optionally clone settings from an existing profile or install from registry.
  */
 
@@ -152,7 +152,9 @@ async function requireGlobalRegistry(
 export function registerProfileAddCommand(parent: Command): void {
 	parent
 		.command("add <name>")
-		.description("Create a new profile, clone from existing, or install from registry")
+		.description(
+			"Create a new profile (local by default), clone from existing, or install from registry",
+		)
 		.option(
 			"--from <source>",
 			"Clone from existing profile or install from registry (e.g., kdco/minimal)",
@@ -162,10 +164,11 @@ export function registerProfileAddCommand(parent: Command): void {
 			"after",
 			`
 Examples:
-  $ ocx profile add work                      # Create local overlay profile
-  $ ocx profile add work --global             # Create global profile
-  $ ocx profile add work --from dev           # Clone from existing profile
-  $ ocx profile add work --from kdco/minimal  # Install from registry
+  $ ocx profile add work                      # Create local profile (.opencode/profiles/work/)
+  $ ocx profile add work --global             # Create global profile (~/.config/opencode/profiles/work/)
+  $ ocx profile add work --from dev           # Clone from existing (local by default)
+  $ ocx profile add work --from dev --global  # Clone to global profile
+  $ ocx profile add work --from kdco/minimal  # Install from registry (always global)
 `,
 		)
 		.action(async (name: string, options: ProfileAddOptions) => {

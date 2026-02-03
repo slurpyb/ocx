@@ -42,6 +42,25 @@ This document provides a complete testing checklist for OCX. Use it to verify fu
 
 ---
 
+## Testing Philosophy
+
+Manual testing validates that **documentation is accurate**. When following documented commands:
+
+1. **If a command works as documented** → Test PASSES
+2. **If a command produces unexpected results** → This is a **DOCUMENTATION BUG**
+
+**Do NOT "figure out" the correct command.** Report the discrepancy between documented behavior and actual behavior. The goal is to ensure users following documentation get expected results.
+
+### Testing Against Documentation
+
+When testing:
+- Follow the documented command exactly as written
+- If the result doesn't match documentation, note it as a doc bug
+- Suggest the fix (either update docs or fix code)
+- The test should reflect what users will experience following the docs
+
+---
+
 ## 1. Sandbox Setup
 
 ### Prerequisites
@@ -180,7 +199,7 @@ Test cases from README.md lines 38-54.
 ### 2.2 `ocx profile add work`
 
 - [ ] **Setup:** Global profiles initialized (Section 2.1)
-- [ ] **Command:** `ocx profile add work`
+- [ ] **Command:** `ocx profile add work --global`
 - [ ] **Expected:** Creates new profile `work` with template files
 - [ ] **Verify:**
   ```bash
@@ -204,7 +223,7 @@ Test cases from README.md lines 38-54.
 ### 2.4 Install Profile from Registry
 
 - [ ] **Setup:** Global registry configured (Section 2.3)
-- [ ] **Command:** `ocx profile add work --from kit/omo`
+- [ ] **Command:** `ocx profile add work --from kit/omo --global`
 - [ ] **Expected:** Downloads and installs profile from registry
 - [ ] **Verify:**
   ```bash
@@ -1048,7 +1067,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 13.4 `ocx profile add work` (Empty Profile)
 
 - [ ] **Setup:** Global profiles initialized
-- [ ] **Command:** `ocx profile add work`
+- [ ] **Command:** `ocx profile add work --global`
 - [ ] **Expected:** Creates new empty profile with template files
 - [ ] **Verify:**
   ```bash
@@ -1060,7 +1079,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 13.5 `ocx profile add` Clone from Existing
 
 - [ ] **Setup:** Profile "work" exists
-- [ ] **Command:** `ocx profile add client-x --from work`
+- [ ] **Command:** `ocx profile add client-x --from work --global`
 - [ ] **Expected:** Clones work profile to client-x
 - [ ] **Verify:**
   ```bash
@@ -1073,7 +1092,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 13.6 `ocx profile add` Install from Registry (Shorthand)
 
 - [ ] **Setup:** Global registry configured
-- [ ] **Command:** `ocx profile add ws --from kit/ws`
+- [ ] **Command:** `ocx profile add ws --from kit/ws --global`
 - [ ] **Expected:** Downloads profile from kit registry
 - [ ] **Verify:**
   ```bash
@@ -1084,7 +1103,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 13.7 `ocx profile add` Install from URL
 
 - [ ] **Setup:** None required
-- [ ] **Command:** `ocx profile add ws --from http://localhost:8788/ws`
+- [ ] **Command:** `ocx profile add ws --from http://localhost:8788/ws --global`
 - [ ] **Expected:** Downloads profile from URL directly
 - [ ] **Verify:**
   ```bash
@@ -1095,7 +1114,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 13.8 `ocx profile add --force` (Overwrite Existing)
 
 - [ ] **Setup:** Profile "ws" already exists
-- [ ] **Command:** `ocx profile add ws --from kit/ws --force`
+- [ ] **Command:** `ocx profile add ws --from kit/ws --force --global`
 - [ ] **Expected:** Overwrites existing profile
 - [ ] **Verify:**
   ```bash
@@ -1106,7 +1125,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 13.9 `ocx p add` (Alias)
 
 - [ ] **Setup:** Global profiles initialized
-- [ ] **Command:** `ocx p add personal`
+- [ ] **Command:** `ocx p add personal --global`
 - [ ] **Expected:** Creates new profile (same as `profile add`)
 - [ ] **Verify:**
   ```bash
@@ -1403,7 +1422,7 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Commands:**
   ```bash
   ocx init --global
-  ocx profile add work
+  ocx profile add work --global
   ocx config edit -p work  # Add registries
   cd /tmp/ocx-v2-test-project
   ocx init
@@ -1448,7 +1467,7 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Commands:**
   ```bash
   ocx registry add https://registry-a.com --name a --global
-  ocx profile add work
+  ocx profile add work --global
   ocx config edit -p work  # Add registry-b.com
   ocx search -p work
   ```
@@ -1543,6 +1562,54 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Verify:** Profile AGENTS.md overrides project
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
+### 16.11 Local vs Global Profile Distinction
+
+#### Test: Default creates local profile
+- [ ] **Setup:** In a project directory with `.opencode/` initialized
+- [ ] **Command:** `ocx profile add test-local`
+- [ ] **Expected:** Creates local profile at `.opencode/profiles/test-local/`
+- [ ] **Verify:**
+  ```bash
+  ls .opencode/profiles/test-local/  # Should exist
+  ls $XDG_CONFIG_HOME/opencode/profiles/test-local/  # Should NOT exist
+  ```
+
+#### Test: --global creates global profile
+- [ ] **Setup:** Global config initialized
+- [ ] **Command:** `ocx profile add test-global --global`
+- [ ] **Expected:** Creates global profile at `$XDG_CONFIG_HOME/opencode/profiles/test-global/`
+- [ ] **Verify:**
+  ```bash
+  ls $XDG_CONFIG_HOME/opencode/profiles/test-global/  # Should exist
+  ls .opencode/profiles/test-global/  # Should NOT exist
+  ```
+
+#### Test: ocx profile list shows only global profiles
+- [ ] **Setup:** Both local and global profiles exist
+- [ ] **Command:** `ocx profile list`
+- [ ] **Expected:** Shows only global profiles, not local ones
+- [ ] **Verify:** Local profile name should NOT appear in list
+
+#### Test: Profile merging when both global and local exist
+- [ ] **Setup:** Create both global and local profiles with same name
+- [ ] **Commands:**
+  ```bash
+  ocx init --global
+  ocx profile add test --global
+  # Add to global profile ocx.jsonc: {"registries": {"global-reg": {"url": "https://global.com"}}}
+  
+  cd /tmp/ocx-v2-test-project
+  ocx init
+  ocx profile add test  # Local with same name
+  # Add to local profile ocx.jsonc: {"registries": {"local-reg": {"url": "https://local.com"}}}
+  
+  ocx config show -p test
+  ```
+- [ ] **Expected:** Both registries appear in merged config
+- [ ] **Verify:** 
+  - Config contains both `global-reg` and `local-reg`
+  - Deep merge occurred (not simple replacement)
+
 ---
 
 ## 17. Error Path Tests
@@ -1627,8 +1694,8 @@ Common errors from CLI.md error tables.
 - [ ] **Setup:** Multiple profiles exist
 - [ ] **Commands:**
   ```bash
-  ocx profile add work
-  ocx profile add client
+  ocx profile add work --global
+  ocx profile add client --global
   ocx profile move work client
   ```
 - [ ] **Expected:** Error: "Cannot move: profile 'client' already exists"
