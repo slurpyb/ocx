@@ -138,6 +138,9 @@ export const componentTypeSchema = z.enum([
 	"tool",
 	"bundle",
 	"profile",
+	// OCX Kit uses prefixed variants
+	"ocx:bundle",
+	"ocx:profile",
 ])
 
 export type ComponentType = z.infer<typeof componentTypeSchema>

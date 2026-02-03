@@ -133,8 +133,8 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 		throw error
 	}
 
-	// Guard: Must be a profile type component
-	if (manifest.type !== "profile") {
+	// Guard: Must be a profile type component (accept both prefixed and unprefixed)
+	if (manifest.type !== "profile" && manifest.type !== "ocx:profile") {
 		fetchSpin?.fail(`Invalid component type`)
 		throw new ValidationError(
 			`Component "${qualifiedName}" is type "${manifest.type}", not "profile".\n\n` +
@@ -292,37 +292,12 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 					}
 				}
 
-				// 2. Extract required namespaces from dependencies
-				const requiredNamespaces = new Set<string>()
-				for (const depRef of depRefs) {
-					// Split "kdco/workspace" -> "kdco"
-					const parts = depRef.split("/")
-					if (parts.length === 2 && parts[0]) {
-						requiredNamespaces.add(parts[0])
-					}
-				}
-
-				// 3. Build minimal registry map for required namespaces ONLY
-				const minimalRegistries: Record<string, RegistryConfig> = {}
-				for (const ns of requiredNamespaces) {
-					if (profileRegistries[ns]) {
-						minimalRegistries[ns] = profileRegistries[ns]
-					} else {
-						// Law 4: Fail Fast - Required registry not declared in profile
-						depsSpin?.fail("Missing registry declaration")
-						throw new ValidationError(
-							`Profile requires registry "${ns}" for dependency resolution, ` +
-								`but it is not declared in the profile's ocx.jsonc.\n\n` +
-								`The profile is missing this registry declaration. ` +
-								`Contact the profile author to fix this issue.`,
-						)
-					}
-				}
-
-				// Create provider with ONLY the profile's declared registries
+				// Create provider with FULL profile registries
+				// Pass all registries from the profile's ocx.jsonc to support transitive dependencies.
+				// The profile's ocx.jsonc should declare all registries needed (including transitive).
 				const provider: ConfigProvider = {
 					cwd: profileDir,
-					getRegistries: () => minimalRegistries,
+					getRegistries: () => profileRegistries,
 					getComponentPath: () => "", // Flat install - no .opencode/ prefix
 				}
 

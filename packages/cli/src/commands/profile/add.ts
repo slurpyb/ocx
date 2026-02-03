@@ -33,11 +33,13 @@ import { installProfileFromRegistry } from "./install-from-registry"
 export type FromInput =
 	| { type: "local-profile"; name: string }
 	| { type: "registry"; namespace: string; component: string }
+	| { type: "url"; url: string }
 
 /**
  * Parse the --from option value to determine input type.
  *
  * Routing logic:
+ * - Starts with http:// or https:// → URL (direct fetch)
  * - Contains exactly one / → registry ref (namespace/component)
  * - No / → existing local profile name
  *
@@ -51,6 +53,11 @@ export function parseFromOption(from: string): FromInput {
 	}
 
 	const trimmed = from.trim()
+
+	// Route URLs: starts with http:// or https://
+	if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+		return { type: "url", url: trimmed }
+	}
 
 	// Route registry references: contains exactly one /
 	const slashCount = (trimmed.match(/\//g) || []).length
@@ -164,11 +171,12 @@ export function registerProfileAddCommand(parent: Command): void {
 			"after",
 			`
 Examples:
-  $ ocx profile add work                      # Create local profile (.opencode/profiles/work/)
-  $ ocx profile add work --global             # Create global profile (~/.config/opencode/profiles/work/)
-  $ ocx profile add work --from dev           # Clone from existing (local by default)
-  $ ocx profile add work --from dev --global  # Clone to global profile
-  $ ocx profile add work --from kdco/minimal  # Install from registry (always global)
+  $ ocx profile add work                                  # Create local profile (.opencode/profiles/work/)
+  $ ocx profile add work --global                         # Create global profile (~/.config/opencode/profiles/work/)
+  $ ocx profile add work --from dev                       # Clone from existing (local by default)
+  $ ocx profile add work --from dev --global              # Clone to global profile
+  $ ocx profile add work --from kdco/minimal              # Install from registry (always global)
+  $ ocx profile add work --from http://registry.com/prof  # Install from URL (always global)
 `,
 		)
 		.action(async (name: string, options: ProfileAddOptions) => {
@@ -201,6 +209,48 @@ async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<
 			await cloneFromLocalProfile(manager, name, fromInput.name, options.global ?? false)
 			break
 
+		case "url": {
+			// URL installation always creates global profiles
+			if (!options.global) {
+				logger.warn("URL installation requires --global flag. Creating global profile.")
+			}
+
+			// Parse URL to extract registry base and component name
+			// e.g., http://localhost:8788/omo -> registry: http://localhost:8788, component: omo
+			const url = new URL(fromInput.url)
+			const pathParts = url.pathname.split("/").filter((p) => p.length > 0)
+
+			if (pathParts.length === 0) {
+				throw new ValidationError(
+					`Invalid profile URL: "${fromInput.url}". ` +
+						`URL must include a component path (e.g., http://registry.com/component)`,
+				)
+			}
+
+			// Component is the last path segment
+			const component = pathParts[pathParts.length - 1]
+			if (!component) {
+				throw new ValidationError(
+					`Invalid profile URL: "${fromInput.url}". ` +
+						`Could not extract component name from URL path.`,
+				)
+			}
+
+			// Registry URL is everything except the last path segment
+			pathParts.pop()
+			url.pathname = pathParts.length > 0 ? `/${pathParts.join("/")}` : ""
+			const registryUrl = url.toString().replace(/\/$/, "") // Remove trailing slash
+
+			// Install profile from URL
+			await installProfileFromRegistry({
+				namespace: "__url__", // Placeholder namespace for URL installs
+				component,
+				profileName: name,
+				registryUrl,
+			})
+			break
+		}
+
 		case "registry": {
 			// Registry installation always creates global profiles
 			if (!options.global) {
@@ -208,13 +258,7 @@ async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<
 			}
 
 			// Validate registry is configured globally and get URL
-			const { config: globalConfig, registryUrl } = await requireGlobalRegistry(fromInput.namespace)
-
-			// Build registries map for dependency resolution
-			const registries: Record<string, { url: string }> = {}
-			for (const [ns, reg] of Object.entries(globalConfig.registries)) {
-				registries[ns] = { url: reg.url }
-			}
+			const { registryUrl } = await requireGlobalRegistry(fromInput.namespace)
 
 			// Install profile from registry
 			await installProfileFromRegistry({

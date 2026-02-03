@@ -1038,14 +1038,15 @@ ocx p ls --json
 
 ```bash
 $ ocx profile list
-Available profiles:
+Global profiles:
   default
   work
   client-x
 
 $ ocx profile list --json
 {
-  "profiles": ["default", "work", "client-x"]
+  "profiles": ["default", "work", "client-x"],
+  "initialized": true
 }
 ```
 

@@ -414,10 +414,12 @@ export class ProfileManager {
 			throw new ProfileNotFoundError(name)
 		}
 
-		const profiles = await this.list()
-
-		if (profiles.length <= 1) {
-			throw new Error("Cannot delete the last profile. At least one profile must exist.")
+		// Only apply last-profile check when removing global profiles
+		if (global) {
+			const profiles = await this.list()
+			if (profiles.length <= 1) {
+				throw new Error("Cannot delete the last profile. At least one profile must exist.")
+			}
 		}
 
 		const dir = global ? getProfileDir(name) : getLocalProfileDir(name, this.cwd)
