@@ -14,7 +14,7 @@ import { type DryRunResult, outputDryRun } from "../utils/dry-run"
 import { NotFoundError, ValidationError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
 import { checkFileIntegrity, parseCanonicalId } from "../utils/receipt"
-import { addCommonOptions, addForceOption, addVerboseOption } from "../utils/shared-options"
+import { addCommonOptions, addVerboseOption } from "../utils/shared-options"
 
 export interface RemoveOptions {
 	cwd?: string
@@ -32,7 +32,7 @@ export function registerRemoveCommand(program: Command): void {
 		.argument("<components...>", "Canonical component IDs to remove")
 
 	addCommonOptions(cmd)
-	addForceOption(cmd)
+	cmd.option("-f, --force", "Force removal even if files have been modified")
 	addVerboseOption(cmd)
 
 	cmd
