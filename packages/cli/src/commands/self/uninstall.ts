@@ -22,6 +22,7 @@ import {
 	getExecutablePath,
 	type InstallMethod,
 } from "../../self-update/detect-method"
+import { type DryRunAction, type DryRunResult, outputDryRun } from "../../utils/dry-run"
 import { wrapAction } from "../../utils/handle-error"
 import { highlight, logger } from "../../utils/logger"
 
@@ -508,28 +509,46 @@ function printDryRun(
 	binaryTarget: UninstallTarget | null,
 	installMethod: InstallMethod,
 ): void {
-	logger.info("Dry run - the following would be removed:\n")
-
 	const existingConfigTargets = configTargets.filter((t) => t.kind !== "missing")
+	const actions: DryRunAction[] = []
+
+	// Add config targets to actions
 	for (const target of existingConfigTargets) {
-		const kindLabel = target.kind === "directory" ? "[dir] " : "[file]"
-		const emptyNote = target.deleteIfEmpty ? " (if empty)" : ""
-		logger.log(`  ${kindLabel} ${highlight.path(target.displayPath)}${emptyNote}`)
+		actions.push({
+			action: "delete",
+			target: target.displayPath,
+			details: {
+				kind: target.kind,
+				...(target.deleteIfEmpty && { deleteIfEmpty: true }),
+			},
+		})
 	}
 
+	// Add binary target if exists
 	if (binaryTarget && binaryTarget.kind !== "missing") {
-		logger.log(`  [bin]  ${highlight.path(binaryTarget.displayPath)}`)
+		actions.push({
+			action: "delete",
+			target: binaryTarget.displayPath,
+			details: { kind: "binary" },
+		})
 	}
 
+	const hints: string[] = []
 	if (isPackageManaged(installMethod)) {
-		logger.log("")
-		logger.info(`Binary managed by ${installMethod}. Run:`)
-		logger.log(`  ${highlight.command(getPackageManagerCommand(installMethod))}`)
+		hints.push(
+			`Binary is managed by ${installMethod}. Run: ${getPackageManagerCommand(installMethod)}`,
+		)
 	}
 
-	if (existingConfigTargets.length === 0 && (!binaryTarget || binaryTarget.kind === "missing")) {
-		logger.info("Nothing to remove.")
+	const dryRunResult: DryRunResult = {
+		dryRun: true,
+		command: "self uninstall",
+		wouldPerform: actions,
+		validation: { passed: true },
+		summary: actions.length > 0 ? `Would remove ${actions.length} item(s)` : "Nothing to remove",
 	}
+
+	outputDryRun(dryRunResult, { hints })
 }
 
 /**

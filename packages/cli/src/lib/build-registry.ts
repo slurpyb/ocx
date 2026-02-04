@@ -9,12 +9,15 @@ import { mkdir } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { parse as parseJsonc } from "jsonc-parser"
 import { normalizeFile, registrySchema } from "../schemas/registry"
+import type { DryRunResult } from "../utils/dry-run"
 
 export interface BuildRegistryOptions {
 	/** Source directory containing registry.jsonc (or registry.json) and files/ */
 	source: string
 	/** Output directory for built registry */
 	out: string
+	/** Dry-run mode: validate and show what would be built */
+	dryRun?: boolean
 }
 
 export interface BuildRegistryResult {
@@ -40,10 +43,12 @@ export class BuildRegistryError extends Error {
  * Build a registry from source.
  *
  * @param options - Build options
- * @returns Build result with metadata
+ * @returns Build result with metadata or DryRunResult
  * @throws {BuildRegistryError} If validation fails or files are missing
  */
-export async function buildRegistry(options: BuildRegistryOptions): Promise<BuildRegistryResult> {
+export async function buildRegistry(
+	options: BuildRegistryOptions,
+): Promise<BuildRegistryResult | DryRunResult> {
 	const { source: sourcePath, out: outPath } = options
 
 	// Read registry file from source (prefer .jsonc over .json)
@@ -70,7 +75,68 @@ export async function buildRegistry(options: BuildRegistryOptions): Promise<Buil
 	const registry = parseResult.data
 	const validationErrors: string[] = []
 
-	// Create output directory structure
+	// Dry-run: Calculate what would be built without creating files
+	if (options.dryRun) {
+		const actions = []
+
+		// Check for missing source files
+		for (const component of registry.components) {
+			// Would create packument file
+			actions.push({
+				action: "create" as const,
+				target: `file:components/${component.name}.json`,
+				details: { type: "packument" },
+			})
+
+			// Check source files exist
+			for (const rawFile of component.files) {
+				const file = normalizeFile(rawFile, component.type)
+				const sourceFilePath = join(sourcePath, "files", file.path)
+
+				if (!(await Bun.file(sourceFilePath).exists())) {
+					validationErrors.push(`${component.name}: Source file not found at ${sourceFilePath}`)
+					continue
+				}
+
+				// Would copy file
+				actions.push({
+					action: "create" as const,
+					target: `file:components/${component.name}/${file.path}`,
+					details: { source: sourceFilePath },
+				})
+			}
+		}
+
+		// Would create index.json
+		actions.push({
+			action: "create" as const,
+			target: "file:index.json",
+			details: { type: "registry index" },
+		})
+
+		// Would create .well-known/ocx.json
+		actions.push({
+			action: "create" as const,
+			target: "file:.well-known/ocx.json",
+			details: { type: "discovery file" },
+		})
+
+		// Calculate total files
+		const totalFiles = actions.filter((a) => a.action === "create").length
+
+		return {
+			dryRun: true,
+			command: "build",
+			wouldPerform: actions,
+			validation: {
+				passed: validationErrors.length === 0,
+				errors: validationErrors.length > 0 ? validationErrors : undefined,
+			},
+			summary: `Would build ${registry.components.length} components, ${totalFiles} files to ${outPath}`,
+		}
+	}
+
+	// Normal mode: Create output directory structure
 	const componentsDir = join(outPath, "components")
 	await mkdir(componentsDir, { recursive: true })
 

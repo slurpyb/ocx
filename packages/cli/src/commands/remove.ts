@@ -10,6 +10,7 @@ import { join } from "node:path"
 import type { Command } from "commander"
 import { LocalConfigProvider } from "../config/provider"
 import { readReceipt, writeReceipt } from "../schemas/config"
+import { type DryRunResult, outputDryRun } from "../utils/dry-run"
 import { NotFoundError, ValidationError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
 import { checkFileIntegrity, parseCanonicalId } from "../utils/receipt"
@@ -20,6 +21,7 @@ export interface RemoveOptions {
 	verbose?: boolean
 	json?: boolean
 	force?: boolean
+	dryRun?: boolean
 }
 
 export function registerRemoveCommand(program: Command): void {
@@ -29,6 +31,7 @@ export function registerRemoveCommand(program: Command): void {
 		.argument("<components...>", "Canonical component IDs to remove")
 		.option("--cwd <path>", "Working directory", process.cwd())
 		.option("-f, --force", "Force removal even if files have been modified")
+		.option("--dry-run", "Show what would be removed without making changes")
 		.option("-q, --quiet", "Suppress output")
 		.option("-v, --verbose", "Verbose output")
 		.option("--json", "Output as JSON")
@@ -61,8 +64,12 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 
 	const removed: string[] = []
 	const notFound: string[] = []
+	const toRemove: Array<{ canonicalId: string; files: string[] }> = []
+	const warnings: string[] = []
+	let hasIntegrityIssues = false
 
 	try {
+		// First pass: validate all components and check integrity
 		for (const canonicalId of canonicalIds) {
 			// Guard: Component must exist in receipt
 			const entry = receipt.installed[canonicalId]
@@ -73,13 +80,91 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 
 			// Check file integrity before removal
 			const integrity = await checkFileIntegrity(provider.cwd, entry)
-			if (!integrity.intact && !options.force) {
-				spin?.fail("File integrity check failed")
+			if (!integrity.intact) {
+				hasIntegrityIssues = true
+				const modifiedFiles = integrity.modified.map((f) => `  - ${f}`).join("\n")
+
+				if (options.force) {
+					warnings.push(
+						`Component '${canonicalId}' has been modified but will be force-removed:\n${modifiedFiles}`,
+					)
+				} else {
+					warnings.push(
+						`Component '${canonicalId}' has been modified. Use --force to remove anyway:\n${modifiedFiles}`,
+					)
+				}
+			}
+
+			// Collect files to remove
+			const filePaths = entry.files.map((f) => f.path)
+			toRemove.push({ canonicalId, files: filePaths })
+		}
+
+		// Handle dry-run mode
+		if (options.dryRun) {
+			spin?.stop()
+
+			const dryRunResult: DryRunResult = {
+				dryRun: true,
+				command: "remove",
+				wouldPerform: toRemove.flatMap(({ canonicalId, files }) =>
+					files.map((filePath) => ({
+						action: "delete" as const,
+						target: filePath,
+						details: { component: canonicalId },
+					})),
+				),
+				validation: {
+					passed: !hasIntegrityIssues || Boolean(options.force),
+					warnings:
+						warnings.length > 0
+							? warnings
+							: notFound.length > 0
+								? [`Components not found: ${notFound.join(", ")}`]
+								: undefined,
+				},
+				summary: `${toRemove.length} component(s), ${toRemove.reduce((sum, item) => sum + item.files.length, 0)} file(s) would be removed`,
+			}
+
+			outputDryRun(dryRunResult, {
+				json: options.json,
+				quiet: options.quiet,
+				hints:
+					hasIntegrityIssues && !options.force
+						? ["Add --force to remove modified files"]
+						: undefined,
+			})
+
+			return
+		}
+
+		// Actual removal: fail fast if integrity issues and not forced
+		if (hasIntegrityIssues && !options.force) {
+			spin?.fail("File integrity check failed")
+
+			const firstIssue = toRemove.find((item) => {
+				const entry = receipt.installed[item.canonicalId]
+				return entry && !checkFileIntegrity(provider.cwd, entry)
+			})
+
+			if (firstIssue) {
+				const entry = receipt.installed[firstIssue.canonicalId]
+				if (!entry) {
+					throw new ValidationError(`Component '${firstIssue.canonicalId}' not found in receipt`)
+				}
+
+				const integrity = await checkFileIntegrity(provider.cwd, entry)
 				throw new ValidationError(
-					`Component '${canonicalId}' has been modified. Use --force to remove anyway.\n` +
+					`Component '${firstIssue.canonicalId}' has been modified. Use --force to remove anyway.\n` +
 						`Modified files:\n${integrity.modified.map((f) => `  - ${f}`).join("\n")}`,
 				)
 			}
+		}
+
+		// Second pass: actually remove files
+		for (const { canonicalId } of toRemove) {
+			const entry = receipt.installed[canonicalId]
+			if (!entry) continue
 
 			// Remove files
 			for (const fileEntry of entry.files) {

@@ -217,8 +217,8 @@ describe("ocx update", () => {
 
 		const json = JSON.parse(output)
 		expect(json.dryRun).toBe(true)
-		expect(json.wouldUpdate).toBeDefined()
-		expect(json.wouldUpdate.length).toBeGreaterThan(0)
+		expect(json.wouldPerform).toBeDefined()
+		expect(json.wouldPerform.length).toBeGreaterThan(0)
 	})
 
 	// =========================================================================

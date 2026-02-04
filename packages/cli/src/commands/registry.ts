@@ -12,6 +12,7 @@ import { ProfileManager } from "../profile/manager"
 import { getProfileOcxConfig } from "../profile/paths"
 import type { RegistryConfig } from "../schemas/config"
 import { findOcxConfig, readOcxConfig, writeOcxConfig } from "../schemas/config"
+import { type DryRunResult, outputDryRun } from "../utils/dry-run"
 import {
 	ConfigError,
 	ProfileNotFoundError,
@@ -38,6 +39,7 @@ export interface RegistryOptions {
 export interface RegistryAddOptions extends RegistryOptions {
 	name?: string
 	force?: boolean
+	dryRun?: boolean
 }
 
 // =============================================================================
@@ -57,8 +59,9 @@ export async function runRegistryAddCore(
 		getRegistries: () => Record<string, RegistryConfig>
 		isLocked?: () => boolean
 		setRegistry: (name: string, config: RegistryConfig) => Promise<void>
+		targetLabel?: string // For dry-run summary
 	},
-): Promise<{ name: string; url: string; updated: boolean }> {
+): Promise<{ name: string; url: string; updated: boolean } | DryRunResult> {
 	// Guard: Check registries aren't locked
 	if (callbacks.isLocked?.()) {
 		throw new Error("Registries are locked. Cannot add.")
@@ -102,6 +105,43 @@ export async function runRegistryAddCore(
 			`Registry alias "${name}" must match declared namespace "${index.namespace}".\n` +
 				`Either use --name ${index.namespace} or update the registry's namespace field.`,
 		)
+	}
+
+	// Dry-run mode: Build result and return early
+	if (options.dryRun) {
+		const warnings: string[] = []
+
+		// Check for existing registry conflict
+		if (existingRegistry && !options.force) {
+			warnings.push(
+				`Registry '${name}' already exists (${existingRegistry.url}). Use --force to overwrite.`,
+			)
+		}
+
+		const action = isUpdate ? "update" : "add"
+		const targetLabel = callbacks.targetLabel || "config"
+
+		const dryRunResult: DryRunResult = {
+			dryRun: true,
+			command: "registry add",
+			wouldPerform: [
+				{
+					action,
+					target: `registry:${name}`,
+					details: {
+						url: normalizedUrl,
+						namespace: index.namespace,
+					},
+				},
+			],
+			validation: {
+				passed: warnings.length === 0,
+				warnings: warnings.length > 0 ? warnings : undefined,
+			},
+			summary: `Would ${action} registry '${name}' to ${targetLabel}`,
+		}
+
+		return dryRunResult
 	}
 
 	await callbacks.setRegistry(name, {
@@ -249,6 +289,7 @@ export function registerRegistryCommand(program: Command): void {
 		.argument("<url>", "Registry URL")
 		.option("--name <name>", "Registry alias (defaults to hostname)")
 		.option("-f, --force", "Overwrite existing registry")
+		.option("--dry-run", "Validate registry without adding to config")
 
 	addGlobalOption(addCmd)
 	addProfileOption(addCmd)
@@ -281,17 +322,29 @@ export function registerRegistryCommand(program: Command): void {
 					config.registries[name] = regConfig
 					await writeOcxConfig(configDir, config, configPath)
 				},
+				targetLabel: target.targetLabel,
 			})
 
+			// Handle dry-run result
+			if ("dryRun" in result && result.dryRun) {
+				outputDryRun(result, { json: options.json, quiet: options.quiet })
+				return
+			}
+
+			// Type narrowing: result is now { name: string; url: string; updated: boolean }
+			const actualResult = result as { name: string; url: string; updated: boolean }
+
 			if (options.json) {
-				outputJson({ success: true, data: result })
+				outputJson({ success: true, data: actualResult })
 			} else if (!options.quiet) {
-				if (result.updated) {
+				if (actualResult.updated) {
 					logger.success(
-						`Updated registry in ${target.targetLabel}: ${result.name} -> ${result.url}`,
+						`Updated registry in ${target.targetLabel}: ${actualResult.name} -> ${actualResult.url}`,
 					)
 				} else {
-					logger.success(`Added registry to ${target.targetLabel}: ${result.name} -> ${result.url}`)
+					logger.success(
+						`Added registry to ${target.targetLabel}: ${actualResult.name} -> ${actualResult.url}`,
+					)
 				}
 			}
 		} catch (error) {

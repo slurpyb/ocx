@@ -16,6 +16,7 @@ import {
 	normalizeComponentManifest,
 	parseQualifiedComponent,
 } from "../schemas/registry"
+import { type DryRunAction, type DryRunResult, outputDryRun } from "../utils/dry-run"
 import { ConfigError, NotFoundError, ValidationError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
 import { hashBundle, hashContent } from "../utils/receipt"
@@ -262,7 +263,7 @@ export async function runUpdateCore(
 		// -------------------------------------------------------------------------
 
 		if (options.dryRun) {
-			outputDryRun(results, options)
+			outputUpdateDryRun(results, options)
 			return
 		}
 
@@ -477,40 +478,27 @@ function resolveComponentsToUpdate(
 }
 
 /**
- * Output dry-run results.
+ * Output dry-run results using shared utility.
  */
-function outputDryRun(results: UpdateResult[], options: UpdateOptions): void {
+function outputUpdateDryRun(results: UpdateResult[], options: UpdateOptions): void {
 	const wouldUpdate = results.filter((r) => r.status === "would-update")
-	const upToDate = results.filter((r) => r.status === "up-to-date")
 
-	if (options.json) {
-		console.log(JSON.stringify({ dryRun: true, wouldUpdate, upToDate }, null, 2))
-		return
+	const actions: DryRunAction[] = wouldUpdate.map((result) => ({
+		action: "update",
+		target: result.qualifiedName,
+		details: { from: result.oldVersion, to: result.newVersion },
+	}))
+
+	const dryRunResult: DryRunResult = {
+		dryRun: true,
+		command: "update",
+		wouldPerform: actions,
+		validation: { passed: true },
+		summary:
+			wouldUpdate.length > 0
+				? `Would update ${wouldUpdate.length} component(s)`
+				: "All components are up to date",
 	}
 
-	if (!options.quiet) {
-		logger.info("")
-
-		if (wouldUpdate.length > 0) {
-			logger.info("Would update:")
-			for (const result of wouldUpdate) {
-				logger.info(`  ${result.qualifiedName} (${result.oldVersion} → ${result.newVersion})`)
-			}
-		}
-
-		if (upToDate.length > 0 && options.verbose) {
-			logger.info("")
-			logger.info("Already up to date:")
-			for (const result of upToDate) {
-				logger.info(`  ${result.qualifiedName}`)
-			}
-		}
-
-		if (wouldUpdate.length > 0) {
-			logger.info("")
-			logger.info("Run without --dry-run to apply changes.")
-		} else {
-			logger.info("All components are up to date.")
-		}
-	}
+	outputDryRun(dryRunResult, { json: options.json, quiet: options.quiet })
 }

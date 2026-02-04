@@ -15,7 +15,7 @@ import { CLI_VERSION, GITHUB_REPO } from "../constants"
 import { getProfileDir } from "../profile/paths"
 import { fetchFileContent, fetchRegistryIndex } from "../registry/fetcher"
 import type { ResolvedComponent } from "../registry/resolver"
-import { type ResolvedDependencies, resolveDependencies } from "../registry/resolver"
+import { resolveDependencies } from "../registry/resolver"
 import { createCanonicalId, type Receipt, readReceipt, writeReceipt } from "../schemas/config"
 import type { ComponentFileObject, RegistryIndex } from "../schemas/registry"
 import { parseQualifiedComponent } from "../schemas/registry"
@@ -24,6 +24,7 @@ import {
 	updateOpencodeJsonConfig,
 } from "../updaters/update-opencode-config"
 import { isContentIdentical } from "../utils/content"
+import { type DryRunAction, type DryRunResult, outputDryRun } from "../utils/dry-run"
 import { ConfigError, ConflictError, IntegrityError, ValidationError } from "../utils/errors"
 import {
 	collectCompatIssues,
@@ -300,13 +301,21 @@ async function handleNpmPlugins(
 
 		// Dry run: just log what would happen
 		if (options.dryRun) {
-			logger.info("")
-			logger.info("Dry run - no changes made")
-			logger.info("")
-			logger.info("Would add npm plugins:")
-			for (const input of inputs) {
-				logger.info(`  ${formatPluginEntry(input.name, input.version)}`)
+			const actions: DryRunAction[] = inputs.map((input) => ({
+				action: "add",
+				target: formatPluginEntry(input.name, input.version),
+				details: { type: "npm plugin" },
+			}))
+
+			const dryRunResult: DryRunResult = {
+				dryRun: true,
+				command: "add",
+				wouldPerform: actions,
+				validation: { passed: true },
+				summary: `Would add ${inputs.length} npm plugin(s)`,
 			}
+
+			outputDryRun(dryRunResult, { json: options.json, quiet: options.quiet })
 			return
 		}
 
@@ -451,9 +460,21 @@ async function runRegistryAddCore(
 		}
 
 		if (options.dryRun) {
-			logger.info("")
-			logger.info("Dry run - no changes made")
-			logResolved(resolved)
+			const actions: DryRunAction[] = resolved.components.map((component) => ({
+				action: "add",
+				target: `${component.registryName}/${component.name}`,
+				details: { type: component.type },
+			}))
+
+			const dryRunResult: DryRunResult = {
+				dryRun: true,
+				command: "add",
+				wouldPerform: actions,
+				validation: { passed: true },
+				summary: `Would add ${resolved.components.length} component(s)`,
+			}
+
+			outputDryRun(dryRunResult, { json: options.json, quiet: options.quiet })
 			return
 		}
 
@@ -758,38 +779,6 @@ async function installComponent(
 	}
 
 	return result
-}
-
-function logResolved(resolved: ResolvedDependencies): void {
-	logger.info("")
-	logger.info("Would install:")
-	for (const component of resolved.components) {
-		logger.info(`  ${component.name} (${component.type}) from ${component.registryName}`)
-	}
-
-	if (resolved.opencode && Object.keys(resolved.opencode).length > 0) {
-		logger.info("")
-		logger.info("Would update opencode.json with:")
-		for (const key of Object.keys(resolved.opencode)) {
-			logger.info(`  ${key}`)
-		}
-	}
-
-	if (resolved.npmDependencies.length > 0) {
-		logger.info("")
-		logger.info("Would install npm dependencies:")
-		for (const dep of resolved.npmDependencies) {
-			logger.info(`  ${dep}`)
-		}
-	}
-
-	if (resolved.npmDevDependencies.length > 0) {
-		logger.info("")
-		logger.info("Would install npm dev dependencies:")
-		for (const dep of resolved.npmDevDependencies) {
-			logger.info(`  ${dep}`)
-		}
-	}
 }
 
 // ============================================================================

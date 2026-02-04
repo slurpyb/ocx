@@ -72,8 +72,8 @@ describe("ocx self uninstall --dry-run", () => {
 		})
 
 		expect(exitCode).toBe(0)
-		expect(stdout).toContain("Dry run")
-		expect(stdout).toContain("would be removed")
+		expect(stdout).toContain("DRY RUN")
+		expect(stdout).toContain("Would remove")
 
 		// Files should still exist
 		expect(existsSync(root)).toBe(true)
@@ -90,7 +90,7 @@ describe("ocx self uninstall --dry-run", () => {
 
 		expect(exitCode).toBe(0)
 		expect(stdout).toContain("profiles")
-		expect(stdout).toContain("[dir]")
+		expect(stdout).toContain("kind: directory")
 	})
 
 	it("lists ocx.jsonc file in output", async () => {
@@ -102,7 +102,7 @@ describe("ocx self uninstall --dry-run", () => {
 
 		expect(exitCode).toBe(0)
 		expect(stdout).toContain("ocx.jsonc")
-		expect(stdout).toContain("[file]")
+		expect(stdout).toContain("kind: file")
 	})
 
 	it("exits with code 0", async () => {
@@ -121,9 +121,9 @@ describe("ocx self uninstall --dry-run", () => {
 		const { exitCode, stdout } = await runCLIIsolated(["self", "uninstall", "--dry-run"], testDir)
 
 		expect(exitCode).toBe(0)
-		// Root is shown with "(if empty)" note
+		// Root is shown with "deleteIfEmpty: true" note
 		expect(stdout).toContain("opencode")
-		expect(stdout).toContain("(if empty)")
+		expect(stdout).toContain("deleteIfEmpty: true")
 	})
 })
 
