@@ -36,8 +36,10 @@ All other options use long-form only. This keeps the CLI predictable and reduces
 
 - [`ocx init`](#ocx-init) - Initialize OCX configuration
 - [`ocx add`](#ocx-add) - Add components from a registry
+- [`ocx remove`](#ocx-remove) - Remove installed components
 - [`ocx update`](#ocx-update) - Update installed components
 - [`ocx search`](#ocx-search) - Search for components
+- [`ocx verify`](#ocx-verify) - Verify component integrity
 - [`ocx registry`](#ocx-registry) - Manage registries (local-first)
 - [`ocx build`](#ocx-build) - Build a registry from source
 - [`ocx self update`](#ocx-self-update) - Update OCX to latest version
@@ -50,7 +52,7 @@ All other options use long-form only. This keeps the CLI predictable and reduces
 
 ## ocx init
 
-Initialize OCX configuration locally or globally with profile support.
+Initialize OCX configuration in your project.
 
 ### Usage
 
@@ -67,29 +69,230 @@ ocx init --registry <path> [options]
 | `-q, --quiet` | Suppress output |
 | `-v, --verbose` | Verbose output |
 | `--json` | Output as JSON |
-| `--installed` | List installed components only |
-| `--limit <n>` | Limit results (default: 20) |
+| `--registry <path>` | Scaffold a new OCX registry project at path |
+| `--namespace <name>` | Registry namespace (e.g., my-org) |
+| `--author <name>` | Author name for the registry |
+| `--canary` | Use canary (main branch) instead of latest release |
+| `--local <path>` | Use local template directory instead of fetching |
+| `-g, --global` | Initialize in global OpenCode config (~/.config/opencode) |
 
 ### Examples
 
 ```bash
+# Initialize local config
+ocx init
+
+# Initialize global profiles
+ocx init --global
+
+# Scaffold a new registry project
+ocx init --registry ./my-registry --namespace my-org --author "My Name"
+```
+
+---
+
+## ocx add
+
+Add components or npm plugins to your project.
+
+### Usage
+
+```bash
+ocx add <components...> [options]
+```
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `components...` | Components to install (namespace/component or npm:package[@version]) |
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--dry-run` | Show what would be installed without making changes |
+| `--skip-compat-check` | Skip version compatibility checks |
+| `--trust` | Skip npm plugin validation |
+| `-p, --profile <name>` | Use specific profile |
+| `--from <url>` | Use ephemeral registry (does not persist) |
+| `--cwd <path>` | Working directory (default: current directory) |
+| `-q, --quiet` | Suppress output |
+| `-v, --verbose` | Verbose output |
+| `--json` | Output as JSON |
+| `-f, --force` | Overwrite existing components/plugins |
+| `-g, --global` | Use global config |
+
+### Examples
+
+```bash
+# Add a component from configured registry
+ocx add shadcn/button
+
+# Add multiple components
+ocx add shadcn/button shadcn/card shadcn/dialog
+
+# Add npm plugin
+ocx add npm:@opencode/plugin-github
+
+# Add with specific version
+ocx add npm:@opencode/plugin-github@1.2.3
+
+# Preview what would be installed
+ocx add shadcn/button --dry-run
+
+# Use ephemeral registry (not saved to config)
+ocx add my-component --from https://my-registry.com
+```
+
+---
+
+## ocx remove
+
+Remove installed components.
+
+### Usage
+
+```bash
+ocx remove <components...> [options]
+```
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `components...` | Canonical component IDs to remove |
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--dry-run` | Show what would be removed without making changes |
+| `-f, --force` | Force removal even if files have been modified |
+| `--cwd <path>` | Working directory (default: current directory) |
+| `-q, --quiet` | Suppress output |
+| `-v, --verbose` | Verbose output |
+| `--json` | Output as JSON |
+
+### Examples
+
+```bash
+# Remove a component
+ocx remove shadcn/button
+
+# Remove multiple components
+ocx remove shadcn/button shadcn/card
+
+# Preview what would be removed
+ocx remove shadcn/button --dry-run
+
+# Force remove modified files
+ocx remove shadcn/button --force
+```
+
+---
+
+## ocx update
+
+Update installed components from registries.
+
+### Usage
+
+```bash
+ocx update [components...] [options]
+```
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `components...` | Specific components to update (optional) |
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--all` | Update all installed components |
+| `--registry <name>` | Update all components from a specific registry |
+| `--dry-run` | Preview changes without applying |
+| `--cwd <path>` | Working directory (default: current directory) |
+| `-q, --quiet` | Suppress output |
+| `-v, --verbose` | Verbose output |
+| `--json` | Output as JSON |
+
+### Mutual Exclusivity
+
+- Cannot use `--all` with component names
+- Cannot use `--registry` with component names
+- Cannot use `--all` with `--registry`
+
+### Examples
+
+```bash
+# Update specific component
+ocx update shadcn/button
+
+# Update all components
+ocx update --all
+
+# Update all from specific registry
+ocx update --registry shadcn
+
+# Preview updates
+ocx update --all --dry-run
+```
+
+---
+
+## ocx search
+
+Search for components across registries or list installed.
+
+### Aliases
+
+```bash
+ocx list [options]  # alias for ocx search
+```
+
+### Usage
+
+```bash
+ocx search [query] [options]
+ocx list [options]
+```
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `query` | Search query (optional) |
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--installed` | List installed components only |
+| `-p, --profile <name>` | Use specific profile |
+| `--limit <n>` | Limit results (default: 20) |
+| `--cwd <path>` | Working directory (default: current directory) |
+| `-q, --quiet` | Suppress output |
+| `-v, --verbose` | Verbose output |
+| `--json` | Output as JSON |
+
+### Examples
+
+```bash
+# Search for button components
+ocx search button
+
 # List all available components
-ocx search
-
-# Search for components
-ocx search agents
-
-# Search with a higher result limit
-ocx search agents --limit 50
+ocx list
 
 # List installed components only
 ocx search --installed
 
-# Get machine-readable output
-ocx search --json
-
-# Verbose output showing registry details
-ocx search agents --verbose
+# Limit results
+ocx search button --limit 5
 ```
 
 ### Output
@@ -113,6 +316,46 @@ Installed components (2):
 |-------|-------|----------|
 | `No ocx.jsonc found` | Not initialized | Run `ocx init` first |
 | `No components installed` | Lock file empty | Run `ocx add` first |
+
+---
+
+## ocx verify
+
+Verify integrity of installed components.
+
+### Usage
+
+```bash
+ocx verify [components...] [options]
+```
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `components...` | Components to verify (optional, verifies all if omitted) |
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--cwd <path>` | Working directory (default: current directory) |
+| `-q, --quiet` | Suppress output |
+| `-v, --verbose` | Verbose output |
+| `--json` | Output as JSON |
+
+### Examples
+
+```bash
+# Verify all installed components
+ocx verify
+
+# Verify specific component
+ocx verify shadcn/button
+
+# Verbose output showing all files
+ocx verify --verbose
+```
 
 ---
 
@@ -149,6 +392,7 @@ ocx registry add <url> [options]
 | Option | Description |
 |--------|-------------|
 | `--name <name>` | Registry alias (defaults to hostname) |
+| `--dry-run` | Validate registry without adding to config |
 | `-f, --force` | Overwrite existing registry |
 | `-g, --global` | Add to global config (~/.config/opencode) |
 | `-p, --profile <name>` | Use specific global profile for registry resolution |
@@ -164,6 +408,9 @@ ocx registry add https://registry.example.com
 
 # Add with custom name
 ocx registry add https://registry.example.com --name myregistry
+
+# Validate registry without adding
+ocx registry add https://registry.example.com --dry-run
 
 # Get machine-readable output
 ocx registry add https://registry.example.com --json
@@ -322,6 +569,7 @@ ocx build [path] [options]
 | Option | Description |
 |--------|-------------|
 | `--out <dir>` | Output directory (default: `./dist`) |
+| `--dry-run` | Validate and show what would be built |
 | `--cwd <path>` | Working directory (default: current directory) |
 | `--json` | Output as JSON |
 | `-q, --quiet` | Suppress output |
@@ -337,6 +585,9 @@ ocx build ./my-registry
 
 # Specify output directory
 ocx build --out ./public
+
+# Validate without building
+ocx build --dry-run
 
 # Get machine-readable output
 ocx build --json
@@ -1004,13 +1255,9 @@ Launch OpenCode with resolved configuration and profile support.
 ### Usage
 
 ```bash
-ocx opencode [options]
-ocx oc [options]  # alias
+ocx opencode [options] [args...]
+ocx oc [options] [args...]  # alias
 ```
-
-### Arguments
-
-This command does not take arguments. It always runs from the current working directory.
 
 ### Options
 
@@ -1127,7 +1374,7 @@ OCX doesn't exclude anything by default. A clean ocx.jsonc includes all project 
 {
   // Include all project AGENTS.md files
   "exclude": ["**/CLAUDE.md", "**/CONTEXT.md"],
-  
+
   // Or exclude all but include specific ones
   "exclude": ["**/AGENTS.md"],
   "include": ["./docs/AGENTS.md"]

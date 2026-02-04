@@ -275,8 +275,6 @@ ocx profile add ws --from https://ocx-kit.kdco.dev/ws --global
 ocx registry add https://ocx-kit.kdco.dev --name kit --global
 ocx profile add ws --from kit/ws --global
 
-# Force overwrite existing profile
-ocx profile add ws --from kit/ws --force --global
 ```
 
 **Clone from existing profile:**

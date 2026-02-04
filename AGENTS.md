@@ -442,9 +442,6 @@ ocx config edit -p work  # Edit profile settings
 ocx registry add https://ocx-kit.kdco.dev --name kit --global
 ocx profile add ws --from kit/ws --global
 
-# Force overwrite existing profile
-ocx profile add ws --from kit/ws --force
-
 # Launch OpenCode with a specific profile
 ocx opencode -p work
 

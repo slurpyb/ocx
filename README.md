@@ -99,8 +99,12 @@ Like **Cargo**, OCX resolves dependencies and verifies integrity. Every componen
 |---------|-------------|
 | `ocx add <component>` | Add components or npm plugins (`npm:package`) |
 | `ocx add <component> --from <url>` | One-command install with ephemeral registry (not saved) |
+| `ocx remove <components>` | Remove installed components |
 | `ocx update [component]` | Update to latest version |
-| `ocx profile <cmd>` | Manage global profiles (`add`, `list`, `remove`, `show`) |
+| `ocx verify [components]` | Verify component integrity |
+| `ocx search [query]` / `ocx list` | Search or list components |
+| `ocx profile <cmd>` | Manage global profiles (`add`, `list`, `remove`, `show`, `move`) |
+| `ocx profile move <old> <new>` | Rename a profile |
 | `ocx opencode` / `ocx oc` | Launch OpenCode with profile |
 | `ocx registry add <url>` | Add a component registry (local-first; use `--global` for global) |
 | `ocx config show` | View config from current scope |
