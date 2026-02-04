@@ -109,7 +109,7 @@ curl http://localhost:8788/index.json | head -5
 - [ ] **Commands:**
   ```bash
   export XDG_CONFIG_HOME=/tmp/ocx-v2-test
-  export PATH="/Users/kenny/workspace/kdcokenny/ocx/packages/cli/bin:$PATH"
+  alias ocx="/Users/kenny/workspace/kdcokenny/ocx/packages/cli/dist/index.js"
   mkdir -p /tmp/ocx-v2-test-project
   cd /tmp/ocx-v2-test-project
   git init
@@ -121,18 +121,18 @@ curl http://localhost:8788/index.json | head -5
 Confirm the dev build is being used:
 
 ```bash
-which ocx
-# Expected: Should point to packages/cli/bin/ocx in the repo
+type ocx
+# Expected: ocx is aliased to `/Users/kenny/workspace/kdcokenny/ocx/packages/cli/dist/index.js'
 
 ocx --version
 # Should match package.json version
 ```
 
-If `which ocx` shows a different path (e.g., `/usr/local/bin/ocx`), the PATH export didn't take effect. Start a new shell session and re-run the exports.
+If `type ocx` shows a different command (e.g., `/usr/local/bin/ocx`), the alias didn't take effect. Re-run the alias command in your current shell.
 - [ ] **Verify:**
   ```bash
   echo $XDG_CONFIG_HOME  # Should show /tmp/ocx-v2-test
-  which ocx              # Should show local dev build
+  type ocx               # Should show alias to local dev build
   ocx --version          # Should show current version
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_

@@ -71,17 +71,19 @@ export const DEFAULT_OCX_CONFIG_TEMPLATE = `{
  * Supports both global (~/.config/opencode/profiles/) and local (.opencode/profiles/) profiles.
  */
 export class ProfileManager {
-	private constructor(
-		private readonly profilesDir: string,
-		private readonly cwd: string = process.cwd(),
-	) {}
+	private constructor(private readonly cwd: string = process.cwd()) {}
+
+	/** Returns the profiles directory, reading fresh from environment each access. */
+	private get profilesDir(): string {
+		return getProfilesDir()
+	}
 
 	/**
 	 * Create a ProfileManager instance.
 	 * Does not require profiles to be initialized.
 	 */
 	static create(cwd?: string): ProfileManager {
-		return new ProfileManager(getProfilesDir(), cwd ?? process.cwd())
+		return new ProfileManager(cwd ?? process.cwd())
 	}
 
 	/**
