@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { getProjectId } from "../files/plugin/kdco-primitives/get-project-id"
+import { getProjectId } from "../files/plugins/kdco-primitives/get-project-id"
 import {
 	addSession,
 	clearPendingDelete,
@@ -22,7 +22,7 @@ import {
 	removeSession,
 	setPendingDelete,
 	setPendingSpawn,
-} from "../files/plugin/worktree/state"
+} from "../files/plugins/worktree/state"
 
 /** Use temp directory for test databases to avoid polluting user's system */
 let testDir: string

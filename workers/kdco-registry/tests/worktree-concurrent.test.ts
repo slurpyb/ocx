@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { Mutex } from "../files/plugin/kdco-primitives/mutex"
+import { Mutex } from "../files/plugins/kdco-primitives/mutex"
 import {
 	addSession,
 	clearPendingSpawn,
@@ -21,7 +21,7 @@ import {
 	getPendingSpawn,
 	initStateDb,
 	setPendingSpawn,
-} from "../files/plugin/worktree/state"
+} from "../files/plugins/worktree/state"
 
 // =============================================================================
 // TEST SETUP
