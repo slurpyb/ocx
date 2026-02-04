@@ -201,6 +201,70 @@ describe("mergeOpencodeConfig", () => {
 
 			expect(result.tools).toEqual({ write: true, bash: false })
 		})
+
+		it("handles non-array plugin gracefully", () => {
+			const target: NormalizedOpencodeConfig = {
+				plugin: ["npm:a"],
+			}
+			const source = {
+				plugin: "invalid" as unknown,
+			}
+
+			const result = mergeOpencodeConfig(target, source as NormalizedOpencodeConfig)
+
+			// Should preserve target array when source is invalid
+			expect(result.plugin).toEqual(["npm:a"])
+		})
+
+		it("handles non-array instructions gracefully", () => {
+			const target: NormalizedOpencodeConfig = {
+				instructions: ["file.md"],
+			}
+			const source = {
+				instructions: "invalid" as unknown,
+			}
+
+			const result = mergeOpencodeConfig(target, source as NormalizedOpencodeConfig)
+
+			// Should preserve target array when source is invalid
+			expect(result.instructions).toEqual(["file.md"])
+		})
+
+		it("handles empty plugin arrays", () => {
+			const target: NormalizedOpencodeConfig = {
+				plugin: [],
+			}
+			const source: NormalizedOpencodeConfig = {
+				plugin: ["npm:a"],
+			}
+
+			const result = mergeOpencodeConfig(target, source)
+
+			expect(result.plugin).toEqual(["npm:a"])
+		})
+
+		it("handles null/undefined plugin arrays", () => {
+			const target: NormalizedOpencodeConfig = {}
+			const source: NormalizedOpencodeConfig = {
+				plugin: ["npm:a"],
+			}
+
+			const result = mergeOpencodeConfig(target, source)
+
+			expect(result.plugin).toEqual(["npm:a"])
+		})
+
+		it("uses source value when both sides are non-array (edge case)", () => {
+			const target = { plugin: "invalid1" as unknown }
+			const source = { plugin: "invalid2" as unknown }
+			const result = mergeOpencodeConfig(
+				target as NormalizedOpencodeConfig,
+				source as NormalizedOpencodeConfig,
+			)
+			// When neither is an array, mergeDeep's result is used (source wins)
+			// This is an edge case that shouldn't occur with validated configs
+			expect(result.plugin as unknown).toBe("invalid2")
+		})
 	})
 
 	describe("agent", () => {

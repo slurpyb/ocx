@@ -36,8 +36,10 @@ import {
 	OPENCODE_CONFIG_FILE,
 } from "../profile/paths"
 import type { Profile } from "../profile/schema"
+import { mergeOpencodeConfig } from "../registry/merge"
 import type { RegistryConfig } from "../schemas/config"
 import { readReceipt } from "../schemas/config"
+import type { NormalizedOpencodeConfig } from "../schemas/registry"
 import { resolveGitRootSync } from "../utils/git-root"
 import { resolveRegistryInstructionPaths } from "../utils/instruction-paths"
 import { getGlobalConfigPath } from "../utils/paths"
@@ -378,7 +380,7 @@ export class ConfigResolver {
 				componentPath = this.profile.ocx.componentPath
 			}
 			if (this.profile.opencode) {
-				opencode = this.deepMerge(opencode, this.profile.opencode)
+				opencode = this.mergeOpencode(opencode, this.profile.opencode)
 			}
 		}
 
@@ -399,7 +401,7 @@ export class ConfigResolver {
 		if (shouldLoadLocal && this.localConfigDir) {
 			const localOpencodeConfig = this.loadLocalOpencodeConfig()
 			if (localOpencodeConfig) {
-				opencode = this.deepMerge(opencode, localOpencodeConfig)
+				opencode = this.mergeOpencode(opencode, localOpencodeConfig)
 			}
 		}
 
@@ -446,7 +448,7 @@ export class ConfigResolver {
 			}
 
 			if (this.profile.opencode) {
-				opencode = this.deepMerge(opencode, this.profile.opencode)
+				opencode = this.mergeOpencode(opencode, this.profile.opencode)
 				const profileOpencodePath = `~/.config/opencode/profiles/${this.profileName}/opencode.jsonc`
 				for (const key of Object.keys(this.profile.opencode)) {
 					origins.set(`opencode.${key}`, { path: profileOpencodePath, source: "global-profile" })
@@ -473,7 +475,7 @@ export class ConfigResolver {
 		if (shouldLoadLocal && this.localConfigDir) {
 			const localOpencodeConfig = this.loadLocalOpencodeConfig()
 			if (localOpencodeConfig) {
-				opencode = this.deepMerge(opencode, localOpencodeConfig)
+				opencode = this.mergeOpencode(opencode, localOpencodeConfig)
 				const localOpencodePath = join(this.localConfigDir, OPENCODE_CONFIG_FILE)
 				for (const key of Object.keys(localOpencodeConfig)) {
 					origins.set(`opencode.${key}`, { path: localOpencodePath, source: "local-opencode" })
@@ -658,8 +660,27 @@ export class ConfigResolver {
 	}
 
 	/**
-	 * Deep merge objects (for opencode config).
+	 * Wrapper for OpenCode config merging with type conversions.
+	 *
+	 * Casts between Record<string, unknown> and NormalizedOpencodeConfig.
+	 * Safe because inputs are validated at config loading boundary.
+	 * Uses the shared mergeOpencodeConfig utility which correctly handles
+	 * plugin/instructions array concatenation.
+	 */
+	private mergeOpencode(
+		target: Record<string, unknown>,
+		source: Record<string, unknown>,
+	): Record<string, unknown> {
+		return mergeOpencodeConfig(
+			target as NormalizedOpencodeConfig,
+			source as NormalizedOpencodeConfig,
+		) as Record<string, unknown>
+	}
+
+	/**
+	 * Deep merge for non-OpenCode object merging.
 	 * Arrays are replaced (not concatenated), objects are recursively merged, scalars last-wins.
+	 * NOTE: For OpenCode configs, use mergeOpencode() instead.
 	 */
 	private deepMerge(
 		target: Record<string, unknown>,
