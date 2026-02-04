@@ -35,6 +35,20 @@ describe("isPathInside", () => {
 		expect(isPathInside("./src/file.ts", ".")).toBe(true)
 		expect(isPathInside("../other/file.ts", ".")).toBe(false)
 	})
+
+	it("allows filenames starting with '..' (not traversal)", () => {
+		// Filenames like '..config' should be allowed (not actual traversal)
+		expect(isPathInside("/project/..config", "/project")).toBe(true)
+		expect(isPathInside("/project/src/..hidden", "/project")).toBe(true)
+		expect(isPathInside("/project/..myfile.txt", "/project")).toBe(true)
+	})
+
+	it("returns false for Windows reserved names (strict validation)", () => {
+		// Strict validation should reject Windows reserved device names
+		expect(isPathInside("/project/CON", "/project")).toBe(false)
+		expect(isPathInside("/project/src/NUL.txt", "/project")).toBe(false)
+		expect(isPathInside("/project/COM1", "/project")).toBe(false)
+	})
 })
 
 describe("assertPathInside", () => {
@@ -50,13 +64,24 @@ describe("assertPathInside", () => {
 		expect(() => assertPathInside("/project/../etc/passwd", "/project")).toThrow(ValidationError)
 	})
 
-	it("includes both paths in error message", () => {
+	it("includes path and 'unsafe' in error message", () => {
 		try {
 			assertPathInside("/etc/passwd", "/project")
 		} catch (error) {
 			expect(error).toBeInstanceOf(ValidationError)
 			expect((error as ValidationError).message).toContain("/etc/passwd")
-			expect((error as ValidationError).message).toContain("/project")
+			expect((error as ValidationError).message).toContain("unsafe")
+		}
+	})
+
+	it("throws ValidationError for Windows reserved names (strict validation)", () => {
+		expect(() => assertPathInside("/project/CON", "/project")).toThrow(ValidationError)
+		expect(() => assertPathInside("/project/src/NUL.txt", "/project")).toThrow(ValidationError)
+		try {
+			assertPathInside("/project/COM1", "/project")
+		} catch (error) {
+			expect(error).toBeInstanceOf(ValidationError)
+			expect((error as ValidationError).message).toContain("unsafe")
 		}
 	})
 })

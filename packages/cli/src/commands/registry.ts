@@ -13,12 +13,12 @@ import { getProfileOcxConfig } from "../profile/paths"
 import type { RegistryConfig } from "../schemas/config"
 import { findOcxConfig, readOcxConfig, writeOcxConfig } from "../schemas/config"
 import {
-	OcxConfigError,
+	ConfigError,
 	ProfileNotFoundError,
 	RegistryExistsError,
 	ValidationError,
 } from "../utils/errors"
-import { handleError, logger, outputJson } from "../utils/index"
+import { handleError, logger, normalizeRegistryUrl, outputJson } from "../utils/index"
 import { getGlobalConfigPath } from "../utils/paths"
 import {
 	addCommonOptions,
@@ -81,32 +81,34 @@ export async function runRegistryAddCore(
 		throw new ValidationError(`Invalid registry URL: ${trimmedUrl}`)
 	}
 
+	const normalizedUrl = normalizeRegistryUrl(trimmedUrl)
+
 	const name = derivedName
 	const registries = callbacks.getRegistries()
 	const existingRegistry = registries[name]
 	if (existingRegistry && !options.force) {
-		throw new RegistryExistsError(name, existingRegistry.url, trimmedUrl)
+		throw new RegistryExistsError(name, existingRegistry.url, normalizedUrl)
 	}
 	const isUpdate = name in registries
 
 	// V2: Fetch registry index to enforce namespace matching
 	// Import fetchRegistryIndex at the top of the file
 	const { fetchRegistryIndex } = await import("../registry/fetcher")
-	const index = await fetchRegistryIndex(trimmedUrl)
+	const index = await fetchRegistryIndex(normalizedUrl)
 
 	// Validate alias matches declared namespace
 	if (name !== index.namespace) {
 		throw new ValidationError(
-			`Registry alias "${name}" must match declared namespace "${index.namespace}".\\n` +
+			`Registry alias "${name}" must match declared namespace "${index.namespace}".\n` +
 				`Either use --name ${index.namespace} or update the registry's namespace field.`,
 		)
 	}
 
 	await callbacks.setRegistry(name, {
-		url: trimmedUrl,
+		url: normalizedUrl,
 	})
 
-	return { name, url: trimmedUrl, updated: isUpdate }
+	return { name, url: normalizedUrl, updated: isUpdate }
 }
 
 /**
@@ -199,7 +201,7 @@ async function resolveRegistryTarget(
 
 		const configPath = getProfileOcxConfig(options.profile)
 		if (!existsSync(configPath)) {
-			throw new OcxConfigError(
+			throw new ConfigError(
 				`Profile '${options.profile}' has no ocx.jsonc. Run 'ocx profile config ${options.profile}' to create it.`,
 			)
 		}
