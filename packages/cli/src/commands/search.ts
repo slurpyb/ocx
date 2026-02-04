@@ -46,11 +46,9 @@ export function registerSearchCommand(program: Command): void {
 		.alias("list")
 		.description("Search for components across registries or list installed")
 		.argument("[query]", "Search query")
-		.option("-i, --installed", "List installed components only", false)
+		.option("--installed", "List installed components only", false)
 		.option("-p, --profile <name>", "Use specific profile")
-		.addOption(
-			new Option("-l, --limit <n>", "Limit results").default(20).argParser(parsePositiveInt),
-		)
+		.addOption(new Option("--limit <n>", "Limit results").default(20).argParser(parsePositiveInt))
 
 	addCommonOptions(cmd)
 	addVerboseOption(cmd)
