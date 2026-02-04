@@ -144,21 +144,44 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 		if (hasIntegrityIssues && !options.force) {
 			spin?.fail("File integrity check failed")
 
-			const firstIssue = toRemove.find((item) => {
+			// Law 1 (Early Exit): for...of with early break on first failure
+			// Law 4 (Fail Loud): try/catch wraps checkFileIntegrity, throws ValidationError on failure
+			let firstIssue:
+				| { canonicalId: string; integrity: Awaited<ReturnType<typeof checkFileIntegrity>> }
+				| undefined
+
+			for (const item of toRemove) {
 				const entry = receipt.installed[item.canonicalId]
-				return entry && !checkFileIntegrity(provider.cwd, entry)
-			})
+				if (!entry) continue
+
+				try {
+					const integrity = await checkFileIntegrity(provider.cwd, entry)
+					if (!integrity.intact) {
+						firstIssue = { canonicalId: item.canonicalId, integrity }
+						break // Early exit on first issue
+					}
+				} catch (error) {
+					// EDGE CASE: checkFileIntegrity throws → abort removal with clear error
+					throw new ValidationError(
+						`Failed to check integrity for '${item.canonicalId}': ${error instanceof Error ? error.message : String(error)}`,
+					)
+				}
+			}
 
 			if (firstIssue) {
-				const entry = receipt.installed[firstIssue.canonicalId]
-				if (!entry) {
-					throw new ValidationError(`Component '${firstIssue.canonicalId}' not found in receipt`)
-				}
+				// Include both modified AND missing files in error message
+				const modifiedList =
+					firstIssue.integrity.modified.length > 0
+						? `Modified files:\n${firstIssue.integrity.modified.map((f) => `  - ${f}`).join("\n")}`
+						: ""
+				const missingList =
+					firstIssue.integrity.missing.length > 0
+						? `Missing files:\n${firstIssue.integrity.missing.map((f) => `  - ${f}`).join("\n")}`
+						: ""
+				const details = [modifiedList, missingList].filter(Boolean).join("\n")
 
-				const integrity = await checkFileIntegrity(provider.cwd, entry)
 				throw new ValidationError(
-					`Component '${firstIssue.canonicalId}' has been modified. Use --force to remove anyway.\n` +
-						`Modified files:\n${integrity.modified.map((f) => `  - ${f}`).join("\n")}`,
+					`Component '${firstIssue.canonicalId}' has been modified. Use --force to remove anyway.\n${details}`,
 				)
 			}
 		}
@@ -184,10 +207,11 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 			removed.push(canonicalId)
 		}
 
-		spin?.succeed(`Removed ${removed.length} component(s)`)
-
-		// Save receipt
+		// Save receipt first
 		await writeReceipt(provider.cwd, receipt)
+
+		// Only show success after write completes
+		spin?.succeed(`Removed ${removed.length} component(s)`)
 
 		// Output results
 		if (options.json) {

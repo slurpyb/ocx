@@ -680,7 +680,7 @@ async function runRegistryAddCore(
 			try {
 				// V2: Pass isFlattened based on mode (profile/global vs local)
 				const isFlattened = !!(options.global || options.profile)
-				await updateOpencodeDevDependencies(
+				await updateOpencodePackageDeps(
 					cwd,
 					resolved.npmDependencies,
 					resolved.npmDevDependencies,
@@ -832,7 +832,22 @@ function parseNpmDependency(spec: string): NpmDependency {
 }
 
 /**
- * Merges new dependencies into existing package.json structure.
+ * Merges new dependencies into the dependencies field.
+ * Pure function: same inputs always produce same output.
+ */
+function mergeProdDependencies(
+	existing: OpencodePackageJson,
+	newDeps: NpmDependency[],
+): OpencodePackageJson {
+	const merged: Record<string, string> = { ...existing.dependencies }
+	for (const dep of newDeps) {
+		merged[dep.name] = dep.version
+	}
+	return { ...existing, dependencies: merged }
+}
+
+/**
+ * Merges new devDependencies into the devDependencies field.
  * Pure function: same inputs always produce same output.
  */
 function mergeDevDependencies(
@@ -900,19 +915,20 @@ async function ensureManifestFilesAreTracked(opencodeDir: string): Promise<void>
 }
 
 /**
- * Updates package.json with new devDependencies.
+ * Updates package.json with new dependencies.
  * For local mode: writes to .opencode/package.json and ensures git tracking.
  * For flattened mode (global or profile): writes directly to cwd/package.json.
+ *
+ * @throws ConflictError if same package appears in both prod and dev deps
  */
-async function updateOpencodeDevDependencies(
+async function updateOpencodePackageDeps(
 	cwd: string,
 	npmDeps: string[],
 	npmDevDeps: string[],
 	options: { isFlattened?: boolean } = {},
 ): Promise<void> {
 	// Guard: no deps to process
-	const allDepSpecs = [...npmDeps, ...npmDevDeps]
-	if (allDepSpecs.length === 0) return
+	if (npmDeps.length === 0 && npmDevDeps.length === 0) return
 
 	// Flattened mode: write directly to cwd, no .opencode prefix
 	// Local mode: write to .opencode subdirectory
@@ -921,12 +937,25 @@ async function updateOpencodeDevDependencies(
 	// Ensure directory exists
 	await mkdir(packageDir, { recursive: true })
 
-	// Parse all deps - fails fast on invalid
-	const parsedDeps = allDepSpecs.map(parseNpmDependency)
+	// Parse all deps - fails fast on invalid (Law 4)
+	const prodDeps = npmDeps.map(parseNpmDependency)
+	const devDeps = npmDevDeps.map(parseNpmDependency)
+
+	// Law 4 (Fail Loud): Check for conflicts - same package in both lists
+	const prodNames = new Set(prodDeps.map((d) => d.name))
+	const conflicts = devDeps.filter((d) => prodNames.has(d.name))
+	if (conflicts.length > 0) {
+		throw new ConflictError(
+			`Package(s) appear in both dependencies and devDependencies: ${conflicts.map((c) => c.name).join(", ")}.\n` +
+				"A package cannot be in both fields. Remove from one list or use --force to prefer dependencies.",
+		)
+	}
 
 	// Read → merge → write
 	const existing = await readOpencodePackageJson(packageDir)
-	const updated = mergeDevDependencies(existing, parsedDeps)
+	let updated = existing
+	updated = mergeProdDependencies(updated, prodDeps)
+	updated = mergeDevDependencies(updated, devDeps)
 	await Bun.write(join(packageDir, "package.json"), `${JSON.stringify(updated, null, 2)}\n`)
 
 	// Ensure manifest files are tracked by git (only for local mode)

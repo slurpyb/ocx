@@ -89,13 +89,9 @@ export async function runRegistryAddCore(
 	const name = derivedName
 	const registries = callbacks.getRegistries()
 	const existingRegistry = registries[name]
-	if (existingRegistry && !options.force) {
-		throw new RegistryExistsError(name, existingRegistry.url, normalizedUrl)
-	}
 	const isUpdate = name in registries
 
 	// V2: Fetch registry index to enforce namespace matching
-	// Import fetchRegistryIndex at the top of the file
 	const { fetchRegistryIndex } = await import("../registry/fetcher")
 	const index = await fetchRegistryIndex(normalizedUrl)
 
@@ -107,11 +103,11 @@ export async function runRegistryAddCore(
 		)
 	}
 
-	// Dry-run mode: Build result and return early
+	// Dry-run mode: Build result and return early (BEFORE throwing RegistryExistsError)
 	if (options.dryRun) {
 		const warnings: string[] = []
 
-		// Check for existing registry conflict
+		// Check for existing registry conflict - show as warning instead of error
 		if (existingRegistry && !options.force) {
 			warnings.push(
 				`Registry '${name}' already exists (${existingRegistry.url}). Use --force to overwrite.`,
@@ -135,13 +131,18 @@ export async function runRegistryAddCore(
 				},
 			],
 			validation: {
-				passed: warnings.length === 0,
+				passed: !existingRegistry || Boolean(options.force),
 				warnings: warnings.length > 0 ? warnings : undefined,
 			},
 			summary: `Would ${action} registry '${name}' to ${targetLabel}`,
 		}
 
 		return dryRunResult
+	}
+
+	// Now throw if exists and not forced (only in non-dry-run mode)
+	if (existingRegistry && !options.force) {
+		throw new RegistryExistsError(name, existingRegistry.url, normalizedUrl)
 	}
 
 	await callbacks.setRegistry(name, {
