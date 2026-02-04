@@ -18,9 +18,9 @@ export type ErrorCode =
  * @property {0} SUCCESS - Command completed successfully
  * @property {1} GENERAL - Unspecified error
  * @property {6} CONFLICT - Resource already exists
+ * @property {65} INTEGRITY - Component hash mismatch (data format error)
  * @property {66} NOT_FOUND - Resource not found
  * @property {69} NETWORK - Network/connectivity error
- * @property {73} INTEGRITY - Component hash mismatch
  * @property {78} CONFIG - Configuration error
  */
 export const EXIT_CODES = {
@@ -29,7 +29,7 @@ export const EXIT_CODES = {
 	NOT_FOUND: 66,
 	NETWORK: 69,
 	CONFIG: 78,
-	INTEGRITY: 73,
+	INTEGRITY: 65,
 	CONFLICT: 6,
 } as const
 

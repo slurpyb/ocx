@@ -22,6 +22,7 @@ import { findOcxConfig, ocxConfigSchema } from "../schemas/config"
 import { ensureOpencodeConfig } from "../updaters/update-opencode-config"
 import { ConflictError, NetworkError, ValidationError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
+import { addCommonOptions, addGlobalOption, addVerboseOption } from "../utils/shared-options"
 
 declare const __VERSION__: string | undefined
 
@@ -42,19 +43,18 @@ interface InitOptions {
 }
 
 export function registerInitCommand(program: Command): void {
-	program
-		.command("init")
-		.description("Initialize OCX configuration in your project")
-		.option("--cwd <path>", "Working directory", process.cwd())
-		.option("-q, --quiet", "Suppress output")
-		.option("-v, --verbose", "Verbose output")
-		.option("--json", "Output as JSON")
+	const cmd = program.command("init").description("Initialize OCX configuration in your project")
+
+	addCommonOptions(cmd)
+	addVerboseOption(cmd)
+	addGlobalOption(cmd)
+
+	cmd
 		.option("--registry <path>", "Scaffold a new OCX registry project at path")
 		.option("--namespace <name>", "Registry namespace (e.g., my-org)")
 		.option("--author <name>", "Author name for the registry")
 		.option("--canary", "Use canary (main branch) instead of latest release")
 		.option("--local <path>", "Use local template directory instead of fetching")
-		.option("-g, --global", "Initialize in global OpenCode config (~/.config/opencode)")
 		.action(async (options: InitOptions) => {
 			try {
 				if (options.registry) {

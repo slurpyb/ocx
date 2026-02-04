@@ -9,6 +9,7 @@ import { readReceipt } from "../schemas/config"
 import { ConflictError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
 import { checkFileIntegrity } from "../utils/receipt"
+import { addCommonOptions, addVerboseOption } from "../utils/shared-options"
 
 export interface VerifyOptions {
 	cwd?: string
@@ -18,21 +19,21 @@ export interface VerifyOptions {
 }
 
 export function registerVerifyCommand(program: Command): void {
-	program
+	const cmd = program
 		.command("verify")
 		.description("Verify integrity of installed components")
 		.argument("[components...]", "Components to verify (optional, verifies all if omitted)")
-		.option("--cwd <path>", "Working directory", process.cwd())
-		.option("-q, --quiet", "Suppress output")
-		.option("-v, --verbose", "Verbose output")
-		.option("--json", "Output as JSON")
-		.action(async (components: string[], options: VerifyOptions) => {
-			try {
-				await runVerify(components, options)
-			} catch (error) {
-				handleError(error, { json: options.json })
-			}
-		})
+
+	addCommonOptions(cmd)
+	addVerboseOption(cmd)
+
+	cmd.action(async (components: string[], options: VerifyOptions) => {
+		try {
+			await runVerify(components, options)
+		} catch (error) {
+			handleError(error, { json: options.json })
+		}
+	})
 }
 
 async function runVerify(componentNames: string[], options: VerifyOptions): Promise<void> {

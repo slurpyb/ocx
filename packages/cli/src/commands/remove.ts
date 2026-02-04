@@ -14,6 +14,7 @@ import { type DryRunResult, outputDryRun } from "../utils/dry-run"
 import { NotFoundError, ValidationError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
 import { checkFileIntegrity, parseCanonicalId } from "../utils/receipt"
+import { addCommonOptions, addForceOption, addVerboseOption } from "../utils/shared-options"
 
 export interface RemoveOptions {
 	cwd?: string
@@ -25,16 +26,17 @@ export interface RemoveOptions {
 }
 
 export function registerRemoveCommand(program: Command): void {
-	program
+	const cmd = program
 		.command("remove")
 		.description("Remove installed components")
 		.argument("<components...>", "Canonical component IDs to remove")
-		.option("--cwd <path>", "Working directory", process.cwd())
-		.option("-f, --force", "Force removal even if files have been modified")
+
+	addCommonOptions(cmd)
+	addForceOption(cmd)
+	addVerboseOption(cmd)
+
+	cmd
 		.option("--dry-run", "Show what would be removed without making changes")
-		.option("-q, --quiet", "Suppress output")
-		.option("-v, --verbose", "Verbose output")
-		.option("--json", "Output as JSON")
 		.action(async (components: string[], options: RemoveOptions) => {
 			try {
 				await runRemove(components, options)

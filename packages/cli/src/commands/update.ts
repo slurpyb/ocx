@@ -20,6 +20,7 @@ import { type DryRunAction, type DryRunResult, outputDryRun } from "../utils/dry
 import { ConfigError, NotFoundError, ValidationError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
 import { hashBundle, hashContent } from "../utils/receipt"
+import { addCommonOptions, addVerboseOption } from "../utils/shared-options"
 
 // =============================================================================
 // TYPES
@@ -51,16 +52,15 @@ interface UpdateResult {
 // =============================================================================
 
 export function registerUpdateCommand(program: Command): void {
-	program
-		.command("update [components...]")
-		.description("Update installed components")
+	const cmd = program.command("update [components...]").description("Update installed components")
+
+	addCommonOptions(cmd)
+	addVerboseOption(cmd)
+
+	cmd
 		.option("--all", "Update all installed components")
 		.option("--registry <name>", "Update all components from a specific registry")
 		.option("--dry-run", "Preview changes without applying")
-		.option("--cwd <path>", "Working directory", process.cwd())
-		.option("-q, --quiet", "Suppress output")
-		.option("-v, --verbose", "Verbose output")
-		.option("--json", "Output as JSON")
 		.action(async (components: string[], options: UpdateOptions) => {
 			try {
 				await runUpdate(components, options)
