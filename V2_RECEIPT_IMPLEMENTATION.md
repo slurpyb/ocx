@@ -241,82 +241,6 @@
 7. **Remove duplicate hash functions** (lines ~495-513):
    - Delete `hashContent()` and `hashBundle()` (now imported)
 
-### 5. Update `diff.ts` Command
-
-**Location:** `packages/cli/src/commands/diff.ts`
-
-**Changes needed:**
-
-1. **Import V2 utilities:**
-   ```typescript
-   import { findReceipt, parseCanonicalId, readReceipt } from "../schemas/config"
-   ```
-
-2. **Replace lock with receipt** (line ~31-42):
-   ```typescript
-   // BEFORE:
-   const lock = await readOcxLock(options.cwd)
-   if (!lock) {
-     // error handling
-   }
-
-   // AFTER:
-   const receipt = await readReceipt(options.cwd)
-   if (!receipt) {
-     if (options.json) {
-       outputJson({
-         success: false,
-         error: { code: "NOT_FOUND", message: "No receipt found" },
-       })
-     } else {
-       logger.warn("No receipt found. Run 'ocx add' first.")
-     }
-     return
-   }
-   ```
-
-3. **Update component iteration** (line ~57, ~70-77):
-   ```typescript
-   // BEFORE:
-   const componentNames = component ? [component] : Object.keys(lock.installed)
-   for (const name of componentNames) {
-     const installed = lock.installed[name]
-
-   // AFTER:
-   // If user provides namespace/component, find matching canonical ID(s)
-   let canonicalIds: string[]
-   if (component) {
-     // Parse user input and find matching canonical IDs
-     canonicalIds = Object.keys(receipt.installed).filter(id => {
-       const parsed = parseCanonicalId(id)
-       return `${parsed.namespace}/${parsed.name}` === component
-     })
-     if (canonicalIds.length === 0) {
-       logger.warn(`Component '${component}' not found in receipt.`)
-       return
-     }
-     if (canonicalIds.length > 1) {
-       logger.info(`Multiple versions of '${component}' found:`)
-       for (const id of canonicalIds) {
-         const parsed = parseCanonicalId(id)
-         logger.info(`  - ${parsed.registryUrl} @ ${parsed.revision}`)
-       }
-       logger.warn("Please specify the registry URL to diff a specific version.")
-       return
-     }
-   } else {
-     canonicalIds = Object.keys(receipt.installed)
-   }
-
-   for (const canonicalId of canonicalIds) {
-     const installed = receipt.installed[canonicalId]
-     const parsed = parseCanonicalId(canonicalId)
-   ```
-
-4. **Update file path lookups** (line ~86, ~95):
-   - Use canonical ID parsed fields instead of qualified name
-   - Registry lookup uses `installed.registryUrl` instead of `installed.registry`
-
 ### 6. Create `verify.ts` Command (NEW)
 
 **Location:** `packages/cli/src/commands/verify.ts`
@@ -543,7 +467,6 @@ Per requirements: **"Registry is treated as latest-only"**
 - ✅ `packages/cli/src/utils/receipt.ts` - Receipt operations and integrity checking
 - ⏸️ `packages/cli/src/commands/add.ts` - Use receipt instead of lock (NEEDS WORK)
 - ⏸️ `packages/cli/src/commands/update.ts` - Use receipt, check manual edits (NEEDS WORK)
-- ⏸️ `packages/cli/src/commands/diff.ts` - Use receipt for lookups (NEEDS WORK)
 - ⏸️ `packages/cli/src/commands/verify.ts` - New command for integrity checks (NEW FILE)
 - ⏸️ `packages/cli/src/index.ts` - Register verify command (NEEDS UPDATE)
 
@@ -552,17 +475,15 @@ Per requirements: **"Registry is treated as latest-only"**
 1. Complete `add.ts` integration (highest priority - core install flow)
 2. Complete `update.ts` integration (second priority - update flow)
 3. Implement `verify.ts` command (nice to have)
-4. Update `diff.ts` (lower priority - diagnostic tool)
-5. Add migration path from ocx.lock to receipt
-6. Write integration tests
-7. Update documentation
+4. Add migration path from ocx.lock to receipt
+5. Write integration tests
+6. Update documentation
 
 ## Time Estimate
 
 - **add.ts integration**: 2-3 hours (complex, many touch points)
 - **update.ts integration**: 1-2 hours (similar patterns to add.ts)
 - **verify.ts command**: 1 hour (straightforward, mostly UI)
-- **diff.ts integration**: 30 minutes (simple lookup changes)
 - **Migration path**: 1 hour
 - **Testing**: 2-3 hours
 - **Total**: ~8-10 hours for complete V2 receipt implementation

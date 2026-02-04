@@ -27,7 +27,7 @@ OCX automatically generates a `.ocx/receipt.jsonc` file. This file acts as an au
 |-------|---------|
 | `registry` | Tracks exactly which source provided the component. |
 | `version` | Records the specific version installed. |
-| `hash` | SHA-256 hash of the component files. OCX uses this to detect manual tampering during `ocx diff`. |
+| `hash` | SHA-256 hash of the component files. Used for integrity verification during updates. |
 | `files` | Array of file paths installed by this component. |
 | `installedAt` | ISO timestamp of the installation. |
 
@@ -83,11 +83,7 @@ The receipt file tracks the complete update history for each component:
 }
 ```
 
-Use `ocx diff` to review changes before updating. The combination of `updatedAt` timestamps and hash verification provides a complete audit trail for compliance and security reviews.
-
-### Security Audit with `ocx diff` (Reactive)
-
-Running `ocx diff` compares your local files against the upstream registry and uses the hash in `.ocx/receipt.jsonc` to identify changes. This allows teams to audit exactly what modifications have been made to distributed agents or plugins.
+The combination of `updatedAt` timestamps and hash verification provides a complete audit trail for compliance and security reviews.
 
 ## Air-Gapped Environments
 

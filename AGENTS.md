@@ -225,7 +225,6 @@ packages/cli/          # Main CLI tool (@ocx/cli)
       registry.ts      # Registry management
       update.ts        # Update components
       build.ts         # Build components
-      diff.ts          # Component diff
     config/            # Config providers and resolution
     profile/           # Profile management (manager, paths)
     registry/          # Registry fetching/resolution

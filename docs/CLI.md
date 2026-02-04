@@ -37,7 +37,6 @@ All other options use long-form only. This keeps the CLI predictable and reduces
 - [`ocx init`](#ocx-init) - Initialize OCX configuration
 - [`ocx add`](#ocx-add) - Add components from a registry
 - [`ocx update`](#ocx-update) - Update installed components
-- [`ocx diff`](#ocx-diff) - Compare installed vs upstream
 - [`ocx search`](#ocx-search) - Search for components
 - [`ocx registry`](#ocx-registry) - Manage registries (local-first)
 - [`ocx build`](#ocx-build) - Build a registry from source

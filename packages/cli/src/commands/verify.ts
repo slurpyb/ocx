@@ -125,7 +125,7 @@ async function runVerify(componentNames: string[], options: VerifyOptions): Prom
 			logger.info("")
 			logger.warn(
 				"Some files have been modified or are missing. " +
-					"Use 'ocx diff' to see changes, or 'ocx update --force' to restore.",
+					"Review local changes with git, or use 'ocx update --force' to restore.",
 			)
 			throw new ConflictError("File integrity check failed for one or more components.")
 		} else {

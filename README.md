@@ -89,11 +89,7 @@ ocx add kdco/workspace
 
 OCX follows the **ShadCN model**: components are copied into your project (`.opencode/`), not hidden in `node_modules`. You own the code—customize freely.
 
-Like **Cargo**, OCX resolves dependencies and verifies integrity. Every component is SHA-256 verified. See changes before updating:
-
-```bash
-ocx diff kdco/workspace
-```
+Like **Cargo**, OCX resolves dependencies and verifies integrity. Every component is SHA-256 verified.
 
 *Your AI agent never runs code you haven't reviewed.*
 
@@ -104,7 +100,6 @@ ocx diff kdco/workspace
 | `ocx add <component>` | Add components or npm plugins (`npm:package`) |
 | `ocx add <component> --from <url>` | One-command install with ephemeral registry (not saved) |
 | `ocx update [component]` | Update to latest version |
-| `ocx diff [component]` | Show upstream changes before updating |
 | `ocx profile <cmd>` | Manage global profiles (`add`, `list`, `remove`, `show`) |
 | `ocx opencode` / `ocx oc` | Launch OpenCode with profile |
 | `ocx registry add <url>` | Add a component registry (local-first; use `--global` for global) |

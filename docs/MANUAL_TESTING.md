@@ -317,32 +317,6 @@ Test cases from README.md lines 66-86.
 
 ---
 
-## 4. README: Philosophy - `ocx diff`
-
-Test case from README.md lines 88-98.
-
-### 4.1 `ocx diff kdco/workspace`
-
-- [ ] **Setup:** Component installed (Section 3.4)
-- [ ] **Command:** `ocx diff kdco/workspace`
-- [ ] **Expected:** Shows "No changes" if unmodified
-- [ ] **Verify:** Output indicates component is up-to-date
-- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
-
-### 4.2 `ocx diff` with Local Modifications
-
-- [ ] **Setup:** Component installed, then modify a file
-- [ ] **Commands:**
-  ```bash
-  echo "// test comment" >> .opencode/workspace/some-file.ts
-  ocx diff kdco/workspace
-  ```
-- [ ] **Expected:** Shows unified diff with local changes highlighted
-- [ ] **Verify:** Diff output shows added comment
-- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
-
----
-
 ## 5. CLI Reference: ocx init
 
 All variations from CLI.md lines 33-126.
@@ -663,39 +637,7 @@ All variations from CLI.md lines 256-361.
 
 ---
 
-## 8. CLI Reference: ocx diff
-
-All variations from CLI.md lines 364-436.
-
-### 8.1 Diff All Components
-
-- [ ] **Setup:** Multiple components installed
-- [ ] **Command:** `ocx diff`
-- [ ] **Expected:** Shows diff status for all components
-- [ ] **Verify:** Output lists all installed components
-- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
-
-### 8.2 Diff Specific Component (No Changes)
-
-- [ ] **Setup:** Component installed, unmodified
-- [ ] **Command:** `ocx diff kdco/researcher`
-- [ ] **Expected:** Shows "No changes"
-- [ ] **Verify:** Output confirms no modifications
-- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
-
-### 8.3 Diff Specific Component (With Changes)
-
-- [ ] **Setup:** Component installed, then modified
-- [ ] **Commands:**
-  ```bash
-  echo "// test" >> .opencode/agents/file.md
-  ocx diff kdco/researcher
-  ```
-- [ ] **Expected:** Shows unified diff with modifications
-- [ ] **Verify:** Diff shows added comment
-- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
-
-### 7.6 Update with `--json` Output
+## 8. CLI Reference: ocx search
 
 - [ ] **Setup:** Component installed
 - [ ] **Command:** `ocx update kdco/researcher --json`
@@ -709,14 +651,6 @@ All variations from CLI.md lines 364-436.
 - [ ] **Command:** `ocx update kdco/researcher --verbose`
 - [ ] **Expected:** Detailed file change information
 - [ ] **Verify:** Verbose output shows file operations
-- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
-
-### 8.5 Diff with `--quiet` (Only Differences)
-
-- [ ] **Setup:** Multiple components, some modified
-- [ ] **Command:** `ocx diff --quiet`
-- [ ] **Expected:** Only shows components with differences
-- [ ] **Verify:** No output for unmodified components
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ---
@@ -1724,15 +1658,13 @@ Master summary for full test sessions.
 
 - [ ] Quick Start Profiles (Section 2): 6 test cases
 - [ ] Quick Start Components (Section 3): 4 test cases
-- [ ] Philosophy: ocx diff (Section 4): 2 test cases
 
 ### 18.2 All CLI.md Commands Verified
 
 - [ ] ocx init (Section 5): 8 test cases
 - [ ] ocx add (Section 6): 12 test cases
 - [ ] ocx update (Section 7): 9 test cases
-- [ ] ocx diff (Section 8): 5 test cases
-- [ ] ocx search (Section 9): 7 test cases
+- [ ] ocx search (Section 8): 7 test cases
 - [ ] ocx registry (Section 10): 11 test cases
 - [ ] ocx build (Section 11): 4 test cases
 - [ ] ocx self (Section 12): 5 test cases
@@ -1777,20 +1709,18 @@ For maintainability when commands change.
 |---------|----------------|-------|
 | Section 2 | [README.md](../README.md) | 38-54 |
 | Section 3 | [README.md](../README.md) | 66-86 |
-| Section 4 | [README.md](../README.md) | 88-98 |
-| Section 5 | [CLI.md](./CLI.md) | 33-126 |
-| Section 6 | [CLI.md](./CLI.md) | 129-253 |
-| Section 7 | [CLI.md](./CLI.md) | 256-361 |
-| Section 8 | [CLI.md](./CLI.md) | 364-436 |
-| Section 9 | [CLI.md](./CLI.md) | 439-516 |
-| Section 10 | [CLI.md](./CLI.md) | 519-705 |
-| Section 11 | [CLI.md](./CLI.md) | 708-790 |
-| Section 12 | [CLI.md](./CLI.md) | 793-870 |
-| Section 13 | [CLI.md](./CLI.md) | 1024-1273 |
-| Section 14 | [CLI.md](./CLI.md) | 1276-1381 |
-| Section 15 | [CLI.md](./CLI.md) | 1383-1509 |
-| Section 16 | [PROFILES.md](./PROFILES.md) | Full document |
-| Section 17 | [CLI.md](./CLI.md) | Error tables throughout |
+| Section 4 | [CLI.md](./CLI.md) | 33-126 |
+| Section 5 | [CLI.md](./CLI.md) | 129-253 |
+| Section 6 | [CLI.md](./CLI.md) | 256-361 |
+| Section 7 | [CLI.md](./CLI.md) | 439-516 |
+| Section 8 | [CLI.md](./CLI.md) | 519-705 |
+| Section 9 | [CLI.md](./CLI.md) | 708-790 |
+| Section 10 | [CLI.md](./CLI.md) | 793-870 |
+| Section 11 | [CLI.md](./CLI.md) | 1024-1273 |
+| Section 12 | [CLI.md](./CLI.md) | 1276-1381 |
+| Section 13 | [CLI.md](./CLI.md) | 1383-1509 |
+| Section 14 | [PROFILES.md](./PROFILES.md) | Full document |
+| Section 15 | [CLI.md](./CLI.md) | Error tables throughout |
 
 ### 19.3 Version Tracking
 
@@ -1807,7 +1737,6 @@ For reference, automated tests exist in:
 |-----------|----------|
 | `packages/cli/tests/add.test.ts` | Component installation |
 | `packages/cli/tests/update.test.ts` | Component updates |
-| `packages/cli/tests/diff.test.ts` | Diff functionality |
 | `packages/cli/tests/registry.test.ts` | Registry management |
 | `packages/cli/tests/profile.test.ts` | Profile management |
 | `packages/cli/tests/config.test.ts` | Config resolution |

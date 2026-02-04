@@ -10,7 +10,6 @@ import { Command } from "commander"
 import { registerAddCommand } from "./commands/add"
 import { registerBuildCommand } from "./commands/build"
 import { registerConfigCommand } from "./commands/config/index"
-import { registerDiffCommand } from "./commands/diff"
 import { registerInitCommand } from "./commands/init"
 import { registerOpencodeCommand } from "./commands/opencode"
 import { registerProfileCommand } from "./commands/profile/index"
@@ -45,7 +44,6 @@ async function main() {
 	// V2: Receipt-based component management
 	registerVerifyCommand(program)
 	registerRemoveCommand(program)
-	registerDiffCommand(program)
 
 	// New top-level commands (Phase 5)
 	registerProfileCommand(program)
