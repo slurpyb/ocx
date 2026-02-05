@@ -153,15 +153,16 @@ export class ProfileManager {
 	/**
 	 * Load a profile by name.
 	 * @param name - Profile name
+	 * @param global - Whether to load from global location (default: true for backward compatibility with existing commands)
 	 * @returns Loaded and validated profile
 	 */
-	async get(name: string): Promise<Profile> {
-		if (!(await this.exists(name))) {
+	async get(name: string, global = true): Promise<Profile> {
+		if (!(await this.exists(name, global))) {
 			throw new ProfileNotFoundError(name)
 		}
 
 		// Check ocx.jsonc exists with descriptive error
-		const ocxPath = getProfileOcxConfig(name)
+		const ocxPath = global ? getProfileOcxConfig(name) : getLocalProfileOcxConfig(name, this.cwd)
 		const ocxFile = Bun.file(ocxPath)
 
 		if (!(await ocxFile.exists())) {
@@ -173,7 +174,9 @@ export class ProfileManager {
 		const ocx = profileOcxConfigSchema.parse(ocxRaw)
 
 		// Load opencode.jsonc (optional)
-		const opencodePath = getProfileOpencodeConfig(name)
+		const opencodePath = global
+			? getProfileOpencodeConfig(name)
+			: getLocalProfileOpencodeConfig(name, this.cwd)
 		const opencodeFile = Bun.file(opencodePath)
 		let opencode: Record<string, unknown> | undefined
 		if (await opencodeFile.exists()) {
@@ -182,7 +185,7 @@ export class ProfileManager {
 		}
 
 		// Check for AGENTS.md
-		const agentsPath = getProfileAgents(name)
+		const agentsPath = global ? getProfileAgents(name) : getLocalProfileAgents(name, this.cwd)
 		const agentsFile = Bun.file(agentsPath)
 		const hasAgents = await agentsFile.exists()
 

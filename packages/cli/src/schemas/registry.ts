@@ -178,12 +178,10 @@ export const targetPathSchema = z
 			if (path.startsWith("/") || /^[a-zA-Z]:/.test(path)) return false
 			// No null bytes
 			if (path.includes("\0")) return false
-			// No parent directory traversal
-			if (path.includes("..")) return false
 			return true
 		},
 		{
-			message: "Target path must be relative and safe (no .., absolute paths, or null bytes)",
+			message: "Target path must be relative and safe (no absolute paths or null bytes)",
 		},
 	)
 	.refine(

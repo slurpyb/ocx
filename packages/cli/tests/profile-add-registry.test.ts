@@ -456,7 +456,7 @@ describe("ocx profile add --from (local profile cloning)", () => {
 		}
 	})
 
-	it("clones settings from existing local profile", async () => {
+	it("clones settings from existing global profile (global to global)", async () => {
 		// Setup global config
 		const globalConfigDir = join(testDir, "opencode")
 		const profilesDir = join(globalConfigDir, "profiles")
@@ -501,6 +501,89 @@ describe("ocx profile add --from (local profile cloning)", () => {
 
 		expect(clonedConfig.registries?.custom?.url).toBe("https://custom.registry.com")
 		expect(clonedConfig.exclude).toContain("**/SECRET.md")
+	})
+
+	it("clones settings from existing local profile (local to local)", async () => {
+		// Setup global config
+		const globalConfigDir = join(testDir, "opencode")
+		const profilesDir = join(globalConfigDir, "profiles")
+		await mkdir(profilesDir, { recursive: true })
+		await writeFile(join(globalConfigDir, "ocx.jsonc"), JSON.stringify({ registries: {} }, null, 2))
+
+		// Create default profile
+		await mkdir(join(profilesDir, "default"), { recursive: true })
+		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
+
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		// Create local source profile with specific config
+		const localProfilesDir = join(workDir, ".opencode", "profiles")
+		const sourceProfileDir = join(localProfilesDir, "local-source")
+		await mkdir(sourceProfileDir, { recursive: true })
+		const sourceConfig = {
+			registries: {
+				local: { url: "https://local.registry.com" },
+			},
+			exclude: ["**/LOCAL.md"],
+		}
+		await writeFile(join(sourceProfileDir, "ocx.jsonc"), JSON.stringify(sourceConfig, null, 2))
+
+		// Clone from source-profile (local to local, no --global flag)
+		const { exitCode, output } = await runCLI(
+			["profile", "add", "local-cloned", "--from", "local-source"],
+			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
+		)
+
+		expect(exitCode).toBe(0)
+		expect(output).toContain("cloned from")
+		expect(output).toContain("local profile")
+
+		// Verify cloned profile has source's config
+		const clonedConfig = parseJsonc(
+			await readFile(join(localProfilesDir, "local-cloned", "ocx.jsonc"), "utf-8"),
+		) as typeof sourceConfig
+
+		expect(clonedConfig.registries?.local?.url).toBe("https://local.registry.com")
+		expect(clonedConfig.exclude).toContain("**/LOCAL.md")
+	})
+
+	it("fails when source profile exists only in wrong scope", async () => {
+		// Setup global config
+		const globalConfigDir = join(testDir, "opencode")
+		const profilesDir = join(globalConfigDir, "profiles")
+		await mkdir(profilesDir, { recursive: true })
+		await writeFile(join(globalConfigDir, "ocx.jsonc"), JSON.stringify({ registries: {} }, null, 2))
+
+		// Create default profile
+		await mkdir(join(profilesDir, "default"), { recursive: true })
+		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
+
+		// Create GLOBAL source profile
+		const sourceProfileDir = join(profilesDir, "global-only-profile")
+		await mkdir(sourceProfileDir, { recursive: true })
+		await writeFile(join(sourceProfileDir, "ocx.jsonc"), "{}")
+
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		// Try to clone from global profile to LOCAL (should fail - wrong scope)
+		const { exitCode, output } = await runCLI(
+			["profile", "add", "wrong-scope-clone", "--from", "global-only-profile"],
+			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("not found")
+		expect(output).toContain("local scope")
 	})
 
 	it("fails when source profile does not exist", async () => {

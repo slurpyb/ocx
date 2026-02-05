@@ -23,6 +23,13 @@ describe("validatePath", () => {
 			expect(isPathSafe(base, "file..with.dots")).toBe(true)
 			expect(isPathSafe(base, "..file")).toBe(true)
 		})
+
+		it("allows filenames with consecutive dots", () => {
+			// Regression test: component..v2.ts should pass validation
+			expect(isPathSafe(base, "component..v2.ts")).toBe(true)
+			expect(isPathSafe(base, "src/component..v2.ts")).toBe(true)
+			expect(isPathSafe(base, "lib/file..backup.js")).toBe(true)
+		})
 	})
 
 	// From Turborepo: path traversal

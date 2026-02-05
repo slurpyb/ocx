@@ -226,7 +226,7 @@ cd packages/cli && bun run build && cd ../..
 ./packages/cli/dist/index.js registry add "file://$(pwd)/workers/kdco-registry/dist" --name kdco
 
 # 6. Install components (using namespace/component syntax)
-./packages/cli/dist/index.js add kdco/workspace --force
+./packages/cli/dist/index.js add kdco/workspace
 
 # 7. Verify the result
 cat opencode.jsonc
@@ -260,7 +260,7 @@ For repeated testing (assumes registry is already built):
 rm -rf .opencode && \
 ./packages/cli/dist/index.js init && \
 ./packages/cli/dist/index.js registry add "file://$(pwd)/workers/kdco-registry/dist" --name kdco && \
-./packages/cli/dist/index.js add kdco/workspace --force && \
+./packages/cli/dist/index.js add kdco/workspace && \
 cat .opencode/opencode.jsonc
 ```
 

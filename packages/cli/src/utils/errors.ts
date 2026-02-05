@@ -115,8 +115,12 @@ export class SelfUpdateError extends OCXError {
 // =============================================================================
 
 export class ProfileNotFoundError extends OCXError {
-	constructor(public readonly profile: string) {
-		super(`Profile "${profile}" not found`, "NOT_FOUND", EXIT_CODES.NOT_FOUND)
+	constructor(
+		public readonly profile: string,
+		hint?: string,
+	) {
+		const message = hint ?? `Profile "${profile}" not found`
+		super(message, "NOT_FOUND", EXIT_CODES.NOT_FOUND)
 		this.name = "ProfileNotFoundError"
 	}
 }

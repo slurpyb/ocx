@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, it } from "bun:test"
+import { parseCanonicalId } from "../src/schemas/config"
 import {
 	agentConfigSchema,
 	createQualifiedComponent,
@@ -17,7 +18,9 @@ import {
 	permissionConfigSchema,
 	qualifiedComponentSchema,
 	targetPathSchema,
+	validateFileTarget,
 } from "../src/schemas/registry"
+import { ValidationError } from "../src/utils/errors"
 
 describe("schemas", () => {
 	describe("openCodeNameSchema", () => {
@@ -173,14 +176,26 @@ describe("schemas", () => {
 		})
 
 		it("should reject unsafe path patterns", () => {
-			// Parent directory traversal
-			expect(() => targetPathSchema.parse("../etc/passwd")).toThrow()
-			expect(() => targetPathSchema.parse("foo/../bar")).toThrow()
-			// Absolute paths
+			// Schema-level checks: absolute paths and null bytes
 			expect(() => targetPathSchema.parse("/etc/passwd")).toThrow()
 			expect(() => targetPathSchema.parse("C:/Windows/System32")).toThrow()
-			// Null bytes
 			expect(() => targetPathSchema.parse("foo\0bar")).toThrow()
+
+			// Traversal detection is deferred to validateFileTarget()
+			// Schema allows ".." in filenames (e.g., component..v2.ts)
+			expect(targetPathSchema.parse("../etc/passwd")).toBe("../etc/passwd")
+			expect(targetPathSchema.parse("foo/../bar")).toBe("foo/../bar")
+			expect(targetPathSchema.parse("component..v2.ts")).toBe("component..v2.ts")
+		})
+
+		it("should detect path traversal in validateFileTarget", () => {
+			// validateFileTarget() uses validatePath() for proper traversal detection
+			expect(() => validateFileTarget("../etc/passwd")).toThrow(ValidationError)
+			expect(() => validateFileTarget("foo/../../../etc/passwd")).toThrow(ValidationError)
+
+			// Safe paths that normalize within bounds are allowed
+			expect(() => validateFileTarget("foo/../bar")).not.toThrow()
+			expect(() => validateFileTarget("component..v2.ts")).not.toThrow()
 		})
 	})
 
@@ -418,6 +433,42 @@ describe("schemas", () => {
 			const result = permissionConfigSchema.parse(config)
 			expect(result.bash).toBe("allow")
 			expect(result.edit).toEqual({ "*.config.*": "deny" })
+		})
+	})
+
+	describe("parseCanonicalId", () => {
+		it("should parse valid canonical ID", () => {
+			const id = "https://registry.example.com::kdco/component@1.0.0"
+			const result = parseCanonicalId(id)
+			expect(result.registryUrl).toBe("https://registry.example.com")
+			expect(result.namespace).toBe("kdco")
+			expect(result.name).toBe("component")
+			expect(result.revision).toBe("1.0.0")
+		})
+
+		it("should parse canonical ID with @ in revision", () => {
+			const id = "https://registry.example.com::kdco/component@user@branch"
+			const result = parseCanonicalId(id)
+			expect(result.registryUrl).toBe("https://registry.example.com")
+			expect(result.namespace).toBe("kdco")
+			expect(result.name).toBe("component")
+			expect(result.revision).toBe("user@branch")
+		})
+
+		it("should parse canonical ID with multiple @ in revision", () => {
+			const id = "https://registry.example.com::kdco/component@feature@user@domain"
+			const result = parseCanonicalId(id)
+			expect(result.revision).toBe("feature@user@domain")
+		})
+
+		it("should throw for missing revision separator", () => {
+			const id = "https://registry.example.com::kdco/component"
+			expect(() => parseCanonicalId(id)).toThrow("Expected format")
+		})
+
+		it("should throw for missing namespace separator", () => {
+			const id = "https://registry.example.com::component@1.0.0"
+			expect(() => parseCanonicalId(id)).toThrow("qualified")
 		})
 	})
 })

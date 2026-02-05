@@ -304,15 +304,17 @@ async function cloneFromLocalProfile(
 		throw new ProfileExistsError(name, `Remove it first with 'ocx profile rm ${name}'.`)
 	}
 
-	// Load source profile (fail fast if not found)
-	// Try to load from global first, then local
+	// Load source from same scope as target
 	let source: Profile
 	try {
-		source = await manager.get(sourceName)
+		source = await manager.get(sourceName, global)
 	} catch (error) {
-		// Re-throw known errors as-is to preserve type and exit code
+		// Re-throw known errors with enhanced scope context
 		if (error instanceof ProfileNotFoundError) {
-			throw error
+			throw new ProfileNotFoundError(
+				sourceName,
+				`Profile '${sourceName}' not found in ${global ? "global" : "local"} scope.`,
+			)
 		}
 		if (error instanceof OCXError) {
 			throw error

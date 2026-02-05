@@ -46,12 +46,50 @@ import {
 import { PathValidationError, validatePath } from "../utils/path-security"
 import { resolveTargetPath } from "../utils/paths"
 import { hashBundle, hashContent } from "../utils/receipt"
-import {
-	addCommonOptions,
-	addForceOption,
-	addGlobalOption,
-	addVerboseOption,
-} from "../utils/shared-options"
+import { addCommonOptions, addGlobalOption, addVerboseOption } from "../utils/shared-options"
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+/**
+ * Find the component that owns a given file path in the receipt.
+ * Returns the component's canonical ID or null if not found.
+ *
+ * @param receipt - The receipt to search
+ * @param filePath - The file path to look up (resolved target path)
+ * @returns Canonical ID if found, null otherwise
+ */
+function findOwningComponent(receipt: Receipt | null, filePath: string): string | null {
+	// Guard: no receipt or empty installed map
+	if (!receipt?.installed) return null
+
+	// Search all installed components for the file
+	for (const [canonicalId, entry] of Object.entries(receipt.installed)) {
+		if (entry.files?.some((f) => f.path === filePath)) {
+			return canonicalId
+		}
+	}
+
+	return null
+}
+
+/**
+ * Extract a human-readable component name from a canonical ID.
+ * Canonical ID format: "registryUrl::namespace/component@revision"
+ *
+ * @param canonicalId - The canonical ID to parse
+ * @returns Component name in "namespace/component" format
+ */
+function extractComponentName(canonicalId: string): string {
+	// Parse canonical ID: registryUrl::namespace/component@revision
+	const afterDelimiter = canonicalId.split("::")[1]
+	if (!afterDelimiter) return canonicalId // Fallback to full ID
+
+	// Extract namespace/component (before @)
+	const beforeVersion = afterDelimiter.split("@")[0]
+	return beforeVersion || canonicalId // Fallback to full ID
+}
 
 // =============================================================================
 // ADD INPUT TYPES (Discriminated Union)
@@ -99,7 +137,6 @@ export function parseAddInput(input: string): AddInput {
 }
 
 export interface AddOptions {
-	force?: boolean
 	dryRun?: boolean
 	cwd?: string
 	quiet?: boolean
@@ -131,7 +168,6 @@ export function registerAddCommand(program: Command): void {
 		.option("--from <url>", "Use ephemeral registry (does not persist)")
 
 	addCommonOptions(cmd)
-	addForceOption(cmd)
 	addVerboseOption(cmd)
 	addGlobalOption(cmd)
 
@@ -276,12 +312,7 @@ async function handleNpmPlugins(
 
 			if (existingEntry) {
 				// Conflict: package already exists
-				if (!options.force) {
-					conflicts.push(input.name)
-				} else {
-					// With --force, replace existing entry
-					existingPluginMap.set(input.name, formatPluginEntry(input.name, input.version))
-				}
+				conflicts.push(input.name)
 			} else {
 				// New package
 				pluginsToAdd.push(formatPluginEntry(input.name, input.version))
@@ -292,7 +323,7 @@ async function handleNpmPlugins(
 		if (conflicts.length > 0) {
 			throw new ConflictError(
 				`Plugin(s) already exist in opencode.json: ${conflicts.join(", ")}.\n` +
-					"Use --force to replace existing entries.",
+					"Remove the existing entry manually or use 'ocx update' if it's an installed component.",
 			)
 		}
 
@@ -552,7 +583,7 @@ async function runRegistryAddCore(
 
 		// Phase 2: Pre-flight conflict detection (check ALL files before writing ANY)
 		// This ensures atomic behavior: either all files install or none do
-		const allConflicts: string[] = []
+		const allConflicts: Array<{ path: string; owningComponent: string | null }> = []
 
 		for (const { component, files } of componentBundles) {
 			for (const file of files) {
@@ -566,8 +597,10 @@ async function runRegistryAddCore(
 					const existingContent = await Bun.file(targetPath).text()
 					const incomingContent = file.content.toString("utf-8")
 
-					if (!isContentIdentical(existingContent, incomingContent) && !options.force) {
-						allConflicts.push(resolvedTarget)
+					if (!isContentIdentical(existingContent, incomingContent)) {
+						// Find which component owns this file (if any)
+						const owningComponent = findOwningComponent(receipt, resolvedTarget)
+						allConflicts.push({ path: resolvedTarget, owningComponent })
 					}
 				}
 			}
@@ -577,15 +610,54 @@ async function runRegistryAddCore(
 		if (allConflicts.length > 0) {
 			logger.error("")
 			logger.error("File conflicts detected:")
-			for (const conflict of allConflicts) {
-				logger.error(`  ✗ ${conflict}`)
+
+			// Group conflicts by ownership
+			const ownedConflicts = allConflicts.filter((c) => c.owningComponent !== null)
+			const unownedConflicts = allConflicts.filter((c) => c.owningComponent === null)
+
+			// Show owned conflicts with update suggestions
+			if (ownedConflicts.length > 0) {
+				logger.error("")
+				logger.error("Files from installed components (use 'ocx update' or 'ocx remove'):")
+				for (const conflict of ownedConflicts) {
+					// owningComponent is guaranteed non-null in ownedConflicts
+					if (conflict.owningComponent) {
+						const componentName = extractComponentName(conflict.owningComponent)
+						logger.error(`  ✗ ${conflict.path} (from ${componentName})`)
+					}
+				}
 			}
+
+			// Show unowned conflicts with manual resolution hint
+			if (unownedConflicts.length > 0) {
+				logger.error("")
+				logger.error("Files not managed by OCX (resolve manually):")
+				for (const conflict of unownedConflicts) {
+					logger.error(`  ✗ ${conflict.path}`)
+				}
+			}
+
 			logger.error("")
-			logger.error("These files have been modified since installation.")
-			logger.error("Use --force to overwrite, or review the changes first.")
-			throw new ConflictError(
-				`${allConflicts.length} file(s) have conflicts. Use --force to overwrite.`,
-			)
+
+			// Build context-aware error message
+			let errorMessage = `${allConflicts.length} file(s) have conflicts.\n`
+
+			if (ownedConflicts.length > 0) {
+				// Extract unique component names
+				const uniqueComponents = new Set(
+					ownedConflicts
+						.filter((c) => c.owningComponent !== null)
+						.map((c) => extractComponentName(c.owningComponent as string)),
+				)
+				errorMessage += `For OCX-managed files, use 'ocx update ${Array.from(uniqueComponents).join(" ")}' or 'ocx remove ${Array.from(uniqueComponents).join(" ")}'.\n`
+			}
+
+			if (unownedConflicts.length > 0) {
+				errorMessage +=
+					"For unmanaged files, resolve conflicts manually by renaming or removing them."
+			}
+
+			throw new ConflictError(errorMessage.trim())
 		}
 
 		// Phase 3: Install all components (no conflicts possible at this point)
@@ -595,7 +667,6 @@ async function runRegistryAddCore(
 		for (const { component, files, computedHash, canonicalId } of componentBundles) {
 			// Install component
 			const installResult = await installComponent(component, files, cwd, isFlattened, {
-				force: options.force,
 				verbose: options.verbose,
 			})
 
@@ -735,7 +806,7 @@ async function installComponent(
 	files: { path: string; content: Buffer }[],
 	cwd: string,
 	isFlattened: boolean,
-	_options: { force?: boolean; verbose?: boolean },
+	_options: { verbose?: boolean },
 ): Promise<{ written: string[]; skipped: string[]; overwritten: string[] }> {
 	const result = {
 		written: [] as string[],
@@ -947,7 +1018,7 @@ async function updateOpencodePackageDeps(
 	if (conflicts.length > 0) {
 		throw new ConflictError(
 			`Package(s) appear in both dependencies and devDependencies: ${conflicts.map((c) => c.name).join(", ")}.\n` +
-				"A package cannot be in both fields. Remove from one list or use --force to prefer dependencies.",
+				"A package cannot be in both fields. Remove from one list manually before adding.",
 		)
 	}
 

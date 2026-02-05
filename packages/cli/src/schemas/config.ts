@@ -271,7 +271,13 @@ export function parseCanonicalId(canonicalId: string): {
 		)
 	}
 
-	const [qualifiedName, revision] = rest.split("@")
+	// Parse using indexOf to preserve @ in revision (e.g., user@branch)
+	const atIndex = rest.indexOf("@")
+	if (atIndex === -1) {
+		throw new Error(`Invalid canonical ID: missing revision in ${canonicalId}`)
+	}
+	const qualifiedName = rest.slice(0, atIndex)
+	const revision = rest.slice(atIndex + 1)
 
 	// Guard: must have qualified name and revision
 	if (!qualifiedName || !revision) {

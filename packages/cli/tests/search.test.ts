@@ -43,7 +43,7 @@ describe("ocx search", () => {
 
 	it("should list installed components with --installed", async () => {
 		// Install one component
-		await runCLI(["add", "kdco/test-plugin", "--force"], testDir)
+		await runCLI(["add", "kdco/test-plugin"], testDir)
 
 		const { exitCode, output } = await runCLI(["search", "--installed"], testDir)
 

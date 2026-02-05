@@ -522,20 +522,7 @@ All variations from CLI.md lines 129-253.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 6.9 Add with `--force` (Overwrite Existing)
-
-- [ ] **Setup:** Component already installed
-- [ ] **Commands:**
-  ```bash
-  ocx add kdco/researcher
-  echo "// modified" >> .opencode/agents/some-file.md
-  ocx add kdco/researcher --force
-  ```
-- [ ] **Expected:** Overwrites without prompting
-- [ ] **Verify:** Local modifications overwritten
-- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
-
-### 6.10 Add with `--trust` (Bypass Plugin Validation)
+### 6.9 Add with `--trust` (Bypass Plugin Validation)
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `ocx add npm:some-non-esm-package --trust`
@@ -543,7 +530,7 @@ All variations from CLI.md lines 129-253.
 - [ ] **Verify:** Package installed despite validation skip
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 6.11 Add with `--json` Output
+### 6.10 Add with `--json` Output
 
 - [ ] **Setup:** Registry configured
 - [ ] **Command:** `ocx add kdco/researcher --json`
@@ -551,7 +538,7 @@ All variations from CLI.md lines 129-253.
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 6.12 Add with `--verbose`
+### 6.11 Add with `--verbose`
 
 - [ ] **Setup:** Registry configured
 - [ ] **Command:** `ocx add kdco/researcher --verbose`
@@ -1646,7 +1633,7 @@ Master summary for full test sessions.
 ### 18.2 All CLI.md Commands Verified
 
 - [ ] ocx init (Section 5): 8 test cases
-- [ ] ocx add (Section 6): 12 test cases
+- [ ] ocx add (Section 6): 11 test cases
 - [ ] ocx update (Section 7): 9 test cases
 - [ ] ocx search (Section 8): 7 test cases
 - [ ] ocx registry (Section 10): 11 test cases

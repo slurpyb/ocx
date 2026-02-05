@@ -120,7 +120,6 @@ ocx add <components...> [options]
 | `-q, --quiet` | Suppress output |
 | `-v, --verbose` | Verbose output |
 | `--json` | Output as JSON |
-| `-f, --force` | Overwrite existing components/plugins |
 | `-g, --global` | Use global config |
 
 ### Examples
@@ -985,7 +984,7 @@ ocx p add personal --global
 
 - Profile names must be valid filesystem names
 - Spaces are automatically converted to hyphens
-- `--from` accepts: existing profile name, `registry/component` shorthand, or full URL
+- `--from` accepts: existing profile name (same scope as target), `registry/component` shorthand, or full URL
 - To overwrite an existing profile, remove it first with `ocx profile rm <name>`, then add again
 
 ---

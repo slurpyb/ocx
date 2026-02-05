@@ -3,9 +3,9 @@
  * Remove installed components
  */
 
-import { existsSync } from "node:fs"
+import { existsSync, realpathSync } from "node:fs"
 import { rm } from "node:fs/promises"
-import { join } from "node:path"
+import { sep } from "node:path"
 
 import type { Command } from "commander"
 import { LocalConfigProvider } from "../config/provider"
@@ -13,6 +13,7 @@ import { readReceipt, writeReceipt } from "../schemas/config"
 import { type DryRunResult, outputDryRun } from "../utils/dry-run"
 import { NotFoundError, ValidationError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
+import { validatePath } from "../utils/path-security"
 import { checkFileIntegrity, parseCanonicalId } from "../utils/receipt"
 import { addCommonOptions, addVerboseOption } from "../utils/shared-options"
 
@@ -187,18 +188,58 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 		}
 
 		// Second pass: actually remove files
+		// Step 2: Compute base real path once per remove operation
+		let baseReal: string
+		try {
+			baseReal = realpathSync(provider.cwd)
+		} catch (_error: unknown) {
+			throw new ValidationError("Cannot resolve project directory")
+		}
+
 		for (const { canonicalId } of toRemove) {
 			const entry = receipt.installed[canonicalId]
 			if (!entry) continue
 
 			// Remove files
 			for (const fileEntry of entry.files) {
-				const filePath = join(provider.cwd, fileEntry.path)
-				if (existsSync(filePath)) {
-					await rm(filePath, { force: true })
+				// Step 1: Validate path (rejects null bytes, absolute paths, traversal)
+				const safePath = validatePath(provider.cwd, fileEntry.path)
+
+				// Step 3: Check if file exists
+				if (!existsSync(safePath)) {
+					// Skip deletion, log if verbose (already gone)
 					if (options.verbose) {
-						logger.info(`  ✓ Removed ${fileEntry.path}`)
+						logger.info(`  ⊘ Skipped ${fileEntry.path} (not found)`)
 					}
+					continue
+				}
+
+				// Step 4: Compute target real path
+				let targetReal: string
+				try {
+					targetReal = realpathSync(safePath)
+				} catch (error: unknown) {
+					const code = (error as NodeJS.ErrnoException).code
+					if (code === "ELOOP") {
+						throw new ValidationError(
+							`Security violation: symlink loop detected at ${fileEntry.path}`,
+						)
+					}
+					if (code === "EACCES" || code === "EPERM") {
+						throw new ValidationError(`Security violation: cannot verify path ${fileEntry.path}`)
+					}
+					throw error
+				}
+
+				// Step 5: Containment check using path boundary
+				if (!targetReal.startsWith(baseReal + sep) && targetReal !== baseReal) {
+					throw new ValidationError(`Security violation: path escapes project directory`)
+				}
+
+				// Step 6: Delete via targetReal (canonical path) to avoid TOCTOU
+				await rm(targetReal, { force: true })
+				if (options.verbose) {
+					logger.info(`  ✓ Removed ${fileEntry.path}`)
 				}
 			}
 

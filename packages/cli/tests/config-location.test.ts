@@ -57,7 +57,7 @@ describe("config file locations", () => {
 			testDir = await setupWithRegistry("loc-add")
 
 			// Install a component
-			const { exitCode, output } = await runCLI(["add", "kdco/test-plugin", "--force"], testDir)
+			const { exitCode, output } = await runCLI(["add", "kdco/test-plugin"], testDir)
 			if (exitCode !== 0) {
 				console.log("add failed:", output)
 			}
@@ -79,7 +79,7 @@ describe("config file locations", () => {
 			testDir = await setupWithRegistry("loc-update")
 
 			// Install a component
-			await runCLI(["add", "kdco/test-plugin", "--force"], testDir)
+			await runCLI(["add", "kdco/test-plugin"], testDir)
 
 			// Change registry content to trigger update
 			registry.setFileContent("test-plugin", "index.ts", "// Updated content")
@@ -149,7 +149,7 @@ describe("config file locations", () => {
 			)
 
 			// Add a component that has MCP config (which triggers opencode.jsonc creation)
-			const { exitCode, output } = await runCLI(["add", "kdco/test-agent", "--force"], testDir)
+			const { exitCode, output } = await runCLI(["add", "kdco/test-agent"], testDir)
 			if (exitCode !== 0) {
 				console.log("add failed:", output)
 			}
@@ -187,7 +187,7 @@ describe("config file locations", () => {
 			)
 
 			// Add a component that has MCP config
-			const { exitCode, output } = await runCLI(["add", "kdco/test-agent", "--force"], testDir)
+			const { exitCode, output } = await runCLI(["add", "kdco/test-agent"], testDir)
 			if (exitCode !== 0) {
 				console.log("add failed:", output)
 			}
@@ -222,10 +222,7 @@ describe("config file locations", () => {
 
 			// Install a component (will create .ocx/receipt.jsonc)
 			await mkdir(join(testDir, ".opencode"), { recursive: true })
-			const { exitCode: addExitCode } = await runCLI(
-				["add", "kdco/test-plugin", "--force"],
-				testDir,
-			)
+			const { exitCode: addExitCode } = await runCLI(["add", "kdco/test-plugin"], testDir)
 			expect(addExitCode).toBe(0)
 
 			// Verify receipt is at .ocx/receipt.jsonc
@@ -275,7 +272,7 @@ describe("config file locations", () => {
 
 			// Install a component (will create .ocx/receipt.jsonc)
 			await mkdir(join(testDir, ".opencode"), { recursive: true })
-			const { exitCode } = await runCLI(["add", "kdco/test-plugin", "--force"], testDir)
+			const { exitCode } = await runCLI(["add", "kdco/test-plugin"], testDir)
 			expect(exitCode).toBe(0)
 
 			// V2: Receipt is always at .ocx/receipt.jsonc
@@ -304,7 +301,7 @@ describe("config file locations", () => {
 			await mkdir(join(testDir, ".opencode"), { recursive: true })
 
 			// Add component with MCP config (triggers opencode.jsonc creation)
-			const { exitCode } = await runCLI(["add", "kdco/test-agent", "--force"], testDir)
+			const { exitCode } = await runCLI(["add", "kdco/test-agent"], testDir)
 			expect(exitCode).toBe(0)
 
 			// Root config stays at root
@@ -382,7 +379,7 @@ describe("config file locations", () => {
 			)
 
 			// Add should succeed, using .opencode/ version
-			const { exitCode } = await runCLI(["add", "kdco/test-agent", "--force"], testDir)
+			const { exitCode } = await runCLI(["add", "kdco/test-agent"], testDir)
 			expect(exitCode).toBe(0)
 
 			// .opencode/ version should be updated with new MCP
@@ -416,7 +413,7 @@ describe("config file locations", () => {
 			)
 
 			// Add a component to create receipt
-			await runCLI(["add", "kdco/test-plugin", "--force"], testDir)
+			await runCLI(["add", "kdco/test-plugin"], testDir)
 
 			// Modify registry content
 			registry.setFileContent("test-plugin", "index.ts", "// Updated content")
@@ -446,7 +443,7 @@ describe("config file locations", () => {
 			testDir = await setupWithRegistry("update-loc-fresh")
 
 			// Install component
-			await runCLI(["add", "kdco/test-plugin", "--force"], testDir)
+			await runCLI(["add", "kdco/test-plugin"], testDir)
 
 			// V2: Verify receipt is at .ocx/receipt.jsonc
 			expect(existsSync(join(testDir, ".ocx", "receipt.jsonc"))).toBe(true)
@@ -478,7 +475,7 @@ describe("config file locations", () => {
 			)
 
 			// Install to create receipt
-			await runCLI(["add", "kdco/test-plugin", "--force"], testDir)
+			await runCLI(["add", "kdco/test-plugin"], testDir)
 
 			// V2: Receipt is always at .ocx/receipt.jsonc
 			expect(existsSync(join(testDir, ".ocx", "receipt.jsonc"))).toBe(true)

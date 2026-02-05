@@ -151,6 +151,11 @@ Registry components cannot target these paths:
 - `.env` - Environment secrets
 - `node_modules/` - Dependencies
 
+**Additional Security Constraints:**
+- Absolute paths (starting with `/` or drive letters like `C:`) are rejected
+- Path traversal sequences (`../`, `..\\`) are rejected
+- Null bytes and control characters are rejected
+
 ## Example: Minimal Compliant Registry
 
 ```

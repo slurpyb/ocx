@@ -213,7 +213,7 @@ The component itself does NOT need to be listed in `opencode.plugin` - it's auto
 |------|-----------------|-------------|
 | `agent` | `agent/` | Markdown files defining specialized agents. |
 | `skill` | `skills/` | Instruction sets (must follow `skills/<name>/SKILL.md`). |
-| `plugin` | `plugin/` | TypeScript/JavaScript extensions for tools and hooks. |
+| `plugin` | `plugins/` | TypeScript/JavaScript extensions for tools and hooks. |
 | `command` | `command/` | Markdown templates for TUI commands. |
 | `tool` | `tool/` | Custom tool implementations. |
 | `bundle` | N/A | Virtual components that install multiple other components. |
