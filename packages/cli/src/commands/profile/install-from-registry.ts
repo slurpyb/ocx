@@ -17,10 +17,12 @@ import { profileNameSchema } from "../../profile/schema"
 import { fetchComponent, fetchFileContent, fetchRegistryIndex } from "../../registry/fetcher"
 import type { RegistryConfig } from "../../schemas/config"
 import { type OcxLock, writeOcxLock } from "../../schemas/config"
+import { profileOcxConfigSchema } from "../../schemas/ocx"
 import { normalizeComponentManifest } from "../../schemas/registry"
-import { ConflictError, NotFoundError, ValidationError } from "../../utils/errors"
+import { ConfigError, ConflictError, NotFoundError, ValidationError } from "../../utils/errors"
 import { createSpinner, logger } from "../../utils/index"
 import { hashBundle } from "../../utils/receipt"
+import { isPlainObject } from "../../utils/type-guards"
 import { runAddCore } from "../add"
 
 // =============================================================================
@@ -287,13 +289,17 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 					const profileOcxContent = await profileOcxFile.text()
 					const profileOcxRaw = parse(profileOcxContent)
 
-					// Extract registries field (if present)
-					if (profileOcxRaw && typeof profileOcxRaw === "object" && "registries" in profileOcxRaw) {
-						const regsRaw = profileOcxRaw.registries
-						if (regsRaw && typeof regsRaw === "object") {
-							profileRegistries = regsRaw as Record<string, RegistryConfig>
-						}
+					// Validate registries with Zod
+					const parseResult = profileOcxConfigSchema.safeParse(profileOcxRaw)
+					if (parseResult.success) {
+						profileRegistries = parseResult.data.registries ?? {}
+					} else if (isPlainObject(profileOcxRaw) && "registries" in profileOcxRaw) {
+						// registries field exists but is invalid - fail loud (Law 4)
+						throw new ConfigError(
+							`Invalid registries in profile "${profileName}": ${parseResult.error.message}`,
+						)
 					}
+					// If parse fails and no registries field, just use empty {} (already initialized)
 				}
 
 				// Create provider with FULL profile registries

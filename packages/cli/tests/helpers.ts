@@ -20,6 +20,8 @@ export interface RunCLIOptions {
 	env?: Record<string, string | undefined>
 	/** Use isolated environment (allowlist-only, requires XDG_CONFIG_HOME in env) */
 	isolated?: boolean
+	/** Timeout in milliseconds (default: 10000) */
+	timeout?: number
 }
 
 /**
@@ -73,6 +75,7 @@ export async function runCLI(
 	options?: RunCLIOptions,
 ): Promise<CLIResult> {
 	const indexPath = join(import.meta.dir, "..", "src/index.ts")
+	const timeout = options?.timeout ?? 10000 // 10s default
 
 	// Ensure cwd exists
 	await mkdir(cwd, { recursive: true })
@@ -91,12 +94,41 @@ export async function runCLI(
 	})
 
 	// Read stdout and stderr in parallel
-	const [stdout, stderr] = await Promise.all([
+	const outputPromise = Promise.all([
 		new Response(proc.stdout).text(),
 		new Response(proc.stderr).text(),
 	])
 
-	const exitCode = await proc.exited
+	// Race between process exit and timeout
+	let exitCode: number
+	let timedOut = false
+
+	try {
+		exitCode = await Promise.race([
+			proc.exited,
+			new Promise<never>((_, reject) =>
+				setTimeout(() => {
+					timedOut = true
+					proc.kill()
+					reject(new Error(`CLI timeout after ${timeout}ms`))
+				}, timeout),
+			),
+		])
+	} catch (error) {
+		if (timedOut) {
+			// Return a result indicating timeout rather than throwing
+			const [stdout, stderr] = await outputPromise.catch(() => ["", ""])
+			return {
+				stdout,
+				stderr,
+				output: `${stdout + stderr}\n[TIMEOUT after ${timeout}ms]`,
+				exitCode: 124, // Standard timeout exit code
+			}
+		}
+		throw error
+	}
+
+	const [stdout, stderr] = await outputPromise
 
 	return {
 		stdout,

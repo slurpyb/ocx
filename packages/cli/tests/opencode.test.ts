@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { buildOpenCodeEnv, dedupeLastWins, resolveOpenCodeBinary } from "../src/commands/opencode"
-import { runCLI } from "./helpers"
+import { cleanupTempDir, createTempDir, runCLI, runCLIIsolated } from "./helpers"
 
 describe("dedupeLastWins", () => {
 	it("preserves last occurrence when duplicates exist", () => {
@@ -216,17 +216,23 @@ describe("oc command CLI contract", () => {
 	})
 
 	it("does not interpret positional args as path (regression #112)", async () => {
-		// The bug: "ocx oc run" treated "run" as [path] argument, causing ENOENT
-		// Now: "run" should pass through to opencode, not be interpreted as a directory
-		// Set OPENCODE_BIN to a command that fails quickly to avoid timeout
-		const result = await runCLI(["oc", "--no-rename", "run", "test"], process.cwd(), {
-			env: { OPENCODE_BIN: "nonexistent-opencode-binary" },
-		})
-		// Should NOT fail with "no such file or directory" for a 'run' directory
-		// It should fail with opencode binary not found, which is expected
-		expect(result.output).not.toMatch(/no such file or directory.*run/i)
-		// Should fail with command not found or similar
-		expect(result.exitCode).not.toBe(0)
+		const testDir = await createTempDir("oc-regression-112")
+		try {
+			// Use isolated mode to prevent inheriting OCX_PROFILE from developer's env
+			// which would load a profile with bin that overrides OPENCODE_BIN
+			const result = await runCLIIsolated(
+				["oc", "--no-rename", "run", "test"],
+				testDir,
+				{ OPENCODE_BIN: "false" }, // "false" is a shell builtin that exits with code 1
+			)
+			// Should NOT fail with "no such file or directory" for a 'run' directory
+			// It should fail with opencode binary not found, which is expected
+			expect(result.output).not.toMatch(/no such file or directory.*run/i)
+			// Should fail with command not found or similar
+			expect(result.exitCode).not.toBe(0)
+		} finally {
+			await cleanupTempDir(testDir)
+		}
 	})
 
 	it("errors when -p flag missing value", async () => {

@@ -43,6 +43,7 @@ import type { NormalizedOpencodeConfig } from "../schemas/registry"
 import { resolveGitRootSync } from "../utils/git-root"
 import { resolveRegistryInstructionPaths } from "../utils/instruction-paths"
 import { getGlobalConfigPath } from "../utils/paths"
+import { isPlainObject } from "../utils/type-guards"
 
 // =============================================================================
 // TYPES
@@ -693,7 +694,7 @@ export class ConfigResolver {
 			const targetValue = result[key]
 
 			// If both are plain objects, recurse
-			if (this.isPlainObject(sourceValue) && this.isPlainObject(targetValue)) {
+			if (isPlainObject(sourceValue) && isPlainObject(targetValue)) {
 				result[key] = this.deepMerge(
 					targetValue as Record<string, unknown>,
 					sourceValue as Record<string, unknown>,
@@ -705,13 +706,6 @@ export class ConfigResolver {
 		}
 
 		return result
-	}
-
-	/**
-	 * Check if value is a plain object (not array, not null).
-	 */
-	private isPlainObject(value: unknown): value is Record<string, unknown> {
-		return typeof value === "object" && value !== null && !Array.isArray(value)
 	}
 
 	// =========================================================================

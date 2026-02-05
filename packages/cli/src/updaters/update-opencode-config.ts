@@ -16,6 +16,7 @@ import { homedir } from "node:os"
 import path from "node:path"
 import { applyEdits, type ModificationOptions, modify, parse as parseJsonc } from "jsonc-parser"
 import type { OpencodeConfig } from "../schemas/registry"
+import { isPlainObject } from "../utils/type-guards"
 
 const LOCAL_CONFIG_DIR = ".opencode"
 
@@ -226,7 +227,7 @@ function applyValueAtPath(content: string, path: (string | number)[], value: unk
 	}
 
 	// For objects, check if we can recursively merge or need to replace entirely
-	if (typeof value === "object" && !Array.isArray(value)) {
+	if (isPlainObject(value)) {
 		const existingValue = getValueAtPath(content, path)
 
 		// If existing value is a primitive (string, number, boolean) but new value is an object,
