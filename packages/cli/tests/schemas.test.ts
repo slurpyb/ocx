@@ -128,27 +128,59 @@ describe("schemas", () => {
 	})
 
 	describe("targetPathSchema", () => {
-		it("should accept valid root-relative paths", () => {
+		it("should accept standard OpenCode directory paths", () => {
 			expect(() => targetPathSchema.parse("agents/test.md")).not.toThrow()
 			expect(() => targetPathSchema.parse("plugins/my-plugin.ts")).not.toThrow()
 			expect(() => targetPathSchema.parse("skills/test/SKILL.md")).not.toThrow()
+			expect(() => targetPathSchema.parse("commands/foo.ts")).not.toThrow()
+			expect(() => targetPathSchema.parse("tools/bar.ts")).not.toThrow()
 		})
 
-		it("should accept all valid directories", () => {
-			const validDirs = ["agents", "skills", "plugins", "commands", "tools"]
-			for (const dir of validDirs) {
-				expect(() => targetPathSchema.parse(`${dir}/file.md`)).not.toThrow()
-			}
+		it("should accept custom directory paths", () => {
+			// Blocklist approach - custom paths are now allowed
+			expect(() => targetPathSchema.parse("prompts/my-prompt.md")).not.toThrow()
+			expect(() => targetPathSchema.parse("templates/foo.ts")).not.toThrow()
+			expect(() => targetPathSchema.parse("src/custom.ts")).not.toThrow()
+			expect(() => targetPathSchema.parse("docs/README.md")).not.toThrow()
 		})
 
-		it("should reject paths with .opencode/ prefix", () => {
-			expect(() => targetPathSchema.parse(".opencode/agents/test.md")).toThrow()
-			expect(() => targetPathSchema.parse(".opencode/plugins/file.ts")).toThrow()
+		it("should reject blocked paths in .ocx/", () => {
+			expect(() => targetPathSchema.parse(".ocx/receipt.jsonc")).toThrow("protected")
+			expect(() => targetPathSchema.parse(".ocx/state.json")).toThrow("protected")
+			expect(() => targetPathSchema.parse(".ocx/anything")).toThrow("protected")
 		})
 
-		it("should reject invalid directory names", () => {
-			expect(() => targetPathSchema.parse("invalid/file.md")).toThrow("allowed prefix")
-			expect(() => targetPathSchema.parse("src/file.md")).toThrow()
+		it("should reject ocx.jsonc", () => {
+			expect(() => targetPathSchema.parse("ocx.jsonc")).toThrow("protected")
+		})
+
+		it("should reject package.json", () => {
+			expect(() => targetPathSchema.parse("package.json")).toThrow("protected")
+		})
+
+		it("should reject .git/ paths", () => {
+			expect(() => targetPathSchema.parse(".git/config")).toThrow("protected")
+			expect(() => targetPathSchema.parse(".git/HEAD")).toThrow("protected")
+		})
+
+		it("should reject .env", () => {
+			expect(() => targetPathSchema.parse(".env")).toThrow("protected")
+		})
+
+		it("should reject node_modules/ paths", () => {
+			expect(() => targetPathSchema.parse("node_modules/foo")).toThrow("protected")
+			expect(() => targetPathSchema.parse("node_modules/package/index.js")).toThrow("protected")
+		})
+
+		it("should reject unsafe path patterns", () => {
+			// Parent directory traversal
+			expect(() => targetPathSchema.parse("../etc/passwd")).toThrow()
+			expect(() => targetPathSchema.parse("foo/../bar")).toThrow()
+			// Absolute paths
+			expect(() => targetPathSchema.parse("/etc/passwd")).toThrow()
+			expect(() => targetPathSchema.parse("C:/Windows/System32")).toThrow()
+			// Null bytes
+			expect(() => targetPathSchema.parse("foo\0bar")).toThrow()
 		})
 	})
 

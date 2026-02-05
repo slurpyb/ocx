@@ -148,26 +148,25 @@ export type ComponentType = z.infer<typeof componentTypeSchema>
 /** Reserved targets (installer-owned files) */
 const RESERVED_TARGETS = new Set([".ocx", "ocx.lock"])
 
-/** Allowed root-relative prefixes for component files */
-const ALLOWED_PREFIXES = [
-	"plugins/",
-	"agents/",
-	"skills/",
-	"commands/",
-	"tools/",
-	// Root config files (no directory prefix)
-	"ocx.jsonc",
-	"ocx.json",
-	"opencode.jsonc",
-	"opencode.json",
-	"AGENTS.md",
-	"CLAUDE.md",
-	"CONTEXT.md",
-]
+/**
+ * Paths that registry components cannot target.
+ * These are either OCX-managed files or dangerous paths.
+ */
+const BLOCKED_PATHS = [
+	// OCX-managed files
+	".ocx/", // Receipt, state (covers receipt.jsonc)
+	"ocx.jsonc", // OCX config
+	"package.json", // We generate this in .opencode/
+
+	// Dangerous paths
+	".git/", // Git internals
+	".env", // Secrets
+	"node_modules/", // Dependencies
+] as const
 
 /**
  * V2: Target paths are root-relative (no .opencode/ prefix).
- * Enforces allowed prefixes: plugins/, agents/, skills/, commands/, tools/, or root config files.
+ * Blocks protected paths that could compromise security or OCX functionality.
  * Validates path safety using schema-level checks.
  */
 export const targetPathSchema = z
@@ -189,12 +188,11 @@ export const targetPathSchema = z
 	)
 	.refine(
 		(path) => {
-			// Must start with an allowed prefix
-			return ALLOWED_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix))
+			// Check if path is blocked
+			return !BLOCKED_PATHS.some((blocked) => path === blocked || path.startsWith(blocked))
 		},
 		{
-			message:
-				"Target path must start with an allowed prefix (plugins/, agents/, skills/, commands/, tools/) or be a root config file (ocx.jsonc, opencode.jsonc, AGENTS.md, etc.)",
+			message: "Target path is protected and cannot be overwritten by registry components",
 		},
 	)
 
@@ -664,13 +662,13 @@ export function inferTargetPath(sourcePath: string): string {
 
 /**
  * V2: Validate a file target path.
- * Checks for reserved paths and uses runtime containment validation.
+ * Checks for reserved paths, blocked paths, and uses runtime containment validation.
  * Component type is inferred from target path (behavior-based, not explicit).
  * @param target - The target path to validate
  * @param componentType - Optional type hint for additional validation context
  * @throws ValidationError if target is invalid
  */
-export function validateFileTarget(target: string, _componentType?: ComponentType): void {
+export function validateFileTarget(target: string, componentType?: ComponentType): void {
 	// Check reserved targets
 	if (RESERVED_TARGETS.has(target)) {
 		throw new ValidationError(`Target "${target}" is reserved for installer use`)
@@ -686,14 +684,17 @@ export function validateFileTarget(target: string, _componentType?: ComponentTyp
 		throw error
 	}
 
-	// Validate allowed prefix
-	const hasAllowedPrefix = ALLOWED_PREFIXES.some(
-		(prefix) => target === prefix || target.startsWith(prefix),
-	)
-	if (!hasAllowedPrefix) {
-		throw new ValidationError(
-			`Target "${target}" must start with an allowed prefix (plugins/, agents/, skills/, commands/, tools/) or be a root config file`,
+	// Check blocked paths (except for profiles, which install to their own directory)
+	const isProfile = componentType === "profile" || componentType === "ocx:profile"
+	if (!isProfile) {
+		const isBlocked = BLOCKED_PATHS.some(
+			(blocked) => target === blocked || target.startsWith(blocked),
 		)
+		if (isBlocked) {
+			throw new ValidationError(
+				`Target path '${target}' is protected and cannot be overwritten by registry components`,
+			)
+		}
 	}
 }
 

@@ -65,10 +65,12 @@ When testing:
 
 ### Prerequisites
 
+> **Note:** Replace `$OCX_REPO` in the commands below with the path to your local OCX repository clone.
+
 Before running any tests, build the CLI from source:
 
 ```bash
-cd /Users/kenny/workspace/kdcokenny/ocx
+cd "$OCX_REPO"
 bun install
 bun run build
 ```
@@ -81,7 +83,7 @@ For pre-release testing, use locally built registries instead of deployed URLs.
 
 **Terminal 1: KDCO Registry (components)**
 ```bash
-cd /Users/kenny/workspace/kdcokenny/ocx/workers/kdco-registry
+cd "$OCX_REPO/workers/kdco-registry"
 bun run build
 wrangler dev
 # Serves on http://localhost:8787
@@ -89,7 +91,7 @@ wrangler dev
 
 **Terminal 2: OCX Kit Registry (profiles)**
 ```bash
-cd /Users/kenny/workspace/kdcokenny/ocx/workers/ocx-kit
+cd "$OCX_REPO/workers/ocx-kit"
 bun run build
 wrangler dev --port 8788
 # Serves on http://localhost:8788
@@ -109,7 +111,7 @@ curl http://localhost:8788/index.json | head -5
 - [ ] **Commands:**
   ```bash
   export XDG_CONFIG_HOME=/tmp/ocx-v2-test
-  alias ocx="/Users/kenny/workspace/kdcokenny/ocx/packages/cli/dist/index.js"
+  alias ocx="$OCX_REPO/packages/cli/dist/index.js"
   mkdir -p /tmp/ocx-v2-test-project
   cd /tmp/ocx-v2-test-project
   git init
@@ -122,7 +124,7 @@ Confirm the dev build is being used:
 
 ```bash
 type ocx
-# Expected: ocx is aliased to `/Users/kenny/workspace/kdcokenny/ocx/packages/cli/dist/index.js'
+# Expected: ocx is aliased to `$OCX_REPO/packages/cli/dist/index.js'
 
 ocx --version
 # Should match package.json version
@@ -628,24 +630,6 @@ All variations from CLI.md lines 256-361.
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 7.9 Update with `--verbose`
-
-- [ ] **Setup:** Component installed
-- [ ] **Command:** `ocx update kdco/researcher --verbose`
-- [ ] **Expected:** Detailed file change information
-- [ ] **Verify:** Verbose output shows file operations
-- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
-
----
-
-## 8. CLI Reference: ocx search
-
-- [ ] **Setup:** Component installed
-- [ ] **Command:** `ocx update kdco/researcher --json`
-- [ ] **Expected:** Machine-readable JSON output
-- [ ] **Verify:** Output is valid JSON
-- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
-
-### 7.7 Update with `--verbose`
 
 - [ ] **Setup:** Component installed
 - [ ] **Command:** `ocx update kdco/researcher --verbose`

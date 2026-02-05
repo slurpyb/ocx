@@ -129,8 +129,8 @@ Returns raw file content for installation.
 
 ## Component Types
 
-| Type | Install Location | Description |
-|------|------------------|-------------|
+| Type | Common Location | Description |
+|------|-----------------|-------------|
 | `skill` | `skills/{name}/` | AI behavior instructions |
 | `plugin` | `plugin/` | OpenCode plugins |
 | `agent` | `agent/` | Custom agent definitions |
@@ -139,7 +139,17 @@ Returns raw file content for installation.
 | `bundle` | (varies) | Meta-package grouping other components |
 | `profile` | `~/.config/opencode/profiles/{name}/` | Shareable profile configuration |
 
-**Note:** Targets in registry files are root-relative. The OCX CLI resolves them to the appropriate `.opencode/` subdirectory based on component type.
+**Note:** Targets in registry files are root-relative. The OCX CLI resolves them to the appropriate `.opencode/` subdirectory based on component type. Registry authors can use any path except blocked paths.
+
+### Blocked Paths
+
+Registry components cannot target these paths:
+- `.ocx/` - OCX state and receipt
+- `ocx.jsonc` - OCX configuration
+- `package.json` - Package manifest
+- `.git/` - Git internals
+- `.env` - Environment secrets
+- `node_modules/` - Dependencies
 
 ## Example: Minimal Compliant Registry
 

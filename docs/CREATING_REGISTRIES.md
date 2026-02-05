@@ -357,7 +357,7 @@ When installed via `ocx add`, the path `instructions/style-guide.md` resolves to
 
 **Caution**: Because config-based instructions bypass filtering, users installing your component will load these instructions even in untrusted repositories. Design your instruction files accordingly.
 
-## Dependencies
+## Component Dependencies
 
 ### Same-Namespace Dependencies
 

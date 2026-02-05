@@ -1043,7 +1043,7 @@ OpenCode discovers instruction files using a **"first type wins"** strategy:
 **Discovery-based instructions** (AGENTS.md, CLAUDE.md, CONTEXT.md):
 - Subject to profile `exclude`/`include` patterns (for local project files)
 - Follow "first type wins" rule
-- Discovered by walking project tree
+- Discovered by walking UP from current directory to git root
 
 **Config-based instructions** (`instructions` array in `opencode.jsonc`):
 - **Additive** to discovered files (both are loaded)
