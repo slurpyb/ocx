@@ -509,7 +509,7 @@ async function runRegistryAddCore(
 					validatePath(cwd, resolvedTarget)
 				} catch (error) {
 					if (error instanceof PathValidationError) {
-						throw new ValidationError(`Path "${targetPath}" is outside allowed directory "${cwd}"`)
+						throw new ValidationError(`Invalid path "${targetPath}": ${error.message}`)
 					}
 					throw error
 				}

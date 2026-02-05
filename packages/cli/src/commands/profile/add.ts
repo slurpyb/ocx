@@ -15,6 +15,7 @@ import type { ProfileOcxConfig } from "../../schemas/ocx"
 import { profileOcxConfigSchema } from "../../schemas/ocx"
 import {
 	ConfigError,
+	OCXError,
 	ProfileExistsError,
 	ProfileNotFoundError,
 	ValidationError,
@@ -308,8 +309,18 @@ async function cloneFromLocalProfile(
 	let source: Profile
 	try {
 		source = await manager.get(sourceName)
-	} catch {
-		throw new ProfileNotFoundError(sourceName)
+	} catch (error) {
+		// Re-throw known errors as-is to preserve type and exit code
+		if (error instanceof ProfileNotFoundError) {
+			throw error
+		}
+		if (error instanceof OCXError) {
+			throw error
+		}
+		// Wrap unknown errors with context
+		throw new ValidationError(
+			`Failed to load profile '${sourceName}': ${error instanceof Error ? error.message : String(error)}`,
+		)
 	}
 
 	await manager.add(name, global)
