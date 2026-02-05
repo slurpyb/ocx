@@ -144,8 +144,8 @@ export function resolveRegistryInstructionPaths(
 	const resolved: string[] = []
 	const seen = new Set<string>()
 
-	for (const path of paths) {
-		const expandedPaths = resolveRegistryInstructionPath(path, installRoot, source)
+	for (const instructionPath of paths) {
+		const expandedPaths = resolveRegistryInstructionPath(instructionPath, installRoot, source)
 
 		for (const absolutePath of expandedPaths) {
 			// Deduplicate - first occurrence wins

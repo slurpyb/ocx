@@ -54,7 +54,8 @@ async function runVerify(componentNames: string[], options: VerifyOptions): Prom
 	// Determine which components to verify
 	const toVerify = componentNames.length > 0 ? componentNames : Object.keys(receipt.installed)
 
-	const spin = options.quiet ? null : createSpinner({ text: "Verifying components..." })
+	const spin =
+		options.quiet || options.json ? null : createSpinner({ text: "Verifying components..." })
 	spin?.start()
 
 	const results: Array<{

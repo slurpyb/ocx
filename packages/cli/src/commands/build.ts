@@ -7,7 +7,7 @@
 import { relative, resolve } from "node:path"
 import type { Command } from "commander"
 import kleur from "kleur"
-import { BuildRegistryError, buildRegistry } from "../lib/build-registry"
+import { BuildRegistryError, type BuildRegistryResult, buildRegistry } from "../lib/build-registry"
 import { outputDryRun } from "../utils/dry-run"
 import { createSpinner, handleError, logger, outputJson } from "../utils/index"
 
@@ -54,11 +54,7 @@ export function registerBuildCommand(program: Command): void {
 				}
 
 				// Type narrowing: result is now BuildRegistryResult
-				const buildResult = result as {
-					namespace: string
-					componentsCount: number
-					outputPath: string
-				}
+				const buildResult = result as BuildRegistryResult
 
 				if (!options.json) {
 					const msg = `Built ${buildResult.componentsCount} components to ${relative(options.cwd, outPath)}`

@@ -209,7 +209,16 @@ export class ProfileManager {
 		const globalProfile = await this.get(name)
 
 		// 2. Check for local profile (optional - overlay layer)
-		if (!(await this.exists(name, false))) {
+		// Check for local profile using the cwd parameter (not this.cwd)
+		const localDir = getLocalProfileDir(name, cwd)
+		let localExists = false
+		try {
+			const stats = await stat(localDir)
+			localExists = stats.isDirectory()
+		} catch {
+			localExists = false
+		}
+		if (!localExists) {
 			return globalProfile // No local overlay
 		}
 
