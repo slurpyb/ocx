@@ -40,7 +40,7 @@ async function runVerify(componentNames: string[], options: VerifyOptions): Prom
 	const cwd = options.cwd ?? process.cwd()
 	const provider = await LocalConfigProvider.requireInitialized(cwd)
 
-	// V2: Read receipt
+	// V1: Read receipt
 	const receipt = await readReceipt(provider.cwd)
 	if (!receipt || Object.keys(receipt.installed).length === 0) {
 		if (options.json) {

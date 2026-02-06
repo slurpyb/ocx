@@ -2,7 +2,7 @@
 	"$schema": "http://json-schema.org/draft-07/schema#",
 	"$id": "https://ocx.kdco.dev/schemas/receipt.schema.json",
 	"title": "OCX Receipt Schema",
-	"description": "Schema for OCX component receipts stored at .ocx/receipt.jsonc (OCX V2). Receipts are advisory records of installed components.",
+	"description": "Schema for OCX component receipts stored at .ocx/receipt.jsonc. Receipts are advisory records of installed components.",
 	"type": "object",
 	"properties": {
 		"version": {

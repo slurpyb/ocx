@@ -84,7 +84,7 @@ describe("ocx update", () => {
 		const updatedContent = await readFile(filePath, "utf-8")
 		expect(updatedContent).toBe(newContent)
 
-		// Verify receipt was updated (V2: .ocx/receipt.jsonc)
+		// Verify receipt was updated (V1: .ocx/receipt.jsonc)
 		const receiptPath = join(testDir, ".ocx/receipt.jsonc")
 		const receipt = parseJsonc(await readFile(receiptPath, "utf-8")) as Record<string, unknown>
 		const installed = receipt.installed as Record<string, { updatedAt?: string }>

@@ -736,15 +736,15 @@ describe("ocx profile add --from (registry installation)", () => {
 		// Verify NO .opencode/ directory exists - this is the key regression check
 		expect(existsSync(join(profileDir, ".opencode"))).toBe(false)
 
-		// V2: Verify receipt file instead of ocx.lock
+		// V1: Verify receipt file instead of ocx.lock
 		const receiptPath = join(profileDir, ".ocx", "receipt.jsonc")
 		expect(existsSync(receiptPath)).toBe(true)
 		const receiptContent = parseJsonc(await readFile(receiptPath, "utf-8")) as {
 			version: number
 			installed: Record<string, unknown>
 		}
-		// V2: Receipt doesn't have installedFrom field - that's stored in ocx.jsonc metadata
-		expect(receiptContent.version).toBe(2)
+		// V1: Receipt doesn't have installedFrom field - that's stored in ocx.jsonc metadata
+		expect(receiptContent.version).toBe(1)
 		expect(Object.keys(receiptContent.installed).length).toBeGreaterThan(0)
 	})
 })

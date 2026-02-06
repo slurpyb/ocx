@@ -57,7 +57,7 @@ describe("ocx add", () => {
 		expect(existsSync(join(testDir, "skills/test-skill/SKILL.md"))).toBe(true)
 		expect(existsSync(join(testDir, "plugins/test-plugin.ts"))).toBe(true)
 
-		// V2: Verify receipt file (replaces ocx.lock)
+		// V1: Verify receipt file (replaces ocx.lock)
 		const receiptPath = join(testDir, ".ocx/receipt.jsonc")
 		expect(existsSync(receiptPath)).toBe(true)
 		const receipt = parseJsonc(await readFile(receiptPath, "utf-8"))
@@ -308,7 +308,7 @@ describe("ocx add --profile", () => {
 		expect(existsSync(join(profileDir, "skills", "test-skill", "SKILL.md"))).toBe(true)
 		expect(existsSync(join(profileDir, "plugins", "test-plugin.ts"))).toBe(true)
 
-		// V2: Verify receipt file at profile root/.ocx/
+		// V1: Verify receipt file at profile root/.ocx/
 		expect(existsSync(join(profileDir, ".ocx", "receipt.jsonc"))).toBe(true)
 	})
 

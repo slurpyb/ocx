@@ -70,7 +70,7 @@ This explicit workflow ensures that component updates are always intentional and
 
 ### Update Audit Trail
 
-The receipt file tracks the complete update history for each component:
+The receipt file tracks metadata for each component's latest update:
 
 ```jsonc
 {
@@ -83,7 +83,7 @@ The receipt file tracks the complete update history for each component:
 }
 ```
 
-The combination of `updatedAt` timestamps and hash verification provides a complete audit trail for compliance and security reviews.
+The `updatedAt` timestamp (when present) indicates the component was updated after initial installation. Combined with the `hash` field for integrity verification, this provides audit metadata for compliance and security reviews.
 
 ## Air-Gapped Environments
 

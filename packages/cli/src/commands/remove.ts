@@ -56,7 +56,7 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 		throw new ValidationError("No components specified. Specify at least one component ID.")
 	}
 
-	// V2: Read receipt
+	// V1: Read receipt
 	const receipt = await readReceipt(provider.cwd)
 	if (!receipt || Object.keys(receipt.installed).length === 0) {
 		throw new NotFoundError("No components installed.")

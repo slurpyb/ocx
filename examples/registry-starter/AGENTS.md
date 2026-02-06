@@ -50,7 +50,7 @@ import { z } from "zod"
 
 const ComponentSchema = z.object({
   name: z.string(),
-  type: z.enum(["skill", "plugin", "agent", "bundle"]),
+  type: z.enum(["skill", "plugin", "agent", "command", "tool", "bundle", "profile"]),
 })
 
 // Parse once at the boundary
@@ -167,6 +167,8 @@ OCX supports the following component types:
 | `skill` | Instructions for AI behavior | Markdown (SKILL.md) |
 | `plugin` | Code that extends OpenCode | TypeScript |
 | `agent` | Agent role definitions | Markdown |
+| `command` | Custom TUI commands | Markdown |
+| `tool` | Custom tool implementations | TypeScript |
 | `bundle` | Collection of components | JSON manifest |
 | `profile` | Shareable profile configuration | JSON |
 
@@ -347,6 +349,70 @@ Brief overview of the code quality
 
 ### Recommendations
 Prioritized list of improvements
+```
+
+### Commands (command)
+
+Commands add custom TUI commands to OpenCode's command palette.
+
+**File:** `files/commands/{name}.md`
+
+````markdown
+# Command: Run Tests
+
+Execute project test suite with coverage reporting.
+
+## Description
+
+Runs the full test suite using the project's configured test runner and generates
+a coverage report.
+
+## Usage
+
+Type `/tests` in the command palette or use the keyboard shortcut `Cmd+T`.
+
+## Implementation
+
+This command runs:
+```bash
+npm test -- --coverage
+```
+
+The results are displayed in a dedicated output panel.
+````
+
+### Tools (tool)
+
+Tools provide custom functionality that can be called by AI assistants during conversations.
+
+**File:** `files/tools/{name}.ts`
+
+```typescript
+import type { Tool } from "opencode"
+
+export default {
+  name: "calculate-complexity",
+  description: "Analyze code complexity metrics",
+  parameters: {
+    type: "object",
+    properties: {
+      filePath: {
+        type: "string",
+        description: "Path to the file to analyze"
+      }
+    },
+    required: ["filePath"]
+  },
+  execute: async (params, ctx) => {
+    const content = await ctx.fs.readFile(params.filePath)
+    const complexity = analyzeComplexity(content)
+    return {
+      cyclomaticComplexity: complexity.cyclomatic,
+      cognitiveComplexity: complexity.cognitive,
+      recommendations: complexity.recommendations
+    }
+  }
+} satisfies Tool
 ```
 
 ### Bundles (bundle)

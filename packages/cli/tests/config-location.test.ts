@@ -66,7 +66,7 @@ describe("config file locations", () => {
 			// Should exist in .opencode/
 			expect(existsSync(join(testDir, ".opencode", "ocx.jsonc"))).toBe(true)
 			expect(existsSync(join(testDir, ".opencode", "opencode.jsonc"))).toBe(true)
-			// V2: Receipt is at .ocx/receipt.jsonc
+			// V1: Receipt is at .ocx/receipt.jsonc
 			expect(existsSync(join(testDir, ".ocx", "receipt.jsonc"))).toBe(true)
 
 			// Should NOT exist at root
@@ -88,7 +88,7 @@ describe("config file locations", () => {
 			const { exitCode } = await runCLI(["update", "kdco/test-plugin"], testDir)
 			expect(exitCode).toBe(0)
 
-			// V2: Receipt should be at .ocx/receipt.jsonc
+			// V1: Receipt should be at .ocx/receipt.jsonc
 			expect(existsSync(join(testDir, ".ocx", "receipt.jsonc"))).toBe(true)
 			expect(existsSync(join(testDir, "ocx.lock"))).toBe(false)
 		})
@@ -160,7 +160,7 @@ describe("config file locations", () => {
 
 			// New files should be in .opencode/
 			expect(existsSync(join(testDir, ".opencode", "opencode.jsonc"))).toBe(true)
-			// V2: Receipt is at .ocx/receipt.jsonc
+			// V1: Receipt is at .ocx/receipt.jsonc
 			expect(existsSync(join(testDir, ".ocx", "receipt.jsonc"))).toBe(true)
 
 			// Should NOT create duplicate ocx.jsonc in .opencode/
@@ -210,7 +210,7 @@ describe("config file locations", () => {
 		it("reads root ocx.lock, updates in place", async () => {
 			testDir = await createTempDir("compat-root-lock")
 
-			// V2: No backward compatibility with ocx.lock - always uses .ocx/receipt.jsonc
+			// V1: No backward compatibility with ocx.lock - always uses .ocx/receipt.jsonc
 			// Create root config
 			await writeFile(
 				join(testDir, "ocx.jsonc"),
@@ -253,7 +253,7 @@ describe("config file locations", () => {
 		it("both root ocx.jsonc and root ocx.lock - updates both in place", async () => {
 			testDir = await createTempDir("compat-full-legacy")
 
-			// V2: No backward compatibility with ocx.lock - always uses .ocx/receipt.jsonc
+			// V1: No backward compatibility with ocx.lock - always uses .ocx/receipt.jsonc
 			// Create full root setup
 			await writeFile(
 				join(testDir, "ocx.jsonc"),
@@ -275,7 +275,7 @@ describe("config file locations", () => {
 			const { exitCode } = await runCLI(["add", "kdco/test-plugin"], testDir)
 			expect(exitCode).toBe(0)
 
-			// V2: Receipt is always at .ocx/receipt.jsonc
+			// V1: Receipt is always at .ocx/receipt.jsonc
 			expect(existsSync(join(testDir, ".ocx", "receipt.jsonc"))).toBe(true)
 
 			// Root configs should still be there
@@ -297,7 +297,7 @@ describe("config file locations", () => {
 				}),
 			)
 
-			// Create .opencode dir with lock (mixed setup)
+			// V1: Create .opencode dir with lock (mixed setup)
 			await mkdir(join(testDir, ".opencode"), { recursive: true })
 
 			// Add component with MCP config (triggers opencode.jsonc creation)
@@ -308,7 +308,7 @@ describe("config file locations", () => {
 			expect(existsSync(join(testDir, "ocx.jsonc"))).toBe(true)
 			expect(existsSync(join(testDir, ".opencode", "ocx.jsonc"))).toBe(false)
 
-			// V2: Receipt created at .ocx/receipt.jsonc
+			// V1: Receipt created at .ocx/receipt.jsonc
 			expect(existsSync(join(testDir, ".ocx", "receipt.jsonc"))).toBe(true)
 			expect(existsSync(join(testDir, "ocx.lock"))).toBe(false)
 
@@ -401,7 +401,7 @@ describe("config file locations", () => {
 		it("ocx.lock in both - uses .opencode/ version", async () => {
 			testDir = await createTempDir("conflict-lock")
 
-			// V2: No ocx.lock support - always uses .ocx/receipt.jsonc
+			// V1: No ocx.lock support - always uses .ocx/receipt.jsonc
 			// Create basic config (need to create directory first)
 			await mkdir(join(testDir, ".opencode"), { recursive: true })
 			await writeFile(
@@ -422,7 +422,7 @@ describe("config file locations", () => {
 			const { exitCode } = await runCLI(["update", "kdco/test-plugin"], testDir)
 			expect(exitCode).toBe(0)
 
-			// V2: Receipt should be at .ocx/receipt.jsonc
+			// V1: Receipt should be at .ocx/receipt.jsonc
 			const receipt = parseJsonc(
 				await readFile(join(testDir, ".ocx", "receipt.jsonc"), "utf-8"),
 			) as Record<string, unknown>
@@ -464,7 +464,7 @@ describe("config file locations", () => {
 		it("legacy root lock - update writes to root", async () => {
 			testDir = await createTempDir("update-loc-legacy")
 
-			// V2: No backward compatibility with ocx.lock - always uses .ocx/receipt.jsonc
+			// V1: No backward compatibility with ocx.lock - always uses .ocx/receipt.jsonc
 			// Create root config
 			await writeFile(
 				join(testDir, "ocx.jsonc"),
@@ -477,7 +477,7 @@ describe("config file locations", () => {
 			// Install to create receipt
 			await runCLI(["add", "kdco/test-plugin"], testDir)
 
-			// V2: Receipt is always at .ocx/receipt.jsonc
+			// V1: Receipt is always at .ocx/receipt.jsonc
 			expect(existsSync(join(testDir, ".ocx", "receipt.jsonc"))).toBe(true)
 			expect(existsSync(join(testDir, "ocx.lock"))).toBe(false)
 

@@ -54,14 +54,14 @@ export const ocxConfigSchema = z.object({
 export type OcxConfig = z.infer<typeof ocxConfigSchema>
 
 // =============================================================================
-// RECEIPT SCHEMA (V2: replaces ocx.lock)
+// RECEIPT SCHEMA (V1: replaces ocx.lock)
 // =============================================================================
 
 export const RECEIPT_DIR = ".ocx"
 export const RECEIPT_FILE = "receipt.jsonc"
 
 /**
- * V2: Installed component entry in receipt
+ * V1: Installed component entry in receipt
  * Canonical ID format: "registryUrl::namespace/component@resolvedRevision"
  * Includes ownership tracking and sha256 baseline for integrity
  */
@@ -118,7 +118,7 @@ export const installedComponentSchema = z.object({
 export type InstalledComponent = z.infer<typeof installedComponentSchema>
 
 /**
- * V2: Receipt file schema (.ocx/receipt.jsonc)
+ * V1: Receipt file schema (.ocx/receipt.jsonc)
  * Tracks installed components with ownership and baselines per install root.
  * Replaces the old ocx.lock format.
  *
@@ -126,7 +126,7 @@ export type InstalledComponent = z.infer<typeof installedComponentSchema>
  */
 export const receiptSchema = z.object({
 	/** Receipt format version */
-	version: z.literal(2),
+	version: z.literal(1),
 
 	/** Install root (for validation) */
 	root: z.string().optional(),
@@ -208,11 +208,11 @@ export const ocxLockSchema = z.object({
 export type OcxLock = z.infer<typeof ocxLockSchema>
 
 // =============================================================================
-// RECEIPT FILE HELPERS (V2)
+// RECEIPT FILE HELPERS (V1)
 // =============================================================================
 
 /**
- * V2: Create canonical component ID.
+ * V1: Create canonical component ID.
  * Format: "registryUrl::namespace/component@resolvedRevision"
  *
  * Registry versions are ignored - registry is treated as latest-only.
@@ -235,7 +235,7 @@ export function createCanonicalId(
 }
 
 /**
- * V2: Parse a canonical component ID.
+ * V1: Parse a canonical component ID.
  * Format: "registryUrl::namespace/component@resolvedRevision"
  *
  * @param canonicalId - The canonical ID to parse
@@ -311,7 +311,7 @@ export function parseCanonicalId(canonicalId: string): {
 }
 
 /**
- * V2: Find receipt file path for an install root.
+ * V1: Find receipt file path for an install root.
  * Receipt is always at <root>/.ocx/receipt.jsonc
  * @param installRoot - The install root directory
  * @returns Object with path and whether it exists
@@ -325,7 +325,7 @@ export function findReceipt(installRoot: string): { path: string; exists: boolea
 }
 
 /**
- * V2: Read receipt file
+ * V1: Read receipt file
  * @param installRoot - The install root directory
  * @returns Receipt object or null if not found
  */
@@ -343,7 +343,7 @@ export async function readReceipt(installRoot: string): Promise<Receipt | null> 
 }
 
 /**
- * V2: Write receipt file
+ * V1: Write receipt file
  * @param installRoot - The install root directory
  * @param receipt - Receipt data to write
  */

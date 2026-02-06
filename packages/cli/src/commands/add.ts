@@ -438,8 +438,8 @@ async function runRegistryAddCore(
 		}
 	}
 
-	// V2: Load or create receipt
-	let receipt: Receipt = { version: 2, root: cwd, installed: {} }
+	// V1: Load or create receipt
+	let receipt: Receipt = { version: 1, root: cwd, installed: {} }
 	const existingReceipt = await readReceipt(cwd)
 	if (existingReceipt) {
 		receipt = existingReceipt
@@ -765,7 +765,7 @@ async function runRegistryAddCore(
 			}
 		}
 
-		// V2: Save receipt file
+		// V1: Save receipt file
 		await writeReceipt(cwd, receipt)
 
 		if (options.json) {
