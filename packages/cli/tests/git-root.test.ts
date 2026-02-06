@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it } from "bun:test"
 import { existsSync } from "node:fs"
 import { mkdir, writeFile } from "node:fs/promises"
-import { isAbsolute, join, resolve } from "node:path"
+import { isAbsolute, join, relative, resolve } from "node:path"
 import { resolveGitRootSync } from "../src/utils/git-root"
 import { cleanupTempDir, createTempDir } from "./helpers"
 
