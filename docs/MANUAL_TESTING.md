@@ -463,11 +463,10 @@ All variations from CLI.md lines 129-253.
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `ocx add npm:opencode-plugin-foo`
-- [ ] **Expected:** Installs npm package to `.opencode/plugins/`
+- [ ] **Expected:** Plugin entry added to `.opencode/opencode.jsonc` plugins array; runtime installation handled by OpenCode
 - [ ] **Verify:**
   ```bash
-  ls .opencode/plugins/
-  cat .opencode/opencode.jsonc  # npm plugins appear in "plugin" array; registry plugins are auto-discovered
+  cat .opencode/opencode.jsonc  # Should contain plugin in "plugins" array
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -475,11 +474,10 @@ All variations from CLI.md lines 129-253.
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `ocx add npm:@franlol/opencode-md-table-formatter`
-- [ ] **Expected:** Installs scoped npm package
+- [ ] **Expected:** Plugin entry added to `.opencode/opencode.jsonc` plugins array; runtime installation handled by OpenCode
 - [ ] **Verify:**
   ```bash
-  ls .opencode/plugins/
-  cat .ocx/receipt.jsonc
+  cat .opencode/opencode.jsonc  # Should contain plugin in "plugins" array
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -487,10 +485,10 @@ All variations from CLI.md lines 129-253.
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `ocx add npm:some-plugin@1.0.0`
-- [ ] **Expected:** Installs specific version
+- [ ] **Expected:** Plugin entry with version added to `.opencode/opencode.jsonc` plugins array; runtime installation handled by OpenCode
 - [ ] **Verify:**
   ```bash
-  cat .ocx/receipt.jsonc  # Should show version 1.0.0
+  cat .opencode/opencode.jsonc  # Should contain "some-plugin@1.0.0" in "plugins" array
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
