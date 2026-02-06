@@ -26,9 +26,20 @@ describe("resolveGitRootSync", () => {
 		const gitDir = join(testDir, ".git")
 		await mkdir(gitDir, { recursive: true })
 
-		// Test with relative path (from testDir perspective)
-		const result = resolveGitRootSync(".")
+		// Create nested directory under testDir
+		const nestedDir = join(testDir, "nested", "subdir")
+		await mkdir(nestedDir, { recursive: true })
+
+		// Compute relative path from process.cwd() to nestedDir
+		const relativePath = nestedDir.replace(process.cwd() + "/", "")
+
+		// Assert input is relative
+		expect(isAbsolute(relativePath)).toBe(false)
+
+		// Test with relative path
+		const result = resolveGitRootSync(relativePath)
 		expect(isAbsolute(result)).toBe(true)
+		expect(result).toBe(resolve(testDir))
 	})
 
 	it("should return absolute path when outside git repo", async () => {

@@ -5,13 +5,14 @@
 
 import { afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { existsSync, symlinkSync } from "node:fs"
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { cleanupTempDir, createTempDir, parseJsonc, runCLI } from "./helpers"
 import { type MockRegistry, startMockRegistry } from "./mock-registry"
 
 describe("ocx remove security", () => {
 	let testDir: string
+	let externalDir: string
 	let registry: MockRegistry
 
 	beforeAll(() => {
@@ -21,6 +22,9 @@ describe("ocx remove security", () => {
 	afterEach(async () => {
 		if (testDir) {
 			await cleanupTempDir(testDir)
+		}
+		if (externalDir) {
+			await cleanupTempDir(externalDir)
 		}
 	})
 
@@ -143,6 +147,7 @@ describe("ocx remove security", () => {
 
 	it("should reject symlink escaping project root", async () => {
 		testDir = await createTempDir("remove-symlink-escape")
+		externalDir = await createTempDir("remove-external-target")
 
 		// Initialize and add registry
 		await runCLI(["init"], testDir)
@@ -157,9 +162,9 @@ describe("ocx remove security", () => {
 		// Install a component
 		await runCLI(["add", "kdco/test-plugin"], testDir)
 
-		// Create a symlink that escapes to /tmp (and create the target so it exists)
+		// Create a symlink that escapes to externalDir (and create the target so it exists)
 		const symlinkPath = join(testDir, "plugins", "escape-link.ts")
-		const targetPath = "/tmp/ocx-test-evil-target.txt"
+		const targetPath = join(externalDir, "evil-target.txt")
 		await mkdir(join(testDir, "plugins"), { recursive: true })
 		// Create target file first
 		await writeFile(targetPath, "malicious content")
@@ -187,12 +192,8 @@ describe("ocx remove security", () => {
 		expect(exitCode).not.toBe(0)
 		expect(output.toLowerCase()).toMatch(/security|escapes|directory/)
 
-		// Clean up the evil target file
-		try {
-			await rm(targetPath, { force: true })
-		} catch {
-			// Ignore cleanup errors
-		}
+		// Assert external target file remains after failed remove
+		expect(existsSync(targetPath)).toBe(true)
 	})
 
 	it("should reject mixed valid + malicious paths atomically", async () => {
