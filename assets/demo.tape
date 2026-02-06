@@ -1,5 +1,6 @@
 # OCX Demo GIF
-# Generate with: vhs assets/demo.tape
+# Generate with isolated env (does not touch real config):
+#   TMP=$(mktemp -d) && XDG_CONFIG_HOME="$TMP/config" HOME="$TMP/home" vhs assets/demo.tape && rm -rf "$TMP"
 # Requires: brew install vhs
 
 Output assets/demo.gif
@@ -10,32 +11,22 @@ Set Width 800
 Set Height 500
 Set Padding 20
 
-# Initialize
+# Initialize local config (required before adding components)
 Type "ocx init"
 Sleep 500ms
 Enter
 Sleep 2s
 
-Enter
-
 # npm plugin (no registry needed)
-Type "ocx add npm:@franlol/opencode-md-table-formatter"
+Type "ocx add npm:oh-my-opencode"
 Sleep 500ms
 Enter
 Sleep 3s
 
 Enter
 
-# Add registry
-Type "ocx registry add https://registry.kdco.dev --name kdco"
-Sleep 500ms
-Enter
-Sleep 2s
-
-Enter
-
-# Registry bundle
-Type "ocx add kdco/workspace"
+# Add component directly from registry URL
+Type "ocx add kdco/workspace --from https://registry.kdco.dev"
 Sleep 500ms
 Enter
 Sleep 3s

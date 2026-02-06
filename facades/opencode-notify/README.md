@@ -22,17 +22,14 @@ Install via [OCX](https://github.com/kdcokenny/ocx), the package manager for Ope
 # Install OCX
 curl -fsSL https://ocx.kdco.dev/install.sh | sh
 
-# Add the registry and install
-ocx registry add https://registry.kdco.dev --name kdco
-ocx add kdco/notify
+# Install directly from registry
+ocx add kdco/notify --from https://registry.kdco.dev
 ```
-
-> **Tip:** Add `--global` to configure the registry globally instead of per-project.
 
 Or get everything at once with `kdco-workspace`:
 
 ```bash
-ocx add kdco/workspace
+ocx add kdco/workspace --from https://registry.kdco.dev
 ```
 
 ## How It Works

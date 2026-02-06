@@ -5,24 +5,39 @@
 ## Quick Start
 
 ```bash
-# One-command install (not saved)
-ocx add kdco/workspace --from https://registry.kdco.dev
+# One-time local setup
+ocx init
 
-# Or add registry first, then install
-ocx registry add https://registry.kdco.dev --name kdco
-ocx add kdco/workspace
+# Install component directly from registry
+ocx add kdco/workspace --from https://registry.kdco.dev
 ```
 
-> **Tip:** Use `--global` to add the registry to your global config for profile management.
+Or install a profile:
 
-Browse available components with `ocx search kdco/`.
+```bash
+# One-time global setup
+ocx init --global
+
+ocx profile add ws --source kit/ws --from https://ocx-kit.kdco.dev --global
+```
+
+Browse available components:
+
+```bash
+# With a profile that includes the registry
+ocx search kdco/ -p ws
+
+# Or add the registry first, then search
+ocx registry add https://registry.kdco.dev --name kdco
+ocx search kdco/
+```
 
 ## Bundles
 
 | Name | Description | Command |
 |------|-------------|---------|
-| workspace | Full KDCO experience | `ocx add kdco/workspace` |
-| philosophy | Code quality philosophies | `ocx add kdco/philosophy` |
+| workspace | Full KDCO experience | `ocx add kdco/workspace --from https://registry.kdco.dev` |
+| philosophy | Code quality philosophies | `ocx add kdco/philosophy --from https://registry.kdco.dev` |
 
 ## Components
 
@@ -32,26 +47,26 @@ Install individually if you don't want the full bundle.
 
 | Name | Description | Command |
 |------|-------------|---------|
-| researcher | External research via MCP | `ocx add kdco/researcher` |
-| scribe | Documentation specialist | `ocx add kdco/scribe` |
-| coder | Code implementation | `ocx add kdco/coder` |
+| researcher | External research via MCP | `ocx add kdco/researcher --from https://registry.kdco.dev` |
+| scribe | Documentation specialist | `ocx add kdco/scribe --from https://registry.kdco.dev` |
+| coder | Code implementation | `ocx add kdco/coder --from https://registry.kdco.dev` |
 
 ### Plugins
 
 | Name | Description | Command |
 |------|-------------|---------|
-| background-agents | Async task execution | `ocx add kdco/background-agents` |
-| notify | OS notifications | `ocx add kdco/notify` |
-| workspace-plugin | Plan management | `ocx add kdco/workspace-plugin` |
-| worktree | Auto-manages Git worktrees for isolated AI sessions with seamless terminal spawning | `ocx add kdco/worktree` |
+| background-agents | Async task execution | `ocx add kdco/background-agents --from https://registry.kdco.dev` |
+| notify | OS notifications | `ocx add kdco/notify --from https://registry.kdco.dev` |
+| workspace-plugin | Plan management | `ocx add kdco/workspace-plugin --from https://registry.kdco.dev` |
+| worktree | Auto-manages Git worktrees for isolated AI sessions with seamless terminal spawning | `ocx add kdco/worktree --from https://registry.kdco.dev` |
 
 ### Skills
 
 | Name | Description | Command |
 |------|-------------|---------|
-| plan-protocol | Implementation plan guidelines | `ocx add kdco/plan-protocol` |
-| code-philosophy | The 5 Laws of Elegant Defense | `ocx add kdco/code-philosophy` |
-| frontend-philosophy | The 5 Pillars of Intentional UI | `ocx add kdco/frontend-philosophy` |
+| plan-protocol | Implementation plan guidelines | `ocx add kdco/plan-protocol --from https://registry.kdco.dev` |
+| code-philosophy | The 5 Laws of Elegant Defense | `ocx add kdco/code-philosophy --from https://registry.kdco.dev` |
+| frontend-philosophy | The 5 Pillars of Intentional UI | `ocx add kdco/frontend-philosophy --from https://registry.kdco.dev` |
 
 ## Web Search Setup
 

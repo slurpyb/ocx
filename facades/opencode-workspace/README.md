@@ -5,12 +5,11 @@ Bundled multi-agent orchestration harness for OpenCode. One install, complete co
 ## Quick Start
 
 ```bash
-# Add registries (one-time)
-ocx registry add https://ocx-kit.kdco.dev --name kit --global
-ocx registry add https://registry.kdco.dev --name kdco --global
+# One-time global setup
+ocx init --global
 
-# Install profile
-ocx profile add ws --source kit/ws --global
+# Install profile from registry
+ocx profile add ws --source kit/ws --from https://ocx-kit.kdco.dev --global
 
 # Launch
 ocx oc -p ws
@@ -101,19 +100,29 @@ The bundle configures security boundaries:
 
 See the [OCX repository](https://github.com/kdcokenny/ocx) for installation instructions.
 
-### 2. Add the KDCO Registry
+### 2. Install the Bundle
 
 ```bash
-ocx registry add https://registry.kdco.dev --name kdco
+# One-time local setup
+ocx init
+
+ocx add kdco/workspace --from https://registry.kdco.dev
 ```
 
-> **Tip:** Add `--global` to configure the registry globally instead of per-project.
-
-### 3. Install the Bundle
+Or install via profile for a complete, isolated configuration:
 
 ```bash
-ocx add kdco/workspace
+# One-time global setup (if not done already)
+ocx init --global
+
+ocx profile add ws --source kit/ws --from https://ocx-kit.kdco.dev --global
+ocx oc -p ws
 ```
+
+> **Tip:** Clone and customize the profile:
+> ```bash
+> ocx profile add my-ws --clone ws --global
+> ```
 
 ## Owning Your Code
 

@@ -52,17 +52,14 @@ Install via [OCX](https://github.com/kdcokenny/ocx), the package manager for Ope
 # Install OCX
 curl -fsSL https://ocx.kdco.dev/install.sh | sh
 
-# Add the registry and install
-ocx registry add https://registry.kdco.dev --name kdco
-ocx add kdco/worktree
+# Install directly from registry
+ocx add kdco/worktree --from https://registry.kdco.dev
 ```
-
-> **Tip:** Add `--global` to configure the registry globally instead of per-project.
 
 Want the full experience? Install `kdco-workspace` instead—it bundles worktrees with background agents, planning tools, and notifications:
 
 ```bash
-ocx add kdco/workspace
+ocx add kdco/workspace --from https://registry.kdco.dev
 ```
 
 ## Usage

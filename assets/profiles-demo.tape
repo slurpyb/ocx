@@ -1,5 +1,6 @@
 # OCX Profiles Demo GIF
-# Generate with: vhs assets/profiles-demo.tape
+# Generate with isolated env (does not touch real config):
+#   TMP=$(mktemp -d) && XDG_CONFIG_HOME="$TMP/config" HOME="$TMP/home" vhs assets/profiles-demo.tape && rm -rf "$TMP"
 # Requires: brew install vhs
 
 Output assets/profiles-demo.gif
@@ -10,24 +11,14 @@ Set Width 800
 Set Height 500
 Set Padding 20
 
-# Initialize global profiles
+# Initialize global profile system
 Type "ocx init --global"
 Sleep 500ms
 Enter
 Sleep 2s
 
-Enter
-
-# Create a profile
-Type "ocx profile add work"
-Sleep 500ms
-Enter
-Sleep 1.5s
-
-Enter
-
-# Add npm plugin to profile
-Type "ocx add npm:oh-my-opencode -p work"
+# Install profile directly from registry URL
+Type "ocx profile add ws --source kit/ws --from https://ocx-kit.kdco.dev --global"
 Sleep 500ms
 Enter
 Sleep 3s
@@ -35,7 +26,7 @@ Sleep 3s
 Enter
 
 # Launch OpenCode with profile
-Type "ocx oc -p work"
+Type "ocx oc -p ws"
 Sleep 500ms
 Enter
 Sleep 2s

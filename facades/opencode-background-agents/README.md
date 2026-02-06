@@ -22,17 +22,14 @@ Install via [OCX](https://github.com/kdcokenny/ocx), the package manager for Ope
 # Install OCX
 curl -fsSL https://ocx.kdco.dev/install.sh | sh
 
-# Add the registry and install
-ocx registry add https://registry.kdco.dev --name kdco
-ocx add kdco/background-agents
+# Install directly from registry
+ocx add kdco/background-agents --from https://registry.kdco.dev
 ```
-
-> **Tip:** Add `--global` to configure the registry globally instead of per-project.
 
 Want the full experience? Install `kdco-workspace` instead - it bundles background agents with specialist agents, planning tools, and research protocols:
 
 ```bash
-ocx add kdco/workspace
+ocx add kdco/workspace --from https://registry.kdco.dev
 ```
 
 ## How It Works
