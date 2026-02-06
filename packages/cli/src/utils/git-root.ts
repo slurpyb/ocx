@@ -71,7 +71,8 @@ export async function resolveGitRoot(cwd: string): Promise<string> {
  * @returns Absolute path to git root, or null if not found
  */
 function findGitRootSync(startDir: string): string | null {
-	let currentDir = startDir
+	// Normalize startDir to absolute at entry (Law 2: Parse, Don't Validate)
+	let currentDir = resolve(startDir)
 
 	while (true) {
 		const gitPath = resolve(currentDir, ".git")
@@ -120,5 +121,8 @@ function findGitRootSync(startDir: string): string | null {
  * @returns Absolute path to git root, or cwd if not in git repo
  */
 export function resolveGitRootSync(cwd: string): string {
-	return findGitRootSync(cwd) ?? cwd
+	// Normalize cwd to absolute at entry (Law 2: Parse, Don't Validate)
+	const absoluteCwd = resolve(cwd)
+	// Ensure fallback is also absolute
+	return findGitRootSync(absoluteCwd) ?? absoluteCwd
 }

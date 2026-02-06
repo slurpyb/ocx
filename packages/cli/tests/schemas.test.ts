@@ -197,6 +197,19 @@ describe("schemas", () => {
 			expect(() => validateFileTarget("foo/../bar")).not.toThrow()
 			expect(() => validateFileTarget("component..v2.ts")).not.toThrow()
 		})
+
+		it("should reject normalized paths that bypass protected prefixes", () => {
+			// RED case: normalized paths that land in blocked prefixes
+			// These should be rejected even though schema-level checks pass
+			expect(() => validateFileTarget("foo/../.git/config")).toThrow(ValidationError)
+			expect(() => validateFileTarget("x/../.ocx/receipt.jsonc")).toThrow(ValidationError)
+			expect(() => validateFileTarget("x/../node_modules/pkg/index.js")).toThrow(ValidationError)
+			expect(() => validateFileTarget("bar/../package.json")).toThrow(ValidationError)
+
+			// GREEN case: safe normalization should still work
+			expect(() => validateFileTarget("foo/../bar")).not.toThrow()
+			expect(() => validateFileTarget("component..v2.ts")).not.toThrow()
+		})
 	})
 
 	describe("parseQualifiedComponent", () => {

@@ -13,7 +13,7 @@ import { readReceipt, writeReceipt } from "../schemas/config"
 import { type DryRunResult, outputDryRun } from "../utils/dry-run"
 import { NotFoundError, ValidationError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
-import { validatePath } from "../utils/path-security"
+import { PathValidationError, validatePath } from "../utils/path-security"
 import { checkFileIntegrity, parseCanonicalId } from "../utils/receipt"
 import { addCommonOptions, addVerboseOption } from "../utils/shared-options"
 
@@ -79,6 +79,28 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 			if (!entry) {
 				notFound.push(canonicalId)
 				continue
+			}
+
+			// Preflight validation: validate all file paths before any deletion
+			for (const fileEntry of entry.files) {
+				// Guard: Empty or "." paths are rejected (Law 1: Early Exit)
+				if (!fileEntry.path || fileEntry.path === ".") {
+					throw new ValidationError(
+						`Invalid file path in receipt for '${canonicalId}': path cannot be empty or "."`,
+					)
+				}
+
+				// Validate path structure (rejects null bytes, absolute paths, traversal)
+				try {
+					validatePath(provider.cwd, fileEntry.path)
+				} catch (error) {
+					if (error instanceof PathValidationError) {
+						throw new ValidationError(
+							`Security violation in receipt for '${canonicalId}': ${error.message}`,
+						)
+					}
+					throw error
+				}
 			}
 
 			// Check file integrity before removal
@@ -231,12 +253,19 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 					throw error
 				}
 
-				// Step 5: Containment check using path boundary
+				// Step 5: Containment check - reject if targetReal === baseReal
+				if (targetReal === baseReal) {
+					throw new ValidationError(
+						`Security violation: cannot delete project root directory (${fileEntry.path})`,
+					)
+				}
+
+				// Step 6: Containment check using path boundary
 				if (!targetReal.startsWith(baseReal + sep) && targetReal !== baseReal) {
 					throw new ValidationError(`Security violation: path escapes project directory`)
 				}
 
-				// Step 6: Delete via targetReal (canonical path) to avoid TOCTOU
+				// Step 7: Delete via targetReal (canonical path) to avoid TOCTOU
 				await rm(targetReal, { force: true })
 				if (options.verbose) {
 					logger.info(`  ✓ Removed ${fileEntry.path}`)

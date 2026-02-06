@@ -685,8 +685,13 @@ export function validateFileTarget(target: string, componentType?: ComponentType
 	// Check blocked paths (except for profiles, which install to their own directory)
 	const isProfile = componentType === "profile" || componentType === "ocx:profile"
 	if (!isProfile) {
+		// Normalize the target path to evaluate the cleaned/resolved segments
+		// This prevents bypass via paths like "foo/../.git/config"
+		const normalized = normalize(target)
+
+		// After normalization, check if path lands in blocked prefixes
 		const isBlocked = BLOCKED_PATHS.some(
-			(blocked) => target === blocked || target.startsWith(blocked),
+			(blocked) => normalized === blocked || normalized.startsWith(blocked),
 		)
 		if (isBlocked) {
 			throw new ValidationError(
