@@ -619,9 +619,9 @@ The build command expects a `registry.jsonc` file in the source directory:
 my-registry/
   registry.jsonc        # Registry manifest
   files/
-    agent/
+    agents/
       my-agent.md       # Agent definition
-    plugin/
+    plugins/
       my-plugin.ts      # Plugin file
     skills/
       my-skill/

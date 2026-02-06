@@ -174,7 +174,7 @@ The component itself does NOT need to be listed in `opencode.plugin` - it's auto
 {
   "name": "my-agent",
   "type": "agent",
-  "files": ["agent/my-agent.md"],
+  "files": ["agents/my-agent.md"],
   "dependencies": [],
   "opencode": {
     "plugin": ["@some-org/opencode-plugin"],

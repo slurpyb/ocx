@@ -79,10 +79,10 @@ mkdir -p files/skills/my-skill
 echo "# My Skill\n\nInstructions..." > files/skills/my-skill/SKILL.md
 
 # Plugin
-touch files/plugin/my-plugin.ts
+touch files/plugins/my-plugin.ts
 
 # Agent
-touch files/agent/my-agent.md
+touch files/agents/my-agent.md
 ```
 
 ### 2. Register it in `registry.jsonc`

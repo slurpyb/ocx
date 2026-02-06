@@ -14,9 +14,9 @@ Create a directory for your registry source:
 my-registry/
 ├── registry.jsonc      # Required: metadata and component definitions
 └── files/              # Component source files
-    ├── agent/          # .md files
+    ├── agents/          # .md files
     ├── skills/          # Directories with SKILL.md
-    └── plugin/         # .ts files (can have sub-directories)
+    └── plugins/         # .ts files (can have sub-directories)
 ```
 
 ### 2. Registry Manifest (registry.jsonc)
@@ -36,8 +36,8 @@ Your `registry.jsonc` defines a namespace for all components:
       "description": "What it does",
       "files": [
         {
-          "path": "plugin/my-plugin.ts",
-          "target": "plugin/component.ts"
+          "path": "plugins/my-plugin.ts",
+          "target": "plugins/component.ts"
         }
       ],
       "dependencies": []

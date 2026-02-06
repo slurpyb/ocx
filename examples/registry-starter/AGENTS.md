@@ -112,9 +112,9 @@ my-registry/
 │   ├── skills/
 │   │   └── my-skill/
 │   │       └── SKILL.md
-│   ├── plugin/
+│   ├── plugins/
 │   │   └── my-plugin.ts
-│   └── agent/
+│   └── agents/
 │       └── my-agent.md
 ├── dist/                   # Built output (generated)
 │   ├── index.json          # Registry index
@@ -217,7 +217,7 @@ Show good and bad examples...
 
 Plugins add functionality to OpenCode through hooks and tools.
 
-**File:** `files/plugin/{name}.ts`
+**File:** `files/plugins/{name}.ts`
 
 ```typescript
 import type { Plugin, PluginContext, ToolDefinition } from "opencode"
@@ -308,7 +308,7 @@ interface PluginContext {
 
 Agents define specialized AI roles with specific permissions and behaviors.
 
-**File:** `files/agent/{name}.md`
+**File:** `files/agents/{name}.md`
 
 ```markdown
 # Agent: Code Reviewer
@@ -574,7 +574,7 @@ dist/
 ├── skills/
 │   └── my-skill/
 │       └── SKILL.md
-└── plugin/
+└── plugins/
     └── my-plugin.ts
 ```
 
@@ -673,10 +673,10 @@ mkdir -p files/skills/my-new-skill
 touch files/skills/my-new-skill/SKILL.md
 
 # For a plugin
-touch files/plugin/my-plugin.ts
+touch files/plugins/my-plugin.ts
 
 # For an agent
-touch files/agent/my-agent.md
+touch files/agents/my-agent.md
 ```
 
 ### 2. Update registry.jsonc
