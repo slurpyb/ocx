@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test"
 import {
 	formatTerminalName,
 	isInsideTmux,
@@ -53,55 +53,30 @@ describe("terminal-title", () => {
 	})
 
 	describe("setTerminalName", () => {
-		it("does not throw when called with a valid name", () => {
-			// Smoke test: should not throw regardless of terminal environment
-			expect(() => {
-				setTerminalName("test-terminal-name")
-			}).not.toThrow()
-		})
-
-		it("does not throw with special characters in name", () => {
-			expect(() => {
-				setTerminalName("ocx[work]: my-project@main")
-			}).not.toThrow()
-		})
-
-		it("does not throw with empty string", () => {
-			expect(() => {
-				setTerminalName("")
-			}).not.toThrow()
-		})
-
-		it("does not throw with unicode characters", () => {
-			expect(() => {
-				setTerminalName("🚀 project-name")
-			}).not.toThrow()
-		})
-	})
-
-	describe("setTerminalTitle", () => {
-		it("does not throw when called with a valid title", () => {
-			// Smoke test: should not throw regardless of TTY status
-			expect(() => {
-				setTerminalTitle("test-title")
-			}).not.toThrow()
-		})
-
-		it("does not throw with empty string", () => {
-			expect(() => {
-				setTerminalTitle("")
-			}).not.toThrow()
-		})
-	})
-
-	describe("setTmuxWindowName", () => {
+		let stdoutWriteSpy: ReturnType<typeof spyOn>
+		let bunSpawnSyncSpy: ReturnType<typeof spyOn>
 		let originalTmuxEnv: string | undefined
+		// Track calls manually for easier assertion
+		let spawnSyncCalls: unknown[][]
 
 		beforeEach(() => {
+			// Capture original state
 			originalTmuxEnv = process.env.TMUX
+			spawnSyncCalls = []
+			// Spy on stdout.write to observe escape sequence writes
+			stdoutWriteSpy = spyOn(process.stdout, "write").mockImplementation(() => true)
+			// Spy on Bun.spawnSync to observe tmux calls
+			bunSpawnSyncSpy = spyOn(Bun, "spawnSync").mockImplementation((cmd: unknown) => {
+				spawnSyncCalls.push(cmd as unknown[])
+				// Return minimal valid mock - use type assertion
+				return { exitCode: 0, success: true } as ReturnType<typeof Bun.spawnSync>
+			})
 		})
 
 		afterEach(() => {
+			// Restore spies and env
+			stdoutWriteSpy.mockRestore()
+			bunSpawnSyncSpy.mockRestore()
 			if (originalTmuxEnv !== undefined) {
 				process.env.TMUX = originalTmuxEnv
 			} else {
@@ -109,18 +84,110 @@ describe("terminal-title", () => {
 			}
 		})
 
-		it("does not throw when not inside tmux", () => {
-			delete process.env.TMUX
-			expect(() => {
-				setTmuxWindowName("test-window")
-			}).not.toThrow()
+		it("calls Bun.spawnSync with tmux commands when inside tmux", () => {
+			process.env.TMUX = "/tmp/tmux-1000/default,12345,0"
+
+			setTerminalName("test-name")
+
+			// Should have called tmux commands
+			expect(spawnSyncCalls.length).toBeGreaterThanOrEqual(2)
+			// Check rename-window call
+			expect(spawnSyncCalls[0]).toEqual(["tmux", "rename-window", "test-name"])
+			// Check set-window-option call
+			expect(spawnSyncCalls[1]).toEqual(["tmux", "set-window-option", "automatic-rename", "off"])
 		})
 
-		it("does not throw when called with a valid name", () => {
-			// Smoke test: should not throw regardless of tmux status
-			expect(() => {
-				setTmuxWindowName("test-window-name")
-			}).not.toThrow()
+		it("does not call Bun.spawnSync when not inside tmux", () => {
+			delete process.env.TMUX
+
+			setTerminalName("test-name")
+
+			// Should not call tmux commands
+			expect(spawnSyncCalls.length).toBe(0)
+		})
+
+		// Smoke tests: verify no exceptions thrown for various inputs
+		const inputs = [
+			{ name: "valid name", value: "test-terminal-name" },
+			{ name: "special characters", value: "ocx[work]: my-project@main" },
+			{ name: "empty string", value: "" },
+			{ name: "unicode characters", value: "🚀 project-name" },
+		]
+
+		for (const { name, value } of inputs) {
+			it(`handles ${name} without throwing`, () => {
+				expect(() => setTerminalName(value)).not.toThrow()
+			})
+		}
+	})
+
+	describe("setTerminalTitle", () => {
+		let stdoutWriteSpy: ReturnType<typeof spyOn>
+
+		beforeEach(() => {
+			// Spy on stdout.write to observe escape sequence writes
+			stdoutWriteSpy = spyOn(process.stdout, "write").mockImplementation(() => true)
+		})
+
+		afterEach(() => {
+			stdoutWriteSpy.mockRestore()
+		})
+
+		// Note: setTerminalTitle checks isTTY which is a const evaluated at module load.
+		// In CI/test environments, isTTY is typically false, so stdout.write is not called.
+		// These tests verify the function doesn't throw and document expected behavior.
+		const inputs = ["test-title", ""]
+
+		for (const value of inputs) {
+			it(`handles "${value || "(empty string)"}" without throwing`, () => {
+				expect(() => setTerminalTitle(value)).not.toThrow()
+			})
+		}
+	})
+
+	describe("setTmuxWindowName", () => {
+		let originalTmuxEnv: string | undefined
+		let bunSpawnSyncSpy: ReturnType<typeof spyOn>
+		// Track calls manually for easier assertion
+		let spawnSyncCalls: unknown[][]
+
+		beforeEach(() => {
+			originalTmuxEnv = process.env.TMUX
+			spawnSyncCalls = []
+			// Spy on Bun.spawnSync to observe tmux calls
+			bunSpawnSyncSpy = spyOn(Bun, "spawnSync").mockImplementation((cmd: unknown) => {
+				spawnSyncCalls.push(cmd as unknown[])
+				return { exitCode: 0, success: true } as ReturnType<typeof Bun.spawnSync>
+			})
+		})
+
+		afterEach(() => {
+			bunSpawnSyncSpy.mockRestore()
+			if (originalTmuxEnv !== undefined) {
+				process.env.TMUX = originalTmuxEnv
+			} else {
+				delete process.env.TMUX
+			}
+		})
+
+		it("does not call Bun.spawnSync when not inside tmux", () => {
+			delete process.env.TMUX
+			setTmuxWindowName("test-window")
+
+			// Should not call any tmux commands
+			expect(spawnSyncCalls.length).toBe(0)
+		})
+
+		it("calls Bun.spawnSync with correct tmux commands when inside tmux", () => {
+			process.env.TMUX = "/tmp/tmux-1000/default,12345,0"
+			setTmuxWindowName("test-window-name")
+
+			// Should have called tmux commands
+			expect(spawnSyncCalls.length).toBeGreaterThanOrEqual(2)
+			// Should call tmux rename-window with the name
+			expect(spawnSyncCalls[0]).toEqual(["tmux", "rename-window", "test-window-name"])
+			// Should also disable automatic-rename
+			expect(spawnSyncCalls[1]).toEqual(["tmux", "set-window-option", "automatic-rename", "off"])
 		})
 	})
 

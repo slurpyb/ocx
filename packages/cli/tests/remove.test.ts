@@ -3,7 +3,7 @@
  * Tests receipt path validation, symlink escaping, atomicity, and normal removal
  */
 
-import { afterEach, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { existsSync, symlinkSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -17,6 +17,10 @@ describe("ocx remove security", () => {
 
 	beforeAll(() => {
 		registry = startMockRegistry()
+	})
+
+	afterAll(() => {
+		registry.stop()
 	})
 
 	afterEach(async () => {
@@ -294,5 +298,267 @@ describe("ocx remove security", () => {
 		const keysAfter = Object.keys(receiptAfter.installed as Record<string, unknown>)
 		expect(keysAfter).not.toContain(pluginKey)
 		expect(keysAfter).toContain(skillKey)
+	})
+})
+
+describe("ocx remove UX behavior", () => {
+	let testDir: string
+	let registry: MockRegistry
+
+	beforeAll(() => {
+		registry = startMockRegistry()
+	})
+
+	afterAll(() => {
+		registry.stop()
+	})
+
+	afterEach(async () => {
+		if (testDir) {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("should fail removal when file is modified without --force", async () => {
+		testDir = await createTempDir("remove-modified-no-force")
+
+		// Initialize and add registry
+		await runCLI(["init"], testDir)
+
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
+		config.registries = {
+			kdco: { url: registry.url },
+		}
+		await writeFile(configPath, JSON.stringify(config, null, 2))
+
+		// Install a component
+		await runCLI(["add", "kdco/test-plugin"], testDir)
+
+		// Verify file exists
+		const pluginPath = join(testDir, "plugins", "test-plugin.ts")
+		expect(existsSync(pluginPath)).toBe(true)
+
+		// Modify the file to break integrity
+		const originalContent = await readFile(pluginPath, "utf-8")
+		await writeFile(pluginPath, `${originalContent}\n// User modification`)
+
+		// Read receipt to get canonical ID
+		const receiptPath = join(testDir, ".ocx", "receipt.jsonc")
+		const receipt = parseJsonc(await readFile(receiptPath, "utf-8")) as Record<string, unknown>
+		const installedKey = Object.keys(receipt.installed as Record<string, unknown>)[0]
+		if (!installedKey) {
+			throw new Error("No installed components found")
+		}
+
+		// Try to remove without --force (should fail)
+		const { exitCode, output } = await runCLI(["remove", installedKey], testDir)
+
+		// Verify failure
+		expect(exitCode).not.toBe(0)
+		expect(output.toLowerCase()).toMatch(/modified|integrity|force/)
+
+		// Verify file still exists (no removal occurred)
+		expect(existsSync(pluginPath)).toBe(true)
+
+		// Verify receipt unchanged
+		const receiptAfter = parseJsonc(await readFile(receiptPath, "utf-8")) as Record<string, unknown>
+		expect(Object.keys(receiptAfter.installed as Record<string, unknown>)).toContain(installedKey)
+	})
+
+	it("should succeed removal when file is modified with --force", async () => {
+		testDir = await createTempDir("remove-modified-with-force")
+
+		// Initialize and add registry
+		await runCLI(["init"], testDir)
+
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
+		config.registries = {
+			kdco: { url: registry.url },
+		}
+		await writeFile(configPath, JSON.stringify(config, null, 2))
+
+		// Install a component
+		await runCLI(["add", "kdco/test-plugin"], testDir)
+
+		// Verify file exists
+		const pluginPath = join(testDir, "plugins", "test-plugin.ts")
+		expect(existsSync(pluginPath)).toBe(true)
+
+		// Modify the file to break integrity
+		const originalContent = await readFile(pluginPath, "utf-8")
+		await writeFile(pluginPath, `${originalContent}\n// User modification`)
+
+		// Read receipt to get canonical ID
+		const receiptPath = join(testDir, ".ocx", "receipt.jsonc")
+		const receipt = parseJsonc(await readFile(receiptPath, "utf-8")) as Record<string, unknown>
+		const installedKey = Object.keys(receipt.installed as Record<string, unknown>)[0]
+		if (!installedKey) {
+			throw new Error("No installed components found")
+		}
+
+		// Remove with --force (should succeed)
+		const { exitCode } = await runCLI(["remove", installedKey, "--force"], testDir)
+
+		// Verify success
+		expect(exitCode).toBe(0)
+
+		// Verify file was deleted
+		expect(existsSync(pluginPath)).toBe(false)
+
+		// Verify receipt updated
+		const receiptAfter = parseJsonc(await readFile(receiptPath, "utf-8")) as Record<string, unknown>
+		expect(Object.keys(receiptAfter.installed as Record<string, unknown>)).not.toContain(
+			installedKey,
+		)
+	})
+
+	it("should not remove files or mutate receipt with --dry-run", async () => {
+		testDir = await createTempDir("remove-dry-run")
+
+		// Initialize and add registry
+		await runCLI(["init"], testDir)
+
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
+		config.registries = {
+			kdco: { url: registry.url },
+		}
+		await writeFile(configPath, JSON.stringify(config, null, 2))
+
+		// Install a component
+		await runCLI(["add", "kdco/test-plugin"], testDir)
+
+		// Verify file exists
+		const pluginPath = join(testDir, "plugins", "test-plugin.ts")
+		expect(existsSync(pluginPath)).toBe(true)
+
+		// Capture receipt state before dry-run
+		const receiptPath = join(testDir, ".ocx", "receipt.jsonc")
+		const receiptBefore = await readFile(receiptPath, "utf-8")
+		const parsedBefore = parseJsonc(receiptBefore) as Record<string, unknown>
+		const installedKey = Object.keys(parsedBefore.installed as Record<string, unknown>)[0]
+		if (!installedKey) {
+			throw new Error("No installed components found")
+		}
+
+		// Run remove with --dry-run
+		const { exitCode } = await runCLI(["remove", installedKey, "--dry-run"], testDir)
+
+		// Verify exit code is 0 (dry-run succeeded)
+		expect(exitCode).toBe(0)
+
+		// Verify file still exists (no removal)
+		expect(existsSync(pluginPath)).toBe(true)
+
+		// Verify receipt unchanged (byte-for-byte comparison)
+		const receiptAfter = await readFile(receiptPath, "utf-8")
+		expect(receiptAfter).toBe(receiptBefore)
+	})
+
+	it("should output correct JSON structure on successful removal with --json", async () => {
+		testDir = await createTempDir("remove-json-success")
+
+		// Initialize and add registry
+		await runCLI(["init"], testDir)
+
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
+		config.registries = {
+			kdco: { url: registry.url },
+		}
+		await writeFile(configPath, JSON.stringify(config, null, 2))
+
+		// Install a component
+		await runCLI(["add", "kdco/test-plugin"], testDir)
+
+		// Read receipt to get canonical ID
+		const receiptPath = join(testDir, ".ocx", "receipt.jsonc")
+		const receipt = parseJsonc(await readFile(receiptPath, "utf-8")) as Record<string, unknown>
+		const installedKey = Object.keys(receipt.installed as Record<string, unknown>)[0]
+		if (!installedKey) {
+			throw new Error("No installed components found")
+		}
+
+		// Remove with --json
+		const { exitCode, stdout } = await runCLI(["remove", installedKey, "--json"], testDir)
+
+		// Verify success
+		expect(exitCode).toBe(0)
+
+		// Parse and validate JSON output structure
+		const jsonOutput = JSON.parse(stdout) as {
+			success: boolean
+			removed: string[]
+			notFound: string[]
+		}
+		expect(jsonOutput.success).toBe(true)
+		expect(Array.isArray(jsonOutput.removed)).toBe(true)
+		expect(jsonOutput.removed).toContain(installedKey)
+		expect(Array.isArray(jsonOutput.notFound)).toBe(true)
+		expect(jsonOutput.notFound).toHaveLength(0)
+	})
+
+	it("should output correct JSON error structure on failure with --json", async () => {
+		testDir = await createTempDir("remove-json-failure")
+
+		// Initialize and add registry
+		await runCLI(["init"], testDir)
+
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
+		config.registries = {
+			kdco: { url: registry.url },
+		}
+		await writeFile(configPath, JSON.stringify(config, null, 2))
+
+		// Install a component
+		await runCLI(["add", "kdco/test-plugin"], testDir)
+
+		// Verify file exists
+		const pluginPath = join(testDir, "plugins", "test-plugin.ts")
+		expect(existsSync(pluginPath)).toBe(true)
+
+		// Modify the file to break integrity
+		const originalContent = await readFile(pluginPath, "utf-8")
+		await writeFile(pluginPath, `${originalContent}\n// User modification`)
+
+		// Read receipt to get canonical ID
+		const receiptPath = join(testDir, ".ocx", "receipt.jsonc")
+		const receipt = parseJsonc(await readFile(receiptPath, "utf-8")) as Record<string, unknown>
+		const installedKey = Object.keys(receipt.installed as Record<string, unknown>)[0]
+		if (!installedKey) {
+			throw new Error("No installed components found")
+		}
+
+		// Try to remove without --force but with --json (should fail)
+		const { exitCode, stdout } = await runCLI(["remove", installedKey, "--json"], testDir)
+
+		// Verify failure
+		expect(exitCode).not.toBe(0)
+
+		// Parse and validate JSON error output structure
+		const jsonOutput = JSON.parse(stdout) as {
+			success: boolean
+			error: {
+				code: string
+				message: string
+			}
+			exitCode: number
+			meta: {
+				timestamp: string
+			}
+		}
+		expect(jsonOutput.success).toBe(false)
+		expect(typeof jsonOutput.error).toBe("object")
+		expect(typeof jsonOutput.error.code).toBe("string")
+		expect(typeof jsonOutput.error.message).toBe("string")
+		expect(typeof jsonOutput.exitCode).toBe("number")
+		expect(jsonOutput.exitCode).not.toBe(0)
+		expect(typeof jsonOutput.meta).toBe("object")
+		expect(typeof jsonOutput.meta.timestamp).toBe("string")
+		// Validate timestamp is ISO 8601 format
+		expect(jsonOutput.meta.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
 	})
 })

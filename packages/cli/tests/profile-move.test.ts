@@ -261,15 +261,8 @@ describe("ocx profile move", () => {
 	// =========================================================================
 
 	describe("boundary conditions", () => {
-		// Path traversal - old name
-		it("should reject path traversal in old name (../)", async () => {
-			const { exitCode, output } = await runCLI(
-				["profile", "move", "../evil", "bar", "--global"],
-				testDir,
-			)
-			expect(exitCode).toBe(1)
-			expect(output).toContain('Invalid profile name "../evil"')
-		})
+		// Note: Path traversal for old name (../) is tested above in main describe block
+		// (see "should fail with invalid old name containing path traversal")
 
 		it("should reject dotdot as old name", async () => {
 			const { exitCode, output } = await runCLI(

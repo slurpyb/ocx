@@ -373,3 +373,169 @@ describe("ocx add --profile", () => {
 		expect(output).toContain("conflict")
 	})
 })
+
+describe("ocx add --from", () => {
+	let testDir: string
+	let registry: MockRegistry
+
+	beforeAll(() => {
+		registry = startMockRegistry()
+	})
+
+	afterAll(() => {
+		registry.stop()
+	})
+
+	afterEach(async () => {
+		if (testDir) {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("should install from ephemeral registry URL", async () => {
+		testDir = await createTempDir("add-from-basic")
+
+		// Init project (required for local mode)
+		await runCLI(["init"], testDir)
+
+		// Install from ephemeral registry (namespace must match registry's declared namespace)
+		const { exitCode, output } = await runCLI(
+			["add", "kdco/test-plugin", "--from", registry.url],
+			testDir,
+		)
+
+		if (exitCode !== 0) {
+			console.log(output)
+		}
+		expect(exitCode).toBe(0)
+
+		// Verify file installed
+		expect(existsSync(join(testDir, "plugins/test-plugin.ts"))).toBe(true)
+
+		// Verify receipt created
+		const receiptPath = join(testDir, ".ocx/receipt.jsonc")
+		expect(existsSync(receiptPath)).toBe(true)
+		const receipt = parseJsonc(await readFile(receiptPath, "utf-8")) as {
+			installed: Record<string, unknown>
+		}
+		expect(Object.keys(receipt.installed).some((k) => k.includes("test-plugin"))).toBe(true)
+	})
+
+	it("should NOT persist ephemeral registry to ocx.jsonc", async () => {
+		testDir = await createTempDir("add-from-no-persist")
+
+		// Init project
+		await runCLI(["init"], testDir)
+
+		// Read initial config
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const initialConfig = parseJsonc(await readFile(configPath, "utf-8")) as {
+			registries?: Record<string, unknown>
+		}
+		const initialRegistryCount = Object.keys(initialConfig.registries ?? {}).length
+
+		// Install from ephemeral registry
+		const { exitCode } = await runCLI(["add", "kdco/test-plugin", "--from", registry.url], testDir)
+		expect(exitCode).toBe(0)
+
+		// Verify config unchanged - ephemeral registry NOT persisted
+		const finalConfig = parseJsonc(await readFile(configPath, "utf-8")) as {
+			registries?: Record<string, unknown>
+		}
+		const finalRegistryCount = Object.keys(finalConfig.registries ?? {}).length
+		expect(finalRegistryCount).toBe(initialRegistryCount)
+
+		// Verify the ephemeral registry URL is NOT in the config
+		const registryUrls = Object.values(finalConfig.registries ?? {}).map(
+			(r) => (r as { url?: string }).url,
+		)
+		expect(registryUrls).not.toContain(registry.url)
+	})
+
+	it("should reject invalid --from URL", async () => {
+		testDir = await createTempDir("add-from-invalid-url")
+
+		// Init project
+		await runCLI(["init"], testDir)
+
+		// Try with invalid URL
+		const { exitCode, output } = await runCLI(
+			["add", "kdco/test-plugin", "--from", "not-a-valid-url"],
+			testDir,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("Invalid --from URL")
+	})
+
+	it("should reject namespace mismatch", async () => {
+		testDir = await createTempDir("add-from-namespace-mismatch")
+
+		// Init project
+		await runCLI(["init"], testDir)
+
+		// Try with wrong namespace (registry declares "kdco" but we request "wrong-ns")
+		const { exitCode, output } = await runCLI(
+			["add", "wrong-ns/test-plugin", "--from", registry.url],
+			testDir,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("Namespace mismatch")
+		expect(output).toContain("wrong-ns")
+		expect(output).toContain("kdco")
+	})
+
+	it("should NOT write files or receipt in dry-run mode", async () => {
+		testDir = await createTempDir("add-from-dry-run")
+
+		// Init project
+		await runCLI(["init"], testDir)
+
+		// Dry-run install from ephemeral registry
+		const { exitCode, output } = await runCLI(
+			["add", "kdco/test-plugin", "--from", registry.url, "--dry-run"],
+			testDir,
+		)
+
+		expect(exitCode).toBe(0)
+		expect(output).toContain("dry-run") // Should indicate dry-run mode
+
+		// Verify NO files written
+		expect(existsSync(join(testDir, "plugins/test-plugin.ts"))).toBe(false)
+
+		// Verify NO receipt created
+		expect(existsSync(join(testDir, ".ocx/receipt.jsonc"))).toBe(false)
+	})
+
+	it("should install component with dependencies from ephemeral registry", async () => {
+		testDir = await createTempDir("add-from-with-deps")
+
+		// Init project
+		await runCLI(["init"], testDir)
+
+		// Install agent which has transitive dependencies (agent -> skill -> plugin)
+		const { exitCode, output } = await runCLI(
+			["add", "kdco/test-agent", "--from", registry.url],
+			testDir,
+		)
+
+		if (exitCode !== 0) {
+			console.log(output)
+		}
+		expect(exitCode).toBe(0)
+
+		// Verify all files installed (agent + skill + plugin)
+		expect(existsSync(join(testDir, "agents/test-agent.md"))).toBe(true)
+		expect(existsSync(join(testDir, "skills/test-skill/SKILL.md"))).toBe(true)
+		expect(existsSync(join(testDir, "plugins/test-plugin.ts"))).toBe(true)
+
+		// Verify receipt contains all 3 components
+		const receiptPath = join(testDir, ".ocx/receipt.jsonc")
+		const receipt = parseJsonc(await readFile(receiptPath, "utf-8")) as {
+			installed: Record<string, unknown>
+		}
+		const installedKeys = Object.keys(receipt.installed)
+		expect(installedKeys.length).toBe(3)
+	})
+})

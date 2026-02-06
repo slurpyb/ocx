@@ -55,10 +55,7 @@ describe("ocx update", () => {
 	// Basic update tests
 	// =========================================================================
 
-	// TODO: Fix mock registry to properly support mid-test content changes
-	// Currently these tests fail because setFileContent doesn't properly override
-	// the registry's file responses. The update command works correctly in production.
-	it.skip("should update a component when source changed", async () => {
+	it("should update a component when source changed", async () => {
 		testDir = await setupProject("update-basic")
 
 		// Install component
@@ -98,7 +95,7 @@ describe("ocx update", () => {
 	// --all flag tests
 	// =========================================================================
 
-	it.skip("should update all installed components with --all", async () => {
+	it("should update all installed components with --all", async () => {
 		testDir = await setupProject("update-all")
 
 		// Install multiple components
@@ -127,7 +124,7 @@ describe("ocx update", () => {
 	// --registry flag tests
 	// =========================================================================
 
-	it.skip("should update only components from specified registry", async () => {
+	it("should update only components from specified registry", async () => {
 		testDir = await setupProject("update-registry")
 
 		// Install component
@@ -405,27 +402,29 @@ describe("ocx update", () => {
 	// Edge cases
 	// =========================================================================
 
-	it.skip("should handle component with dependencies correctly", async () => {
+	it("should handle component with dependencies correctly", async () => {
 		testDir = await setupProject("update-with-deps")
 
 		// Install component with dependencies
 		await installComponent(testDir, "kdco/test-agent")
 
-		// Verify all dependencies were installed (V2: pluralized paths)
-		expect(existsSync(join(testDir, ".opencode/agents/test-agent.md"))).toBe(true)
+		// Verify all dependencies were installed (matches mock-registry paths)
+		expect(existsSync(join(testDir, "agents/test-agent.md"))).toBe(true)
 		expect(existsSync(join(testDir, "skills/test-skill/SKILL.md"))).toBe(true)
 		expect(existsSync(join(testDir, "plugins/test-plugin.ts"))).toBe(true)
 
 		// Change registry content for the main component only
 		registry.setFileContent("test-agent", "agent.md", "# Agent v2")
+		_clearFetcherCacheForTests() // Clear cache to ensure fresh fetch
 
 		// Run update on just the agent
-		const { exitCode } = await runCLI(["update", "kdco/test-agent"], testDir)
+		const { exitCode, output } = await runCLI(["update", "kdco/test-agent"], testDir)
 
 		expect(exitCode).toBe(0)
+		expect(output).toContain("Updated")
 
 		// Verify agent was updated
-		const agentContent = await readFile(join(testDir, ".opencode/agents/test-agent.md"), "utf-8")
+		const agentContent = await readFile(join(testDir, "agents/test-agent.md"), "utf-8")
 		expect(agentContent).toBe("# Agent v2")
 	})
 

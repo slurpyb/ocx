@@ -12,3 +12,6 @@ workers/kdco-registry/dist/
 
 # Coverage
 coverage/
+
+# Test fixtures (temporary directories)
+packages/cli/tests/fixtures/tmp-*/

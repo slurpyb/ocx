@@ -133,30 +133,49 @@ describe("registry add --force", () => {
 	})
 
 	it("should show current and new URL in error message", async () => {
+		// First add registry with original URL
 		await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
 
-		// Try to update without --force - URL in error shows conflict
-		const result = await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
+		// Start a second mock registry to get a different valid URL
+		const registry2 = startMockRegistry()
+		try {
+			// Try to update with a DIFFERENT URL (same namespace)
+			const result = await runCLI(["registry", "add", registry2.url, "--name", "kdco"], testDir)
 
-		expect(result.stderr).toContain(registry.url)
+			// Error message should contain BOTH the existing and new URLs
+			expect(result.stderr).toContain(registry.url) // existing URL
+			expect(result.stderr).toContain(registry2.url) // new URL
+		} finally {
+			registry2.stop()
+		}
 	})
 
 	it("should output structured JSON for conflict with --json flag", async () => {
+		// First add registry with original URL
 		await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
 
-		const result = await runCLI(
-			["registry", "add", registry.url, "--name", "kdco", "--json"],
-			testDir,
-		)
+		// Start a second mock registry to get a different valid URL
+		const registry2 = startMockRegistry()
+		try {
+			// Try to add with DIFFERENT URL to trigger meaningful conflict
+			const result = await runCLI(
+				["registry", "add", registry2.url, "--name", "kdco", "--json"],
+				testDir,
+			)
 
-		expect(result.exitCode).toBe(6)
-		const output = JSON.parse(result.stdout || result.stderr)
-		expect(output.success).toBe(false)
-		expect(output.error.code).toBe("CONFLICT")
-		expect(output.error.details.registryName).toBe("kdco")
-		expect(output.error.details.existingUrl).toBe(registry.url)
-		expect(output.error.details.newUrl).toBe(registry.url)
-		expect(output.meta.timestamp).toBeDefined()
+			expect(result.exitCode).toBe(6)
+			const output = JSON.parse(result.stdout || result.stderr)
+			expect(output.success).toBe(false)
+			expect(output.error.code).toBe("CONFLICT")
+			expect(output.error.details.registryName).toBe("kdco")
+			// Assert BOTH URLs are different and both present
+			expect(output.error.details.existingUrl).toBe(registry.url)
+			expect(output.error.details.newUrl).toBe(registry2.url)
+			expect(output.error.details.existingUrl).not.toBe(output.error.details.newUrl)
+			expect(output.meta.timestamp).toBeDefined()
+		} finally {
+			registry2.stop()
+		}
 	})
 
 	it("should error for empty URL", async () => {
@@ -432,60 +451,33 @@ describe("ocx registry --global", () => {
 		await assertFileNotExists(join(testDir, "ocx.jsonc"))
 	})
 
-	// CLI ordering tests
-	it("should work with --global before URL", async () => {
-		const result = await runCLI(
-			["registry", "add", "--global", registry.url, "--name", "kdco"],
-			testDir,
-			{ env },
-		)
-		expect(result.exitCode).toBe(0)
+	// CLI ordering tests - verify --global flag works in any position
+	const globalFlagPositions = [
+		{ name: "--global before URL", args: ["--global", "URL", "--name", "kdco"] },
+		{ name: "--global after URL", args: ["URL", "--global", "--name", "kdco"] },
+		{ name: "--global at end", args: ["URL", "--name", "kdco", "--global"] },
+	]
 
-		// Verify data was actually written
-		const globalConfig = await readConfig(join(globalConfigDir, "ocx.jsonc"))
-		expect(globalConfig).not.toBeNull()
-		expect(globalConfig?.registries.kdco).toEqual({ url: registry.url })
+	for (const { name, args } of globalFlagPositions) {
+		it(`should work with ${name}`, async () => {
+			// Replace URL placeholder with actual registry URL
+			const actualArgs = ["registry", "add", ...args.map((a) => (a === "URL" ? registry.url : a))]
+			const result = await runCLI(actualArgs, testDir, { env })
+			expect(result.exitCode).toBe(0)
 
-		// Verify local config was NOT created as side effect
-		await assertFileNotExists(join(testDir, ".opencode", "ocx.jsonc"))
-		await assertFileNotExists(join(testDir, "ocx.jsonc"))
-	})
+			// Verify data was actually written
+			const globalConfig = await readConfig(join(globalConfigDir, "ocx.jsonc"))
+			expect(globalConfig).not.toBeNull()
+			expect(globalConfig?.registries.kdco).toEqual({ url: registry.url })
 
-	it("should work with --global after URL", async () => {
-		const result = await runCLI(
-			["registry", "add", registry.url, "--global", "--name", "kdco"],
-			testDir,
-			{ env },
-		)
-		expect(result.exitCode).toBe(0)
+			// Verify local config was NOT created as side effect
+			await assertFileNotExists(join(testDir, ".opencode", "ocx.jsonc"))
+			await assertFileNotExists(join(testDir, "ocx.jsonc"))
 
-		// Verify data was actually written
-		const globalConfig = await readConfig(join(globalConfigDir, "ocx.jsonc"))
-		expect(globalConfig).not.toBeNull()
-		expect(globalConfig?.registries.kdco).toEqual({ url: registry.url })
-
-		// Verify local config was NOT created as side effect
-		await assertFileNotExists(join(testDir, ".opencode", "ocx.jsonc"))
-		await assertFileNotExists(join(testDir, "ocx.jsonc"))
-	})
-
-	it("should work with --global at end", async () => {
-		const result = await runCLI(
-			["registry", "add", registry.url, "--name", "kdco", "--global"],
-			testDir,
-			{ env },
-		)
-		expect(result.exitCode).toBe(0)
-
-		// Verify data was actually written
-		const globalConfig = await readConfig(join(globalConfigDir, "ocx.jsonc"))
-		expect(globalConfig).not.toBeNull()
-		expect(globalConfig?.registries.kdco).toEqual({ url: registry.url })
-
-		// Verify local config was NOT created as side effect
-		await assertFileNotExists(join(testDir, ".opencode", "ocx.jsonc"))
-		await assertFileNotExists(join(testDir, "ocx.jsonc"))
-	})
+			// Cleanup for next iteration: remove the registry
+			await runCLI(["registry", "remove", "--global", "kdco"], testDir, { env })
+		})
+	}
 
 	// Edge cases
 	it("should handle locked registries in global config", async () => {

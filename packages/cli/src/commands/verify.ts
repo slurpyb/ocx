@@ -6,7 +6,7 @@
 import type { Command } from "commander"
 import { LocalConfigProvider } from "../config/provider"
 import { readReceipt } from "../schemas/config"
-import { ConflictError } from "../utils/errors"
+import { ConflictError, EXIT_CODES } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
 import { checkFileIntegrity } from "../utils/receipt"
 import { addCommonOptions, addVerboseOption } from "../utils/shared-options"
@@ -105,6 +105,10 @@ async function runVerify(componentNames: string[], options: VerifyOptions): Prom
 				2,
 			),
 		)
+		// Exit with non-zero if there are issues (consistent with non-JSON mode)
+		if (hasIssues) {
+			process.exit(EXIT_CODES.CONFLICT)
+		}
 	} else if (!options.quiet) {
 		logger.info("")
 		for (const result of results) {
