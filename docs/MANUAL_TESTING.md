@@ -484,11 +484,11 @@ All variations from CLI.md lines 129-253.
 ### 5.6 Add npm Plugin with Version
 
 - [ ] **Setup:** Local config initialized
-- [ ] **Command:** `ocx add npm:some-plugin@1.0.0`
-- [ ] **Expected:** Plugin entry with version added to `.opencode/opencode.jsonc` plugins array; runtime installation handled by OpenCode
+- [ ] **Command:** `ocx add npm:@franlol/opencode-md-table-formatter@0.0.3`
+- [ ] **Expected:** Plugin entry added to `.opencode/opencode.jsonc`; runtime installation handled by OpenCode
 - [ ] **Verify:**
   ```bash
-  cat .opencode/opencode.jsonc  # Should contain "some-plugin@1.0.0" in "plugins" array
+  cat .opencode/opencode.jsonc  # Should contain "@franlol/opencode-md-table-formatter@0.0.3" in "plugin" array
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
