@@ -953,7 +953,9 @@ ocx p add <name> [options]  # alias
 
 | Option | Description |
 |--------|-------------|
-| `--from <source>` | Clone from existing profile, install from registry (e.g., kit/ws), or full URL |
+| `--clone <profile>` | Clone from existing profile (local or global scope) |
+| `--source <namespace/component>` | Install profile from registry component (requires `--global`) |
+| `--from <url>` | Ephemeral registry URL for profile installation (used with `--source`) |
 | `-g, --global` | Create global profile (default is local) |
 
 #### Examples
@@ -963,18 +965,18 @@ ocx p add <name> [options]  # alias
 ocx profile add work --global
 
 # Clone from existing profile
-ocx profile add client-x --from work --global
+ocx profile add client-x --clone work --global
 
-# Install from registry with one command (not saved)
-ocx profile add ws --from https://ocx-kit.kdco.dev/ws --global
+# Install from registry with ephemeral URL (not saved)
+ocx profile add ws --source kit/ws --from https://ocx-kit.kdco.dev --global
 
 # Or first add global registry, then install
 ocx registry add https://ocx-kit.kdco.dev --name kit --global
-ocx profile add ws --from kit/ws --global
+ocx profile add ws --source kit/ws --global
 
 # Overwrite existing profile (remove and add again)
 ocx profile remove ws --global
-ocx profile add ws --from kit/ws --global
+ocx profile add ws --source kit/ws --global
 
 # Using alias
 ocx p add personal --global
@@ -984,7 +986,9 @@ ocx p add personal --global
 
 - Profile names must be valid filesystem names
 - Spaces are automatically converted to hyphens
-- `--from` accepts: existing profile name (same scope as target), `registry/component` shorthand, or full URL
+- `--clone` accepts: existing profile name (same scope as target)
+- `--source` accepts: `registry/component` shorthand for profile components
+- `--from` (with `--source`) provides ephemeral registry URL without saving to config
 - To overwrite an existing profile, remove it first with `ocx profile rm <name>`, then add again
 
 ---

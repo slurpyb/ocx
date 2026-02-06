@@ -40,13 +40,14 @@ Work in any repo without modifying it. Your config, their code.
 ocx init --global           # Initialize global profiles
 ocx profile add work --global  # Create a global work profile
 
-# Install pre-configured profile (optional)
+# Or install pre-configured profile from registry
 ocx registry add https://ocx-kit.kdco.dev --name kit --global
-ocx profile add work --from kit/omo --global
+ocx profile add omo --source kit/omo --global  # Uses different name to avoid conflict
 
 # Use in any repo
 cd ~/oss/some-project
 ocx oc -p work              # Launch OpenCode with your work profile
+ocx oc -p omo               # Or use the registry profile
 
 # Or set default
 export OCX_PROFILE=work

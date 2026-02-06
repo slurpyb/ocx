@@ -470,7 +470,7 @@ files/profiles/my-profile/
 **Usage:**
 ```bash
 # Install profile from registry
-ocx profile add my-profile --from namespace/my-profile
+ocx profile add my-profile --source namespace/my-profile --global
 
 # Use the profile
 ocx opencode -p my-profile

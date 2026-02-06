@@ -2,58 +2,54 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import { parseFromOption } from "../src/commands/profile/add"
+import { parseSourceOption } from "../src/commands/profile/add"
 import { validateSafePath } from "../src/schemas/registry"
 import { ValidationError } from "../src/utils/errors"
 import { cleanupTempDir, createTempDir, parseJsonc, runCLI } from "./helpers"
 import { type MockRegistry, startMockRegistry } from "./mock-registry"
 
 // =============================================================================
-// UNIT TESTS: parseFromOption()
+// UNIT TESTS: parseSourceOption() - V2 Contract
 // =============================================================================
 
-describe("parseFromOption()", () => {
-	it("parses registry reference (namespace/component)", () => {
-		const result = parseFromOption("kdco/minimal")
-		expect(result).toEqual({ type: "registry", namespace: "kdco", component: "minimal" })
-	})
-
-	it("parses local profile name (no slash)", () => {
-		const result = parseFromOption("my-profile")
-		expect(result).toEqual({ type: "local-profile", name: "my-profile" })
-	})
-
-	it("handles multiple slashes as local profile name", () => {
-		// More than one slash is not a registry ref (which requires exactly one)
-		// Multiple slashes are treated as a profile name, not a registry ref
-		const result = parseFromOption("namespace/component/extra")
-		expect(result.type).toBe("local-profile")
-		if (result.type === "local-profile") {
-			expect(result.name).toBe("namespace/component/extra")
-		}
+describe("parseSourceOption()", () => {
+	it("parses namespace/component format", () => {
+		const result = parseSourceOption("kdco/minimal")
+		expect(result).toEqual({ namespace: "kdco", component: "minimal" })
 	})
 
 	it("throws on empty input", () => {
-		expect(() => parseFromOption("")).toThrow(ValidationError)
+		expect(() => parseSourceOption("")).toThrow(ValidationError)
 	})
 
 	it("throws on whitespace-only input", () => {
-		expect(() => parseFromOption("   ")).toThrow(ValidationError)
+		expect(() => parseSourceOption("   ")).toThrow(ValidationError)
 	})
 
-	it("throws on invalid registry reference format", () => {
-		// Empty component part
-		expect(() => parseFromOption("kdco/")).toThrow(ValidationError)
+	it("throws on missing component part", () => {
+		expect(() => parseSourceOption("kdco/")).toThrow(ValidationError)
+	})
+
+	it("throws on missing namespace part", () => {
+		expect(() => parseSourceOption("/minimal")).toThrow(ValidationError)
+	})
+
+	it("throws on multiple slashes", () => {
+		expect(() => parseSourceOption("namespace/component/extra")).toThrow(ValidationError)
+	})
+
+	it("throws on no slash (bare component name)", () => {
+		expect(() => parseSourceOption("my-profile")).toThrow(ValidationError)
 	})
 
 	it("trims whitespace from input", () => {
-		const result = parseFromOption("  kdco/minimal  ")
-		expect(result).toEqual({ type: "registry", namespace: "kdco", component: "minimal" })
+		const result = parseSourceOption("  kdco/minimal  ")
+		expect(result).toEqual({ namespace: "kdco", component: "minimal" })
 	})
 
-	it("trims whitespace around slash in registry reference", () => {
-		const result = parseFromOption("kdco / minimal")
-		expect(result).toEqual({ type: "registry", namespace: "kdco", component: "minimal" })
+	it("trims whitespace around slash", () => {
+		const result = parseSourceOption("kdco / minimal")
+		expect(result).toEqual({ namespace: "kdco", component: "minimal" })
 	})
 })
 
@@ -97,10 +93,210 @@ describe("Path security", () => {
 })
 
 // =============================================================================
+// INTEGRATION TESTS: V2 Option Invariants
+// =============================================================================
+
+describe("ocx profile add (V2 option invariants)", () => {
+	let testDir: string
+	const originalXdgConfigHome = process.env.XDG_CONFIG_HOME
+
+	beforeEach(async () => {
+		testDir = await createTempDir("profile-invariants")
+		process.env.XDG_CONFIG_HOME = testDir
+
+		// Setup minimal global config
+		const globalConfigDir = join(testDir, "opencode")
+		const profilesDir = join(globalConfigDir, "profiles")
+		await mkdir(profilesDir, { recursive: true })
+		await writeFile(join(globalConfigDir, "ocx.jsonc"), JSON.stringify({ registries: {} }, null, 2))
+		await mkdir(join(profilesDir, "default"), { recursive: true })
+		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
+	})
+
+	afterEach(async () => {
+		if (originalXdgConfigHome === undefined) {
+			delete process.env.XDG_CONFIG_HOME
+		} else {
+			process.env.XDG_CONFIG_HOME = originalXdgConfigHome
+		}
+		if (testDir) {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("rejects --clone with --source", async () => {
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode, output } = await runCLI(
+			["profile", "add", "test", "--clone", "default", "--source", "kdco/minimal", "--global"],
+			workDir,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("--clone cannot be used with --source")
+	})
+
+	it("rejects --clone with --from", async () => {
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode, output } = await runCLI(
+			["profile", "add", "test", "--clone", "default", "--from", "http://example.com"],
+			workDir,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("--clone cannot be used with")
+	})
+
+	it("rejects --from without --source (with migration hint for namespace/component)", async () => {
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode, output } = await runCLI(
+			["profile", "add", "test", "--from", "kdco/minimal", "--global"],
+			workDir,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("--from requires --source")
+		expect(output).toContain("Migration")
+		expect(output).toContain("--source kdco/minimal --global")
+	})
+
+	it("rejects --from without --source (with migration hint for URL)", async () => {
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode, output } = await runCLI(
+			["profile", "add", "test", "--from", "http://example.com", "--global"],
+			workDir,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("--from requires --source")
+		expect(output).toContain("Migration")
+		expect(output).toContain("--source <namespace/component>")
+	})
+
+	it("rejects --from without --source (suggests --clone for profile name)", async () => {
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode, output } = await runCLI(
+			["profile", "add", "test", "--from", "my-profile", "--global"],
+			workDir,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("--from requires --source")
+		expect(output).toContain("--clone my-profile")
+	})
+
+	it("rejects --source without --global", async () => {
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode, output } = await runCLI(
+			["profile", "add", "test", "--source", "kdco/minimal"],
+			workDir,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("--source requires --global")
+		expect(output).toContain("--source kdco/minimal --global")
+	})
+
+	it("rejects non-URL --from value when --source is provided", async () => {
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode, output } = await runCLI(
+			["profile", "add", "test", "--source", "kdco/minimal", "--from", "not-a-url", "--global"],
+			workDir,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("--from must be a")
+	})
+
+	it("rejects malformed URL with http:// prefix only (no hostname)", async () => {
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode, output } = await runCLI(
+			["profile", "add", "test", "--source", "kdco/minimal", "--from", "http://", "--global"],
+			workDir,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("--from must be a")
+	})
+
+	it("rejects malformed URL with https:/// (triple slash, no hostname)", async () => {
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode, output } = await runCLI(
+			["profile", "add", "test", "--source", "kdco/minimal", "--from", "https:///", "--global"],
+			workDir,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("--from must be a")
+	})
+
+	it("rejects URL with invalid protocol (ftp://)", async () => {
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode, output } = await runCLI(
+			[
+				"profile",
+				"add",
+				"test",
+				"--source",
+				"kdco/minimal",
+				"--from",
+				"ftp://example.com",
+				"--global",
+			],
+			workDir,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("http:// or https://")
+	})
+
+	it("rejects malformed URL with missing hostname after protocol", async () => {
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode, output } = await runCLI(
+			[
+				"profile",
+				"add",
+				"test",
+				"--source",
+				"kdco/minimal",
+				"--from",
+				"https://:8080/path",
+				"--global",
+			],
+			workDir,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("--from must be a")
+	})
+})
+
+// =============================================================================
 // INTEGRATION TESTS: Global Registry Requirement
 // =============================================================================
 
-describe("ocx profile add --from (global registry requirement)", () => {
+describe("ocx profile add --source (global registry requirement)", () => {
 	let testDir: string
 	let registry: MockRegistry
 	const originalXdgConfigHome = process.env.XDG_CONFIG_HOME
@@ -146,7 +342,7 @@ describe("ocx profile add --from (global registry requirement)", () => {
 		await mkdir(workDir, { recursive: true })
 
 		const { exitCode, output } = await runCLI(
-			["profile", "add", "test-profile", "--from", "kdco/minimal"],
+			["profile", "add", "test-profile", "--source", "kdco/minimal", "--global"],
 			workDir,
 		)
 
@@ -179,7 +375,7 @@ describe("ocx profile add --from (global registry requirement)", () => {
 		)
 
 		const { exitCode, output } = await runCLI(
-			["profile", "add", "test-profile", "--from", "kdco/minimal"],
+			["profile", "add", "test-profile", "--source", "kdco/minimal", "--global"],
 			workDir,
 		)
 
@@ -336,7 +532,7 @@ describe("ocx profile add (conflict detection)", () => {
 // INTEGRATION TESTS: Profile Type Validation
 // =============================================================================
 
-describe("ocx profile add --from (type validation)", () => {
+describe("ocx profile add --source (type validation)", () => {
 	let testDir: string
 	let registry: MockRegistry
 	const originalXdgConfigHome = process.env.XDG_CONFIG_HOME
@@ -384,7 +580,7 @@ describe("ocx profile add --from (type validation)", () => {
 
 		// Try to install test-agent (which is type agent, not profile)
 		const { exitCode, output } = await runCLI(
-			["profile", "add", "agent-as-profile", "--from", "kdco/test-agent", "--global"],
+			["profile", "add", "agent-as-profile", "--source", "kdco/test-agent", "--global"],
 			workDir,
 			{
 				env: { XDG_CONFIG_HOME: testDir },
@@ -417,7 +613,7 @@ describe("ocx profile add --from (type validation)", () => {
 
 		// Try to install test-plugin (which is type plugin, not profile)
 		const { exitCode, output } = await runCLI(
-			["profile", "add", "plugin-as-profile", "--from", "kdco/test-plugin", "--global"],
+			["profile", "add", "plugin-as-profile", "--source", "kdco/test-plugin", "--global"],
 			workDir,
 			{
 				env: { XDG_CONFIG_HOME: testDir },
@@ -433,10 +629,10 @@ describe("ocx profile add --from (type validation)", () => {
 })
 
 // =============================================================================
-// INTEGRATION TESTS: Profile Cloning from Local Profile
+// INTEGRATION TESTS: Profile Cloning (--clone option)
 // =============================================================================
 
-describe("ocx profile add --from (local profile cloning)", () => {
+describe("ocx profile add --clone (profile cloning)", () => {
 	let testDir: string
 	const originalXdgConfigHome = process.env.XDG_CONFIG_HOME
 
@@ -481,9 +677,9 @@ describe("ocx profile add --from (local profile cloning)", () => {
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
 
-		// Clone from source-profile (V2: with --global flag)
+		// V2: Clone using --clone option with --global flag
 		const { exitCode, output } = await runCLI(
-			["profile", "add", "cloned-profile", "--from", "source-profile", "--global"],
+			["profile", "add", "cloned-profile", "--clone", "source-profile", "--global"],
 			workDir,
 			{
 				env: { XDG_CONFIG_HOME: testDir },
@@ -529,9 +725,9 @@ describe("ocx profile add --from (local profile cloning)", () => {
 		}
 		await writeFile(join(sourceProfileDir, "ocx.jsonc"), JSON.stringify(sourceConfig, null, 2))
 
-		// Clone from source-profile (local to local, no --global flag)
+		// V2: Clone using --clone option (local to local, no --global flag)
 		const { exitCode, output } = await runCLI(
-			["profile", "add", "local-cloned", "--from", "local-source"],
+			["profile", "add", "local-cloned", "--clone", "local-source"],
 			workDir,
 			{
 				env: { XDG_CONFIG_HOME: testDir },
@@ -571,9 +767,9 @@ describe("ocx profile add --from (local profile cloning)", () => {
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
 
-		// Try to clone from global profile to LOCAL (should fail - wrong scope)
+		// V2: Try to clone from global profile to LOCAL using --clone (should fail - wrong scope)
 		const { exitCode, output } = await runCLI(
-			["profile", "add", "wrong-scope-clone", "--from", "global-only-profile"],
+			["profile", "add", "wrong-scope-clone", "--clone", "global-only-profile"],
 			workDir,
 			{
 				env: { XDG_CONFIG_HOME: testDir },
@@ -600,9 +796,9 @@ describe("ocx profile add --from (local profile cloning)", () => {
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
 
-		// Try to clone from non-existent profile (V2: with --global flag)
+		// V2: Try to clone from non-existent profile using --clone (with --global flag)
 		const { exitCode, output } = await runCLI(
-			["profile", "add", "cloned-from-nothing", "--from", "nonexistent-profile", "--global"],
+			["profile", "add", "cloned-from-nothing", "--clone", "nonexistent-profile", "--global"],
 			workDir,
 			{
 				env: { XDG_CONFIG_HOME: testDir },
@@ -616,10 +812,10 @@ describe("ocx profile add --from (local profile cloning)", () => {
 })
 
 // =============================================================================
-// INTEGRATION TESTS: Registry Profile Installation (Happy Path)
+// INTEGRATION TESTS: Registry Profile Installation (--source option)
 // =============================================================================
 
-describe("ocx profile add --from (registry installation)", () => {
+describe("ocx profile add --source (registry installation)", () => {
 	let testDir: string
 	let registry: MockRegistry
 	const originalXdgConfigHome = process.env.XDG_CONFIG_HOME
@@ -648,7 +844,7 @@ describe("ocx profile add --from (registry installation)", () => {
 		}
 	})
 
-	it("installs profile from registry with all files and lockfile", async () => {
+	it("installs profile from configured registry with all files and lockfile", async () => {
 		// Setup global config with registry configured
 		const globalConfigDir = join(testDir, "opencode")
 		const profilesDir = join(globalConfigDir, "profiles")
@@ -665,9 +861,9 @@ describe("ocx profile add --from (registry installation)", () => {
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
 
-		// Install profile from registry
+		// V2: Install profile from registry using --source
 		const { exitCode, output } = await runCLI(
-			["profile", "add", "work", "--from", "kdco/test-profile"],
+			["profile", "add", "work", "--source", "kdco/test-profile", "--global"],
 			workDir,
 		)
 
@@ -691,6 +887,47 @@ describe("ocx profile add --from (registry installation)", () => {
 		expect(lockContent.installedFrom.component).toBe("test-profile")
 	})
 
+	it("installs profile from ephemeral registry using --source with --from", async () => {
+		// Setup global config WITHOUT the registry (ephemeral mode)
+		const globalConfigDir = join(testDir, "opencode")
+		const profilesDir = join(globalConfigDir, "profiles")
+		await mkdir(profilesDir, { recursive: true })
+		await writeFile(join(globalConfigDir, "ocx.jsonc"), JSON.stringify({ registries: {} }, null, 2))
+
+		// Create default profile (required for initialization)
+		await mkdir(join(profilesDir, "default"), { recursive: true })
+		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
+
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		// V2: Install profile from ephemeral registry using --source and --from
+		const { exitCode, output } = await runCLI(
+			[
+				"profile",
+				"add",
+				"ephemeral-profile",
+				"--source",
+				"kdco/test-profile",
+				"--from",
+				registry.url,
+				"--global",
+			],
+			workDir,
+		)
+
+		if (exitCode !== 0) {
+			console.log("Output:", output)
+		}
+		expect(exitCode).toBe(0)
+
+		// Verify profile files created
+		const profileDir = join(profilesDir, "ephemeral-profile")
+		expect(existsSync(join(profileDir, "ocx.jsonc"))).toBe(true)
+		expect(existsSync(join(profileDir, "opencode.jsonc"))).toBe(true)
+		expect(existsSync(join(profileDir, "AGENTS.md"))).toBe(true)
+	})
+
 	it("should install profile dependencies flat (not in .opencode/)", async () => {
 		// Setup global config with registry configured
 		const globalConfigDir = join(testDir, "opencode")
@@ -708,9 +945,9 @@ describe("ocx profile add --from (registry installation)", () => {
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
 
-		// Install profile with dependencies from registry (V2: with --global flag)
+		// V2: Install profile with dependencies from registry using --source
 		const { exitCode, output } = await runCLI(
-			["profile", "add", "test-with-deps", "--from", "kdco/test-profile-with-deps", "--global"],
+			["profile", "add", "test-with-deps", "--source", "kdco/test-profile-with-deps", "--global"],
 			workDir,
 			{
 				env: { XDG_CONFIG_HOME: testDir },

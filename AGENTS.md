@@ -440,7 +440,7 @@ ocx config edit -p work  # Edit profile settings
 
 # Install profile from registry (requires global registry config)
 ocx registry add https://ocx-kit.kdco.dev --name kit --global
-ocx profile add ws --from kit/ws --global
+ocx profile add ws --source kit/ws --global
 
 # Launch OpenCode with a specific profile
 ocx opencode -p work
@@ -449,7 +449,7 @@ ocx opencode -p work
 OCX_PROFILE=work ocx opencode
 
 # Clone settings from existing profile
-ocx profile add client-x --from work --global
+ocx profile add client-x --clone work --global
 
 # View configuration from current scope
 ocx config show

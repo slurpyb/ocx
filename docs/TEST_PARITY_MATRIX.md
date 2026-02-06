@@ -91,7 +91,7 @@ Before marking any test as `covered-good`, verify:
 | P0-001 | Install OCX (curl/npm) | README.md | TBD | TBD | - | - | - | Package manager variations |
 | P0-002 | `ocx init --global` | README.md | documented | TBD | - | - | - | Creates global config + default profile |
 | P0-003 | `ocx profile add <name> --global` | README.md | documented | TBD | - | - | - | Creates empty profile with templates |
-| P0-004 | `ocx profile add <name> --from <registry> --global` | README.md | documented | TBD | - | - | - | Downloads profile from registry |
+| P0-004 | `ocx profile add <name> --source <namespace/component> --global` | README.md | documented | TBD | - | - | - | Downloads profile from registry |
 | P0-005 | `ocx oc -p <profile>` | README.md | documented | TBD | - | - | - | Launch with explicit profile |
 | P0-006 | `ocx oc` (default resolution) | README.md | documented | TBD | - | - | - | Flag > env var > default profile |
 | P0-007 | `ocx init` (local) | README.md | documented | TBD | - | - | - | Creates `.opencode/` directory |

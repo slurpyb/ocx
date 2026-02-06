@@ -268,19 +268,19 @@ ocx profile add work --global
 **Install profile from registry:**
 
 ```bash
-# Install directly from registry
-ocx profile add ws --from https://ocx-kit.kdco.dev/ws --global
+# Install with ephemeral registry (not saved)
+ocx profile add ws --source kit/ws --from https://ocx-kit.kdco.dev --global
 
 # Or first add global registry, then install
 ocx registry add https://ocx-kit.kdco.dev --name kit --global
-ocx profile add ws --from kit/ws --global
+ocx profile add ws --source kit/ws --global
 
 ```
 
 **Clone from existing profile:**
 
 ```bash
-ocx profile add client-x --from work --global
+ocx profile add client-x --clone work --global
 ```
 
 ### Managing Profiles
@@ -584,7 +584,7 @@ OCX_PROFILE=untrusted ocx opencode
 
 ```bash
 # Start from an existing profile
-ocx profile add client-new --from work --global
+ocx profile add client-new --clone work --global
 
 # Customize for the client
 ocx config edit -p client-new

@@ -10,11 +10,11 @@ Set up [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) with OCX
 
 ```bash
 # One-command install with ephemeral registry (not saved)
-ocx profile add omo --from https://ocx-kit.kdco.dev/omo --global
+ocx profile add omo --source kit/omo --from https://ocx-kit.kdco.dev --global
 
 # Or add registry first, then install
 ocx registry add https://ocx-kit.kdco.dev --name kit --global
-ocx profile add omo --from kit/omo --global
+ocx profile add omo --source kit/omo --global
 ```
 
 ### 2. Launch
@@ -63,7 +63,7 @@ export OCX_PROFILE=omo  # Add to ~/.zshrc or ~/.bashrc
 
 **Clone for variations:**
 ```bash
-ocx profile add work --from omo --global
+ocx profile add work --clone omo --global
 ```
 
 **For untrusted repos**, see [Lock Down Recipe](../PROFILES.md#lock-down-recipe).

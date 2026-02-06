@@ -10,11 +10,11 @@ Set up the KDCO Workspace multi-agent harness with OCX profiles for a fully port
 
 ```bash
 # One-command install with ephemeral registry (not saved)
-ocx profile add ws --from https://ocx-kit.kdco.dev/ws --global
+ocx profile add ws --source kit/ws --from https://ocx-kit.kdco.dev --global
 
 # Or add registries first, then install
 ocx registry add https://ocx-kit.kdco.dev --name kit --global
-ocx profile add ws --from kit/ws --global
+ocx profile add ws --source kit/ws --global
 ```
 
 ### 2. Launch
@@ -65,7 +65,7 @@ export OCX_PROFILE=ws  # Add to ~/.zshrc or ~/.bashrc
 
 **Clone for variations:**
 ```bash
-ocx profile add work --from ws --global
+ocx profile add work --clone ws --global
 ```
 
 **For untrusted repos**, see [Lock Down Recipe](../PROFILES.md#lock-down-recipe).

@@ -10,7 +10,7 @@ ocx registry add https://ocx-kit.kdco.dev --name kit --global
 ocx registry add https://registry.kdco.dev --name kdco --global
 
 # Install profile
-ocx profile add ws --from kit/ws --global
+ocx profile add ws --source kit/ws --global
 
 # Launch
 ocx oc -p ws

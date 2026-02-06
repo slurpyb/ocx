@@ -226,7 +226,7 @@ Test cases from README.md lines 38-54.
 ### 2.4 Install Profile from Registry
 
 - [ ] **Setup:** Global registry configured (Section 2.3)
-- [ ] **Command:** `ocx profile add work --from kit/omo --global`
+- [ ] **Command:** `ocx profile add work --source kit/omo --global`
 - [ ] **Expected:** Downloads and installs profile from registry
 - [ ] **Verify:**
   ```bash
@@ -955,7 +955,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.5 `ocx profile add` Clone from Existing
 
 - [ ] **Setup:** Profile "work" exists
-- [ ] **Command:** `ocx profile add client-x --from work --global`
+- [ ] **Command:** `ocx profile add client-x --clone work --global`
 - [ ] **Expected:** Clones work profile to client-x
 - [ ] **Verify:**
   ```bash
@@ -968,7 +968,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.6 `ocx profile add` Install from Registry (Shorthand)
 
 - [ ] **Setup:** Global registry configured
-- [ ] **Command:** `ocx profile add ws --from kit/ws --global`
+- [ ] **Command:** `ocx profile add ws --source kit/ws --global`
 - [ ] **Expected:** Downloads profile from kit registry
 - [ ] **Verify:**
   ```bash
@@ -979,8 +979,8 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.7 `ocx profile add` Install from URL
 
 - [ ] **Setup:** None required
-- [ ] **Command:** `ocx profile add ws --from http://localhost:8788/ws --global`
-- [ ] **Expected:** Downloads profile from URL directly
+- [ ] **Command:** `ocx profile add ws --source kit/ws --from http://localhost:8788 --global`
+- [ ] **Expected:** Downloads profile from ephemeral registry URL
 - [ ] **Verify:**
   ```bash
   ocx p show ws
@@ -993,7 +993,7 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Commands:**
   ```bash
   ocx profile remove ws --global
-  ocx profile add ws --from kit/ws --global
+  ocx profile add ws --source kit/ws --global
   ```
 - [ ] **Expected:** Removes and reinstalls profile
 - [ ] **Verify:**
