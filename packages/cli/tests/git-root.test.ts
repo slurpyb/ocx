@@ -31,10 +31,11 @@ describe("resolveGitRootSync", () => {
 		await mkdir(nestedDir, { recursive: true })
 
 		// Compute relative path from process.cwd() to nestedDir
-		const relativePath = nestedDir.replace(process.cwd() + "/", "")
+		const relativePath = relative(process.cwd(), nestedDir)
 
 		// Assert input is relative
 		expect(isAbsolute(relativePath)).toBe(false)
+		expect(relativePath.length).toBeGreaterThan(0)
 
 		// Test with relative path
 		const result = resolveGitRootSync(relativePath)
