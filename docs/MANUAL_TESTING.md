@@ -319,11 +319,11 @@ Test cases from README.md lines 66-86.
 
 ---
 
-## 5. CLI Reference: ocx init
+## 4. CLI Reference: ocx init
 
 All variations from CLI.md lines 33-126.
 
-### 5.1 `ocx init` (Default Local)
+### 4.1 `ocx init` (Default Local)
 
 - [ ] **Setup:** Fresh test project directory
 - [ ] **Command:** `ocx init`
@@ -335,7 +335,7 @@ All variations from CLI.md lines 33-126.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 5.2 `ocx init --global`
+### 4.2 `ocx init --global`
 
 - [ ] **Setup:** Fresh sandbox
 - [ ] **Command:** `ocx init --global`
@@ -347,7 +347,7 @@ All variations from CLI.md lines 33-126.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 5.3 `ocx init` (Default Behavior)
+### 4.3 `ocx init` (Default Behavior)
 
 - [ ] **Setup:** Test project directory
 - [ ] **Command:** `ocx init`
@@ -355,7 +355,7 @@ All variations from CLI.md lines 33-126.
 - [ ] **Verify:** `.opencode/` created with defaults
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 5.4 `ocx init` (Error on Existing)
+### 4.4 `ocx init` (Error on Existing)
 
 - [ ] **Setup:** Existing `.opencode/` directory
 - [ ] **Commands:**
@@ -370,7 +370,7 @@ All variations from CLI.md lines 33-126.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 5.5 `ocx init --registry <path>` (Registry Scaffold Only)
+### 4.5 `ocx init --registry <path>` (Registry Scaffold Only)
 
 - [ ] **Setup:** Parent directory
 - [ ] **Commands:**
@@ -387,7 +387,7 @@ All variations from CLI.md lines 33-126.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 5.6 `ocx init --registry` (Scaffold Registry)
+### 4.6 `ocx init --registry` (Scaffold Registry)
 
 - [ ] **Setup:** Empty directory for registry
 - [ ] **Command:** `ocx init --registry my-registry --namespace my-org`
@@ -400,7 +400,7 @@ All variations from CLI.md lines 33-126.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 5.7 `ocx init --registry` with Author
+### 4.7 `ocx init --registry` with Author
 
 - [ ] **Setup:** Empty directory
 - [ ] **Command:** `ocx init --registry my-registry --namespace acme --author "Acme Corp"`
@@ -412,7 +412,7 @@ All variations from CLI.md lines 33-126.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 5.8 `ocx init --registry --canary`
+### 4.8 `ocx init --registry --canary`
 
 - [ ] **Setup:** Empty directory
 - [ ] **Command:** `ocx init --registry my-registry --canary --namespace test`
@@ -422,11 +422,11 @@ All variations from CLI.md lines 33-126.
 
 ---
 
-## 6. CLI Reference: ocx add
+## 5. CLI Reference: ocx add
 
 All variations from CLI.md lines 129-253.
 
-### 6.1 Add Registry Component (Fully Qualified)
+### 5.1 Add Registry Component (Fully Qualified)
 
 - [ ] **Setup:** Local config with registry configured
 - [ ] **Commands:**
@@ -443,7 +443,7 @@ All variations from CLI.md lines 129-253.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 6.2 One-Command Install with `--from`
+### 5.2 One-Command Install with `--from`
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `ocx add kdco/workspace --from http://localhost:8787`
@@ -455,7 +455,7 @@ All variations from CLI.md lines 129-253.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 6.3 Add with Specific Profile
+### 5.3 Add with Specific Profile
 
 - [ ] **Setup:** Profile configured with registry
 - [ ] **Command:** `ocx add kdco/researcher --profile work`
@@ -463,7 +463,7 @@ All variations from CLI.md lines 129-253.
 - [ ] **Verify:** Component installed successfully
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 6.4 Add npm Plugin (Unscoped)
+### 5.4 Add npm Plugin (Unscoped)
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `ocx add npm:opencode-plugin-foo`
@@ -475,7 +475,7 @@ All variations from CLI.md lines 129-253.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 6.5 Add npm Plugin (Scoped)
+### 5.5 Add npm Plugin (Scoped)
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `ocx add npm:@franlol/opencode-md-table-formatter`
@@ -487,7 +487,7 @@ All variations from CLI.md lines 129-253.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 6.6 Add npm Plugin with Version
+### 5.6 Add npm Plugin with Version
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `ocx add npm:some-plugin@1.0.0`
@@ -498,7 +498,7 @@ All variations from CLI.md lines 129-253.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 6.7 Add Multiple Components
+### 5.7 Add Multiple Components
 
 - [ ] **Setup:** Registry configured
 - [ ] **Command:** `ocx add kdco/researcher kdco/code-philosophy kdco/notify`
@@ -510,7 +510,7 @@ All variations from CLI.md lines 129-253.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 6.8 Add with `--dry-run`
+### 5.8 Add with `--dry-run`
 
 - [ ] **Setup:** Registry configured
 - [ ] **Command:** `ocx add kdco/researcher --dry-run`
@@ -522,7 +522,7 @@ All variations from CLI.md lines 129-253.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 6.9 Add with `--trust` (Bypass Plugin Validation)
+### 5.9 Add with `--trust` (Bypass Plugin Validation)
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `ocx add npm:some-non-esm-package --trust`
@@ -530,7 +530,7 @@ All variations from CLI.md lines 129-253.
 - [ ] **Verify:** Package installed despite validation skip
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 6.10 Add with `--json` Output
+### 5.10 Add with `--json` Output
 
 - [ ] **Setup:** Registry configured
 - [ ] **Command:** `ocx add kdco/researcher --json`
@@ -538,7 +538,7 @@ All variations from CLI.md lines 129-253.
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 6.11 Add with `--verbose`
+### 5.11 Add with `--verbose`
 
 - [ ] **Setup:** Registry configured
 - [ ] **Command:** `ocx add kdco/researcher --verbose`
@@ -548,11 +548,11 @@ All variations from CLI.md lines 129-253.
 
 ---
 
-## 7. CLI Reference: ocx update
+## 6. CLI Reference: ocx update
 
 All variations from CLI.md lines 256-361.
 
-### 7.1 Update Specific Component
+### 6.1 Update Specific Component
 
 - [ ] **Setup:** Component installed
 - [ ] **Command:** `ocx update kdco/researcher`
@@ -563,7 +563,7 @@ All variations from CLI.md lines 256-361.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 7.2 Update Multiple Components
+### 6.2 Update Multiple Components
 
 - [ ] **Setup:** Multiple components installed
 - [ ] **Command:** `ocx update kdco/researcher kdco/notify`
@@ -574,7 +574,7 @@ All variations from CLI.md lines 256-361.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 7.3 Update All Components (`--all`)
+### 6.3 Update All Components (`--all`)
 
 - [ ] **Setup:** Multiple components installed
 - [ ] **Command:** `ocx update --all`
@@ -585,7 +585,7 @@ All variations from CLI.md lines 256-361.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 7.4 Update All with `--dry-run`
+### 6.4 Update All with `--dry-run`
 
 - [ ] **Setup:** Components installed
 - [ ] **Command:** `ocx update --all --dry-run`
@@ -597,7 +597,7 @@ All variations from CLI.md lines 256-361.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 7.5 Update by Registry (`--registry`)
+### 6.5 Update by Registry (`--registry`)
 
 - [ ] **Setup:** Components from multiple registries installed
 - [ ] **Command:** `ocx update --registry kdco`
@@ -616,7 +616,7 @@ All variations from CLI.md lines 256-361.
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 7.9 Update with `--verbose`
+### 6.9 Update with `--verbose`
 
 - [ ] **Setup:** Component installed
 - [ ] **Command:** `ocx update kdco/researcher --verbose`
@@ -626,11 +626,11 @@ All variations from CLI.md lines 256-361.
 
 ---
 
-## 9. CLI Reference: ocx search
+## 7. CLI Reference: ocx search
 
 All variations from CLI.md lines 439-516.
 
-### 9.1 Search All Available Components
+### 7.1 Search All Available Components
 
 - [ ] **Setup:** Registry configured
 - [ ] **Command:** `ocx search`
@@ -638,7 +638,7 @@ All variations from CLI.md lines 439-516.
 - [ ] **Verify:** Output shows component list
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 9.2 Search with Query
+### 7.2 Search with Query
 
 - [ ] **Setup:** Registry configured
 - [ ] **Command:** `ocx search agent`
@@ -646,7 +646,7 @@ All variations from CLI.md lines 439-516.
 - [ ] **Verify:** Results filtered by query
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 9.3 Search with Higher Limit
+### 7.3 Search with Higher Limit
 
 - [ ] **Setup:** Registry configured
 - [ ] **Command:** `ocx search agents --limit 50`
@@ -654,7 +654,7 @@ All variations from CLI.md lines 439-516.
 - [ ] **Verify:** Limit respected in output
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 9.4 List Installed Components Only
+### 7.4 List Installed Components Only
 
 - [ ] **Setup:** Components installed
 - [ ] **Command:** `ocx search --installed`
@@ -666,7 +666,7 @@ All variations from CLI.md lines 439-516.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 9.5 Search with `--json` Output
+### 7.5 Search with `--json` Output
 
 - [ ] **Setup:** Registry configured
 - [ ] **Command:** `ocx search --json`
@@ -674,7 +674,7 @@ All variations from CLI.md lines 439-516.
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 9.6 Search with `--verbose`
+### 7.6 Search with `--verbose`
 
 - [ ] **Setup:** Registry configured
 - [ ] **Command:** `ocx search agents --verbose`
@@ -682,7 +682,7 @@ All variations from CLI.md lines 439-516.
 - [ ] **Verify:** Verbose output shows extended metadata
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 9.7 Search Alias: `ocx list`
+### 7.7 Search Alias: `ocx list`
 
 - [ ] **Setup:** Registry configured
 - [ ] **Command:** `ocx list`
@@ -692,23 +692,23 @@ All variations from CLI.md lines 439-516.
 
 ---
 
-## 10. CLI Reference: ocx registry
+## 8. CLI Reference: ocx registry
 
 All subcommands from CLI.md lines 519-705.
 
-### 10.1 `ocx registry add` (Local, Name from Hostname)
+### 8.1 `ocx registry add` (Local, Name from Hostname)
 
 - [ ] **Setup:** Local config initialized
-- [ ] **Command:** `ocx registry add http://localhost:8787`
-- [ ] **Expected:** Registry added with name derived from hostname
+- [ ] **Command:** `ocx registry add http://localhost:8787 --name kdco`
+- [ ] **Expected:** Registry added with custom name "kdco"
 - [ ] **Verify:**
   ```bash
-  ocx registry list  # Should show registry.kdco.dev
+  ocx registry list  # Should show kdco
   cat .opencode/ocx.jsonc  # Should contain registry
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.2 `ocx registry add` with Custom Name
+### 8.2 `ocx registry add` with Custom Name
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `ocx registry add http://localhost:8787 --name kdco`
@@ -719,7 +719,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.3 `ocx registry add --global`
+### 8.3 `ocx registry add --global`
 
 - [ ] **Setup:** Global profiles initialized
 - [ ] **Command:** `ocx registry add http://localhost:8787 --name kdco --global`
@@ -731,7 +731,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.4 `ocx registry add --force` (Update Existing)
+### 8.4 `ocx registry add --force` (Update Existing)
 
 - [ ] **Setup:** Registry already configured
 - [ ] **Command:** `ocx registry add https://new-url.kdco.dev --name kdco --force`
@@ -742,7 +742,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.5 `ocx registry add` with `--json` Output
+### 8.5 `ocx registry add` with `--json` Output
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `ocx registry add http://localhost:8787 --name kdco --json`
@@ -750,7 +750,7 @@ All subcommands from CLI.md lines 519-705.
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.6 `ocx registry remove` (Local)
+### 8.6 `ocx registry remove` (Local)
 
 - [ ] **Setup:** Registry configured locally
 - [ ] **Command:** `ocx registry remove kdco`
@@ -762,7 +762,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.7 `ocx registry remove --global`
+### 8.7 `ocx registry remove --global`
 
 - [ ] **Setup:** Registry configured globally
 - [ ] **Command:** `ocx registry remove kdco --global`
@@ -773,7 +773,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.8 `ocx registry list` (Local)
+### 8.8 `ocx registry list` (Local)
 
 - [ ] **Setup:** Registries configured locally
 - [ ] **Command:** `ocx registry list`
@@ -781,7 +781,7 @@ All subcommands from CLI.md lines 519-705.
 - [ ] **Verify:** Output matches `.opencode/ocx.jsonc` content
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.9 `ocx registry list --global`
+### 8.9 `ocx registry list --global`
 
 - [ ] **Setup:** Registries configured globally
 - [ ] **Command:** `ocx registry list --global`
@@ -789,7 +789,7 @@ All subcommands from CLI.md lines 519-705.
 - [ ] **Verify:** Output matches global config
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 10.10 `ocx registry list --json`
+### 8.10 `ocx registry list --json`
 
 - [ ] **Setup:** Registries configured
 - [ ] **Command:** `ocx registry list --json`
@@ -799,11 +799,11 @@ All subcommands from CLI.md lines 519-705.
 
 ---
 
-## 11. CLI Reference: ocx build
+## 9. CLI Reference: ocx build
 
 All variations from CLI.md lines 708-790.
 
-### 11.1 Build Registry in Current Directory
+### 9.1 Build Registry in Current Directory
 
 - [ ] **Setup:** Registry source directory with `registry.jsonc`
 - [ ] **Commands:**
@@ -822,7 +822,7 @@ All variations from CLI.md lines 708-790.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 11.2 Build from Specific Directory
+### 9.2 Build from Specific Directory
 
 - [ ] **Setup:** Registry source directory
 - [ ] **Command:** `ocx build /tmp/test-registry`
@@ -833,7 +833,7 @@ All variations from CLI.md lines 708-790.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 11.3 Build with Custom Output Directory
+### 9.3 Build with Custom Output Directory
 
 - [ ] **Setup:** Registry source directory
 - [ ] **Command:** `ocx build /tmp/test-registry --out ./public`
@@ -845,7 +845,7 @@ All variations from CLI.md lines 708-790.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 11.4 Build with `--json` Output
+### 9.4 Build with `--json` Output
 
 - [ ] **Setup:** Registry source directory
 - [ ] **Command:** `ocx build /tmp/test-registry --json`
@@ -855,11 +855,11 @@ All variations from CLI.md lines 708-790.
 
 ---
 
-## 12. CLI Reference: ocx self
+## 10. CLI Reference: ocx self
 
 Self-management commands from CLI.md lines 793-870.
 
-### 12.1 `ocx self update`
+### 10.1 `ocx self update`
 
 - [ ] **Setup:** OCX installed
 - [ ] **Command:** `ocx self update`
@@ -870,7 +870,7 @@ Self-management commands from CLI.md lines 793-870.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 12.2 `ocx self update --force`
+### 10.2 `ocx self update --force`
 
 - [ ] **Setup:** OCX installed
 - [ ] **Command:** `ocx self update --force`
@@ -878,7 +878,7 @@ Self-management commands from CLI.md lines 793-870.
 - [ ] **Verify:** Command completes successfully
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 12.3 `ocx self update --method npm`
+### 10.3 `ocx self update --method npm`
 
 - [ ] **Setup:** OCX installed via npm
 - [ ] **Command:** `ocx self update --method npm`
@@ -886,7 +886,7 @@ Self-management commands from CLI.md lines 793-870.
 - [ ] **Verify:** Update completes via npm
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 12.4 `ocx self uninstall --dry-run`
+### 10.4 `ocx self uninstall --dry-run`
 
 - [ ] **Setup:** OCX installed with test config
 - [ ] **Command:** `ocx self uninstall --dry-run`
@@ -898,7 +898,7 @@ Self-management commands from CLI.md lines 793-870.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 12.5 `ocx self uninstall` (Config Only)
+### 10.5 `ocx self uninstall` (Config Only)
 
 - [ ] **Setup:** Test environment (NOT production!)
 - [ ] **Command:** `ocx self uninstall`
@@ -912,11 +912,11 @@ Self-management commands from CLI.md lines 793-870.
 
 ---
 
-## 13. CLI Reference: ocx profile
+## 11. CLI Reference: ocx profile
 
 All subcommands from CLI.md lines 1024-1273.
 
-### 13.1 `ocx profile list`
+### 11.1 `ocx profile list`
 
 - [ ] **Setup:** Global profiles initialized
 - [ ] **Command:** `ocx profile list`
@@ -927,7 +927,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.2 `ocx p ls` (Alias)
+### 11.2 `ocx p ls` (Alias)
 
 - [ ] **Setup:** Global profiles initialized
 - [ ] **Command:** `ocx p ls`
@@ -935,7 +935,7 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Verify:** Lists profiles
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.3 `ocx profile list --json`
+### 11.3 `ocx profile list --json`
 
 - [ ] **Setup:** Global profiles initialized
 - [ ] **Command:** `ocx profile list --json`
@@ -943,7 +943,7 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.4 `ocx profile add work` (Empty Profile)
+### 11.4 `ocx profile add work` (Empty Profile)
 
 - [ ] **Setup:** Global profiles initialized
 - [ ] **Command:** `ocx profile add work --global`
@@ -955,7 +955,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.5 `ocx profile add` Clone from Existing
+### 11.5 `ocx profile add` Clone from Existing
 
 - [ ] **Setup:** Profile "work" exists
 - [ ] **Command:** `ocx profile add client-x --from work --global`
@@ -968,7 +968,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.6 `ocx profile add` Install from Registry (Shorthand)
+### 11.6 `ocx profile add` Install from Registry (Shorthand)
 
 - [ ] **Setup:** Global registry configured
 - [ ] **Command:** `ocx profile add ws --from kit/ws --global`
@@ -979,7 +979,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.7 `ocx profile add` Install from URL
+### 11.7 `ocx profile add` Install from URL
 
 - [ ] **Setup:** None required
 - [ ] **Command:** `ocx profile add ws --from http://localhost:8788/ws --global`
@@ -990,7 +990,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.8 `ocx profile add` (Remove and Add to Overwrite)
+### 11.8 `ocx profile add` (Remove and Add to Overwrite)
 
 - [ ] **Setup:** Profile "ws" already exists
 - [ ] **Commands:**
@@ -1005,7 +1005,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.9 `ocx p add` (Alias)
+### 11.9 `ocx p add` (Alias)
 
 - [ ] **Setup:** Global profiles initialized
 - [ ] **Command:** `ocx p add personal --global`
@@ -1016,7 +1016,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.10 `ocx profile remove work` (Local Default)
+### 11.10 `ocx profile remove work` (Local Default)
 
 - [ ] **Setup:** Local profile "work" exists
 - [ ] **Command:** `ocx profile remove work`
@@ -1027,7 +1027,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.11 `ocx profile remove --global`
+### 11.11 `ocx profile remove --global`
 
 - [ ] **Setup:** Global profile "old-profile" exists
 - [ ] **Command:** `ocx profile remove old-profile --global`
@@ -1039,7 +1039,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.12 `ocx p rm` (Alias)
+### 11.12 `ocx p rm` (Alias)
 
 - [ ] **Setup:** Profile exists
 - [ ] **Command:** `ocx p rm old-profile`
@@ -1047,7 +1047,7 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Verify:** Profile deleted
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.13 `ocx profile move work client-work` (Local Default)
+### 11.13 `ocx profile move work client-work` (Local Default)
 
 - [ ] **Setup:** Local profile "work" exists
 - [ ] **Command:** `ocx profile move work client-work`
@@ -1058,7 +1058,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.14 `ocx profile move --global`
+### 11.14 `ocx profile move --global`
 
 - [ ] **Setup:** Global profile "work" exists
 - [ ] **Command:** `ocx profile move work client-work --global`
@@ -1070,7 +1070,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.15 `ocx p mv` (Alias)
+### 11.15 `ocx p mv` (Alias)
 
 - [ ] **Setup:** Profile exists
 - [ ] **Command:** `ocx p mv personal home`
@@ -1081,7 +1081,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.16 `ocx profile show` (Current Profile)
+### 11.16 `ocx profile show` (Current Profile)
 
 - [ ] **Setup:** Profile active via environment or flag
 - [ ] **Command:** `OCX_PROFILE=work ocx profile show`
@@ -1089,7 +1089,7 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Verify:** Output displays work profile info
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.17 `ocx profile show work`
+### 11.17 `ocx profile show work`
 
 - [ ] **Setup:** Profile "work" exists
 - [ ] **Command:** `ocx profile show work`
@@ -1100,7 +1100,7 @@ All subcommands from CLI.md lines 1024-1273.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.18 `ocx p show` (Alias)
+### 11.18 `ocx p show` (Alias)
 
 - [ ] **Setup:** Profile exists
 - [ ] **Command:** `ocx p show work`
@@ -1108,7 +1108,7 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Verify:** Profile details displayed
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 13.19 `ocx profile show --json`
+### 11.19 `ocx profile show --json`
 
 - [ ] **Setup:** Profile exists
 - [ ] **Command:** `ocx profile show work --json`
@@ -1118,11 +1118,11 @@ All subcommands from CLI.md lines 1024-1273.
 
 ---
 
-## 14. CLI Reference: ocx config
+## 12. CLI Reference: ocx config
 
 All subcommands from CLI.md lines 1276-1381.
 
-### 14.1 `ocx config show` (Current Scope)
+### 12.1 `ocx config show` (Current Scope)
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `ocx config show`
@@ -1133,7 +1133,7 @@ All subcommands from CLI.md lines 1276-1381.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 14.2 `ocx config show --origin`
+### 12.2 `ocx config show --origin`
 
 - [ ] **Setup:** Local config with profile active
 - [ ] **Command:** `ocx config show --origin`
@@ -1144,7 +1144,7 @@ All subcommands from CLI.md lines 1276-1381.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 14.3 `ocx config show -p work`
+### 12.3 `ocx config show -p work`
 
 - [ ] **Setup:** Profile "work" exists
 - [ ] **Command:** `ocx config show -p work`
@@ -1152,7 +1152,7 @@ All subcommands from CLI.md lines 1276-1381.
 - [ ] **Verify:** Output shows work profile settings
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 14.4 `ocx config show --json`
+### 12.4 `ocx config show --json`
 
 - [ ] **Setup:** Config exists
 - [ ] **Command:** `ocx config show --json`
@@ -1160,7 +1160,7 @@ All subcommands from CLI.md lines 1276-1381.
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 14.5 `ocx config edit` (Local)
+### 12.5 `ocx config edit` (Local)
 
 - [ ] **Setup:** Local config exists, `$EDITOR` set
 - [ ] **Command:** `EDITOR=cat ocx config edit`
@@ -1171,7 +1171,7 @@ All subcommands from CLI.md lines 1276-1381.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 14.6 `ocx config edit --global`
+### 12.6 `ocx config edit --global`
 
 - [ ] **Setup:** Global config exists, `$EDITOR` set
 - [ ] **Command:** `EDITOR=cat ocx config edit --global`
@@ -1179,7 +1179,7 @@ All subcommands from CLI.md lines 1276-1381.
 - [ ] **Verify:** Editor opens global config
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 14.7 `ocx config edit -p work`
+### 12.7 `ocx config edit -p work`
 
 - [ ] **Setup:** Profile "work" exists, `$EDITOR` set
 - [ ] **Command:** `EDITOR=cat ocx config edit -p work`
@@ -1189,11 +1189,11 @@ All subcommands from CLI.md lines 1276-1381.
 
 ---
 
-## 15. CLI Reference: ocx opencode
+## 13. CLI Reference: ocx opencode
 
 All variations from CLI.md lines 1383-1509.
 
-### 15.1 `ocx opencode` (Default Profile)
+### 13.1 `ocx opencode` (Default Profile)
 
 - [ ] **Setup:** Default profile exists, test project directory
 - [ ] **Command:** `cd /tmp/ocx-v2-test-project && ocx oc run "echo hello"`
@@ -1201,7 +1201,7 @@ All variations from CLI.md lines 1383-1509.
 - [ ] **Verify:** Output shows "hello"
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 15.2 `ocx opencode -p work`
+### 13.2 `ocx opencode -p work`
 
 - [ ] **Setup:** Work profile exists
 - [ ] **Command:** `ocx oc -p work run "echo hello"`
@@ -1209,7 +1209,7 @@ All variations from CLI.md lines 1383-1509.
 - [ ] **Verify:** Command executes successfully
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 15.3 `ocx opencode` with `OCX_PROFILE` Environment
+### 13.3 `ocx opencode` with `OCX_PROFILE` Environment
 
 - [ ] **Setup:** Profile exists
 - [ ] **Commands:**
@@ -1221,7 +1221,7 @@ All variations from CLI.md lines 1383-1509.
 - [ ] **Verify:** Command executes with work profile
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 15.4 `ocx oc` (Alias)
+### 13.4 `ocx oc` (Alias)
 
 - [ ] **Setup:** Profile exists
 - [ ] **Command:** `ocx oc run "echo hello"`
@@ -1229,7 +1229,7 @@ All variations from CLI.md lines 1383-1509.
 - [ ] **Verify:** Command executes
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 15.5 `ocx opencode --no-rename`
+### 13.5 `ocx opencode --no-rename`
 
 - [ ] **Setup:** Profile exists, in terminal with window support
 - [ ] **Command:** `ocx oc --no-rename run "echo hello"`
@@ -1237,7 +1237,7 @@ All variations from CLI.md lines 1383-1509.
 - [ ] **Verify:** Terminal window name unchanged
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 15.6 `ocx oc -- --help` (Pass-Through to OpenCode)
+### 13.6 `ocx oc -- --help` (Pass-Through to OpenCode)
 
 - [ ] **Setup:** OpenCode installed
 - [ ] **Command:** `ocx oc -- --help`
@@ -1245,7 +1245,7 @@ All variations from CLI.md lines 1383-1509.
 - [ ] **Verify:** Help output is from OpenCode
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 15.7 Profile Resolution Priority: Flag Wins
+### 13.7 Profile Resolution Priority: Flag Wins
 
 - [ ] **Setup:** Multiple profiles, `OCX_PROFILE` set
 - [ ] **Commands:**
@@ -1257,7 +1257,7 @@ All variations from CLI.md lines 1383-1509.
 - [ ] **Verify:** Work profile used
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 15.8 Profile Resolution: Environment Variable
+### 13.8 Profile Resolution: Environment Variable
 
 - [ ] **Setup:** Profile exists, no local config
 - [ ] **Commands:**
@@ -1269,7 +1269,7 @@ All variations from CLI.md lines 1383-1509.
 - [ ] **Verify:** Work profile used
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 15.9 Profile Resolution: Local Config Field
+### 13.9 Profile Resolution: Local Config Field
 
 - [ ] **Setup:** `.opencode/ocx.jsonc` with `"profile": "work"`
 - [ ] **Command:** `ocx oc run "echo hello"`
@@ -1280,7 +1280,7 @@ All variations from CLI.md lines 1383-1509.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 15.10 Profile Resolution: Default Profile Fallback
+### 13.10 Profile Resolution: Default Profile Fallback
 
 - [ ] **Setup:** Default profile exists, no explicit selection
 - [ ] **Commands:**
@@ -1292,7 +1292,7 @@ All variations from CLI.md lines 1383-1509.
 - [ ] **Verify:** Default profile used
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 15.11 Custom Binary via Profile Config
+### 13.11 Custom Binary via Profile Config
 
 - [ ] **Setup:** Profile with `"bin": "/custom/path/opencode"`
 - [ ] **Command:** `ocx oc -p work run "echo hello"`
@@ -1303,7 +1303,7 @@ All variations from CLI.md lines 1383-1509.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 15.12 Custom Binary via `OPENCODE_BIN` Environment
+### 13.12 Custom Binary via `OPENCODE_BIN` Environment
 
 - [ ] **Setup:** OpenCode available at custom path
 - [ ] **Commands:**
@@ -1317,11 +1317,11 @@ All variations from CLI.md lines 1383-1509.
 
 ---
 
-## 16. Profile System Tests
+## 14. Profile System Tests
 
 From PROFILES.md - advanced profile behaviors.
 
-### 16.1 Profile Layering: Global Base + Local Overlay
+### 14.1 Profile Layering: Global Base + Local Overlay
 
 - [ ] **Setup:** Global profile "work" exists, local config specifies profile
 - [ ] **Commands:**
@@ -1338,7 +1338,7 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Verify:** `--origin` shows layering sources
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 16.2 Exclude/Include Pattern Behavior
+### 14.2 Exclude/Include Pattern Behavior
 
 - [ ] **Setup:** Profile with exclude patterns
 - [ ] **Commands:**
@@ -1351,7 +1351,7 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Verify:** File not visible to OpenCode
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 16.3 Include Overrides Exclude
+### 14.3 Include Overrides Exclude
 
 - [ ] **Setup:** Profile with exclude and include patterns
 - [ ] **Commands:**
@@ -1366,7 +1366,7 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Verify:** Include overrides exclude
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 16.4 Registry Isolation: Profile Registries Only
+### 14.4 Registry Isolation: Profile Registries Only
 
 - [ ] **Setup:** Global registry configured, profile with different registry
 - [ ] **Commands:**
@@ -1380,7 +1380,7 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Verify:** Search shows only registry-b components
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 16.5 Registry Isolation: Local Registries Only
+### 14.5 Registry Isolation: Local Registries Only
 
 - [ ] **Setup:** Local config with registries, no profile
 - [ ] **Commands:**
@@ -1393,7 +1393,7 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Verify:** Search shows only registry-c components
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 16.6 OpenCode Config Merging
+### 14.6 OpenCode Config Merging
 
 - [ ] **Setup:** Profile with `opencode.jsonc`, local with different settings
 - [ ] **Commands:**
@@ -1406,7 +1406,7 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Verify:** Both agent sets visible
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 16.7 Instruction File Discovery (Deepest-First)
+### 14.7 Instruction File Discovery (Deepest-First)
 
 - [ ] **Setup:** Multi-level project with instruction files
 - [ ] **Commands:**
@@ -1423,7 +1423,7 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Verify:** Both AGENTS.md files considered (deepest first)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 16.8 First Type Wins
+### 14.8 First Type Wins
 
 - [ ] **Setup:** Project directory with multiple instruction file types
 - [ ] **Commands:**
@@ -1439,7 +1439,7 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Verify:** First type wins behavior enforced
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 16.9 CONTEXT.md Deprecated
+### 14.9 CONTEXT.md Deprecated
 
 - [ ] **Setup:** Project with only CONTEXT.md
 - [ ] **Commands:**
@@ -1454,7 +1454,7 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Verify:** CONTEXT.md loaded successfully
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 16.10 Profile Instructions Have Highest Priority
+### 14.10 Profile Instructions Have Highest Priority
 
 - [ ] **Setup:** Profile with AGENTS.md, project with AGENTS.md
 - [ ] **Commands:**
@@ -1467,7 +1467,7 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Verify:** Profile AGENTS.md overrides project
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 16.11 Local vs Global Profile Distinction
+### 14.11 Local vs Global Profile Distinction
 
 #### Test: Default creates local profile
 - [ ] **Setup:** In a project directory with `.opencode/` initialized
@@ -1517,11 +1517,11 @@ From PROFILES.md - advanced profile behaviors.
 
 ---
 
-## 17. Error Path Tests
+## 15. Error Path Tests
 
 Common errors from CLI.md error tables.
 
-### 17.1 Error: No ocx.jsonc Found (Init)
+### 15.1 Error: No ocx.jsonc Found (Init)
 
 - [ ] **Setup:** Empty directory, no config
 - [ ] **Command:** `ocx add kdco/researcher`
@@ -1529,7 +1529,7 @@ Common errors from CLI.md error tables.
 - [ ] **Verify:** Exit code 78 (CONFIG error)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 17.2 Error: Registry Not Found
+### 15.2 Error: Registry Not Found
 
 - [ ] **Setup:** Config initialized, registry not configured
 - [ ] **Command:** `ocx add unknown/component`
@@ -1537,7 +1537,7 @@ Common errors from CLI.md error tables.
 - [ ] **Verify:** Exit code 66 (NOT_FOUND)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 17.3 Error: Component Not Installed (Update)
+### 15.3 Error: Component Not Installed (Update)
 
 - [ ] **Setup:** Config initialized, component not installed
 - [ ] **Command:** `ocx update kdco/researcher`
@@ -1545,7 +1545,7 @@ Common errors from CLI.md error tables.
 - [ ] **Verify:** Exit code 66 (NOT_FOUND)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 17.4 Error: File Conflict (Add)
+### 15.4 Error: File Conflict (Add)
 
 - [ ] **Setup:** Component already installed, modified locally
 - [ ] **Commands:**
@@ -1558,7 +1558,7 @@ Common errors from CLI.md error tables.
 - [ ] **Verify:** Exit code 6 (CONFLICT)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 17.5 Error: Registry Already Exists (Add Registry)
+### 15.5 Error: Registry Already Exists (Add Registry)
 
 - [ ] **Setup:** Registry configured
 - [ ] **Commands:**
@@ -1570,7 +1570,7 @@ Common errors from CLI.md error tables.
 - [ ] **Verify:** Exit code 6 (CONFLICT)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 17.6 Error: Invalid Version Specifier (Update)
+### 15.6 Error: Invalid Version Specifier (Update)
 
 - [ ] **Setup:** Component installed
 - [ ] **Command:** `ocx update kdco/researcher@`
@@ -1578,7 +1578,7 @@ Common errors from CLI.md error tables.
 - [ ] **Verify:** Exit code 78 (CONFIG)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 17.7 Error: Mutually Exclusive Options (Update)
+### 15.7 Error: Mutually Exclusive Options (Update)
 
 - [ ] **Setup:** Components installed
 - [ ] **Command:** `ocx update --all --registry kdco`
@@ -1586,7 +1586,7 @@ Common errors from CLI.md error tables.
 - [ ] **Verify:** Exit code 1 (GENERAL)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 17.8 Error: Profile Not Found (Move)
+### 15.8 Error: Profile Not Found (Move)
 
 - [ ] **Setup:** Profiles initialized
 - [ ] **Command:** `ocx profile move nonexistent new-name`
@@ -1594,7 +1594,7 @@ Common errors from CLI.md error tables.
 - [ ] **Verify:** Exit code 66 (NOT_FOUND)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 17.9 Error: Profile Already Exists (Move)
+### 15.9 Error: Profile Already Exists (Move)
 
 - [ ] **Setup:** Multiple profiles exist
 - [ ] **Commands:**
@@ -1607,7 +1607,7 @@ Common errors from CLI.md error tables.
 - [ ] **Verify:** Exit code 6 (CONFLICT)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 17.10 Error: Integrity Check Failed
+### 15.10 Error: Integrity Check Failed
 
 - [ ] **Setup:** Component installed with mismatched hash
 - [ ] **Commands:**
@@ -1621,37 +1621,37 @@ Common errors from CLI.md error tables.
 
 ---
 
-## 18. Verification Checklist
+## 16. Verification Checklist
 
 Master summary for full test sessions.
 
-### 18.1 All README Commands Verified
+### 16.1 All README Commands Verified
 
 - [ ] Quick Start Profiles (Section 2): 6 test cases
 - [ ] Quick Start Components (Section 3): 4 test cases
 
-### 18.2 All CLI.md Commands Verified
+### 16.2 All CLI.md Commands Verified
 
-- [ ] ocx init (Section 5): 8 test cases
-- [ ] ocx add (Section 6): 11 test cases
-- [ ] ocx update (Section 7): 9 test cases
-- [ ] ocx search (Section 8): 7 test cases
-- [ ] ocx registry (Section 10): 11 test cases
-- [ ] ocx build (Section 11): 4 test cases
-- [ ] ocx self (Section 12): 5 test cases
-- [ ] ocx profile (Section 13): 17 test cases
-- [ ] ocx config (Section 14): 7 test cases
-- [ ] ocx opencode (Section 15): 12 test cases
+- [ ] ocx init (Section 4): 8 test cases
+- [ ] ocx add (Section 5): 11 test cases
+- [ ] ocx update (Section 6): 9 test cases
+- [ ] ocx search (Section 7): 7 test cases
+- [ ] ocx registry (Section 8): 11 test cases
+- [ ] ocx build (Section 9): 4 test cases
+- [ ] ocx self (Section 10): 5 test cases
+- [ ] ocx profile (Section 11): 17 test cases
+- [ ] ocx config (Section 12): 7 test cases
+- [ ] ocx opencode (Section 13): 12 test cases
 
-### 18.3 Profile System Verified
+### 16.3 Profile System Verified
 
-- [ ] Profile Layering (Section 16): 8 test cases
+- [ ] Profile Layering (Section 14): 8 test cases
 
-### 18.4 Error Paths Verified
+### 16.4 Error Paths Verified
 
-- [ ] Common Errors (Section 17): 10 test cases
+- [ ] Common Errors (Section 15): 10 test cases
 
-### 18.5 Documentation Sync
+### 16.5 Documentation Sync
 
 - [ ] All README examples tested
 - [ ] All CLI.md examples tested
@@ -1661,11 +1661,11 @@ Master summary for full test sessions.
 
 ---
 
-## 19. Sync Checklist
+## 17. Sync Checklist
 
 For maintainability when commands change.
 
-### 19.1 When to Update This Document
+### 17.1 When to Update This Document
 
 - [ ] New command added to CLI
 - [ ] New option added to existing command
@@ -1674,7 +1674,7 @@ For maintainability when commands change.
 - [ ] Before major releases
 - [ ] After significant refactoring
 
-### 19.2 Cross-Reference Links
+### 17.2 Cross-Reference Links
 
 | Section | Source Document | Lines |
 |---------|----------------|-------|
@@ -1693,14 +1693,14 @@ For maintainability when commands change.
 | Section 14 | [PROFILES.md](./PROFILES.md) | Full document |
 | Section 15 | [CLI.md](./CLI.md) | Error tables throughout |
 
-### 19.3 Version Tracking
+### 17.3 Version Tracking
 
 - [ ] Update `ocx_version` in metadata after testing
 - [ ] Update `last_full_test` date when complete session finishes
 - [ ] Note platform tested (macOS, Linux)
 - [ ] Track any skipped tests and reasons
 
-### 19.4 Automated Test Coverage
+### 17.4 Automated Test Coverage
 
 For reference, automated tests exist in:
 

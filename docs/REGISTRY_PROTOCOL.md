@@ -132,10 +132,10 @@ Returns raw file content for installation.
 | Type | Common Location | Description |
 |------|-----------------|-------------|
 | `skill` | `skills/{name}/` | AI behavior instructions |
-| `plugin` | `plugin/` | OpenCode plugins |
-| `agent` | `agent/` | Custom agent definitions |
-| `command` | `command/` | Custom CLI commands |
-| `tool` | `tool/` | Custom tools |
+| `plugin` | `plugins/` | OpenCode plugins |
+| `agent` | `agents/` | Custom agent definitions |
+| `command` | `commands/` | Custom CLI commands |
+| `tool` | `tools/` | Custom tools |
 | `bundle` | (varies) | Meta-package grouping other components |
 | `profile` | `~/.config/opencode/profiles/{name}/` | Shareable profile configuration |
 

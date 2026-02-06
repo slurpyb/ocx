@@ -39,10 +39,10 @@ A registry source directory should look like this:
 my-registry/
 ├── registry.jsonc    # Registry manifest
 └── files/            # Component source files
-    ├── agent/
-    ├── plugin/
+    ├── agents/
+    ├── plugins/
     ├── skills/
-    └── command/
+    └── commands/
 ```
 
 ### registry.jsonc
@@ -60,7 +60,7 @@ OCX uses **Cargo-style union types** for a clean developer experience: use strin
       "name": "cool-plugin",
       "type": "plugin",
       "description": "Does something cool",
-      "files": ["plugin/my-cool-plugin.ts"],
+      "files": ["plugins/my-cool-plugin.ts"],
       "dependencies": []
     }
   ]
@@ -80,8 +80,8 @@ Use string shorthand when the target can be auto-inferred from the path:
 
 ```json
 // String shorthand (recommended)
-"files": ["plugin/my-plugin.ts"]
-// Expands to: { "path": "plugin/my-plugin.ts", "target": "plugin/my-plugin.ts" }
+"files": ["plugins/my-plugin.ts"]
+// Expands to: { "path": "plugins/my-plugin.ts", "target": "plugins/my-plugin.ts" }
 
 // Full object (when you need a custom target)
 // Note: V2 uses root-relative targets (no .opencode/ prefix)
@@ -211,11 +211,11 @@ The component itself does NOT need to be listed in `opencode.plugin` - it's auto
 
 | Type | Target Directory | Description |
 |------|-----------------|-------------|
-| `agent` | `agent/` | Markdown files defining specialized agents. |
+| `agent` | `agents/` | Markdown files defining specialized agents. |
 | `skill` | `skills/` | Instruction sets (must follow `skills/<name>/SKILL.md`). |
 | `plugin` | `plugins/` | TypeScript/JavaScript extensions for tools and hooks. |
-| `command` | `command/` | Markdown templates for TUI commands. |
-| `tool` | `tool/` | Custom tool implementations. |
+| `command` | `commands/` | Markdown templates for TUI commands. |
+| `tool` | `tools/` | Custom tool implementations. |
 | `bundle` | N/A | Virtual components that install multiple other components. |
 | `profile` | N/A | Shareable profile configuration. |
 
