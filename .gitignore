@@ -15,3 +15,4 @@ coverage/
 
 # Test fixtures (temporary directories)
 packages/cli/tests/fixtures/tmp-*/
+.recovery/

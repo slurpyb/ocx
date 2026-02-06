@@ -1,7 +1,12 @@
 # OCX Profiles Demo GIF
-# Generate with isolated env (does not touch real config):
-#   TMP=$(mktemp -d) && XDG_CONFIG_HOME="$TMP/config" HOME="$TMP/home" vhs assets/profiles-demo.tape && rm -rf "$TMP"
+# Generate via repository workflow script:
+#   ./scripts/record-vhs-demos.sh
 # Requires: brew install vhs
+#
+# Note: The workflow script sets OCX_DEMO_FILTER_NOISE=1 to suppress
+# known wrangler asset-server 404 noise that appears during recording
+# but doesn't affect functionality. This filtering is demo-only and
+# doesn't modify product runtime behavior.
 
 Output assets/profiles-demo.gif
 
