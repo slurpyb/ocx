@@ -16,17 +16,13 @@ This plugin solves that:
 
 ## Installation
 
-Install via [OCX](https://github.com/kdcokenny/ocx), the package manager for OpenCode extensions:
-
 ```bash
-# Install OCX
-curl -fsSL https://ocx.kdco.dev/install.sh | sh
-
-# Install directly from registry
 ocx add kdco/notify --from https://registry.kdco.dev
 ```
 
-Or get everything at once with `kdco-workspace`:
+If you don't have OCX installed, install it from the [OCX repository](https://github.com/kdcokenny/ocx).
+
+**Optional:** Get everything at once with `kdco-workspace`:
 
 ```bash
 ocx add kdco/workspace --from https://registry.kdco.dev

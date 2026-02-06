@@ -16,17 +16,13 @@ Background agents solve this:
 
 ## Installation
 
-Install via [OCX](https://github.com/kdcokenny/ocx), the package manager for OpenCode extensions:
-
 ```bash
-# Install OCX
-curl -fsSL https://ocx.kdco.dev/install.sh | sh
-
-# Install directly from registry
 ocx add kdco/background-agents --from https://registry.kdco.dev
 ```
 
-Want the full experience? Install `kdco-workspace` instead - it bundles background agents with specialist agents, planning tools, and research protocols:
+If you don't have OCX installed, install it from the [OCX repository](https://github.com/kdcokenny/ocx).
+
+**Optional:** Install `kdco-workspace` for the full experience—it bundles background agents with specialist agents, planning tools, and research protocols:
 
 ```bash
 ocx add kdco/workspace --from https://registry.kdco.dev

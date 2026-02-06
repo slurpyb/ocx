@@ -96,33 +96,18 @@ The bundle configures security boundaries:
 
 ## Installation
 
-### 1. Install OCX
-
-See the [OCX repository](https://github.com/kdcokenny/ocx) for installation instructions.
-
-### 2. Install the Bundle
-
 ```bash
-# One-time local setup
-ocx init
-
 ocx add kdco/workspace --from https://registry.kdco.dev
 ```
 
-Or install via profile for a complete, isolated configuration:
+If you don't have OCX installed, install it from the [OCX repository](https://github.com/kdcokenny/ocx).
+
+**Optional:** Install via profile for a complete, isolated configuration:
 
 ```bash
-# One-time global setup (if not done already)
-ocx init --global
-
 ocx profile add ws --source kit/ws --from https://ocx-kit.kdco.dev --global
 ocx oc -p ws
 ```
-
-> **Tip:** Clone and customize the profile:
-> ```bash
-> ocx profile add my-ws --clone ws --global
-> ```
 
 ## Owning Your Code
 
