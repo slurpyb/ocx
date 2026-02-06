@@ -269,7 +269,6 @@ Test cases from README.md lines 66-86.
   ls -la .opencode/
   cat .opencode/ocx.jsonc
   cat .opencode/opencode.jsonc
-  cat .ocx/receipt.jsonc
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -290,12 +289,10 @@ Test cases from README.md lines 66-86.
 
 - [ ] **Setup:** Local config initialized (Section 3.1)
 - [ ] **Command:** `ocx add npm:@franlol/opencode-md-table-formatter`
-- [ ] **Expected:** Installs npm plugin to `.opencode/plugins/`
+- [ ] **Expected:** Plugin is registered in `.opencode/opencode.jsonc`; actual installation is handled by OpenCode runtime
 - [ ] **Verify:**
   ```bash
-  ls .opencode/plugins/  # Should contain plugin files
-  cat .opencode/opencode.jsonc  # npm plugins appear in "plugin" array; registry plugins are auto-discovered
-  cat .ocx/receipt.jsonc  # Should list npm plugin
+  cat .opencode/opencode.jsonc  # Should contain plugin in "plugins" array
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
