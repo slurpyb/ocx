@@ -820,10 +820,11 @@ All variations from CLI.md lines 708-790.
 
 - [ ] **Setup:** Registry source directory
 - [ ] **Command:** `ocx build /tmp/test-registry`
-- [ ] **Expected:** Builds registry from specified path
+- [ ] **Expected:** Builds registry from specified path to `./dist/` in current working directory
 - [ ] **Verify:**
   ```bash
-  ls /tmp/test-registry/dist/
+  ls ./dist/  # Output is relative to cwd, not the source directory
+  rm -rf ./dist
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
