@@ -217,7 +217,6 @@ Test cases from README.md lines 38-54.
 - [ ] **Expected:** Adds registry to global config
 - [ ] **Verify:**
   ```bash
-  ocx config show --global --json | grep "ocx-kit"
   cat $XDG_CONFIG_HOME/opencode/ocx.jsonc  # Should contain kit registry
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
