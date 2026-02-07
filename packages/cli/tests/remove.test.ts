@@ -217,7 +217,7 @@ describe("ocx remove security", () => {
 		await runCLI(["add", "kdco/test-agent"], testDir)
 
 		// Verify files exist before tampering
-		const validFile = join(testDir, "agents", "test-agent.md")
+		const validFile = join(testDir, ".opencode", "agents", "test-agent.md")
 		expect(existsSync(validFile)).toBe(true)
 
 		// Read receipt and tamper: add malicious path alongside valid
@@ -268,8 +268,8 @@ describe("ocx remove security", () => {
 		await runCLI(["add", "kdco/test-skill"], testDir)
 
 		// Verify both installed
-		expect(existsSync(join(testDir, "plugins", "test-plugin.ts"))).toBe(true)
-		expect(existsSync(join(testDir, "skills", "test-skill", "SKILL.md"))).toBe(true)
+		expect(existsSync(join(testDir, ".opencode", "plugins", "test-plugin.ts"))).toBe(true)
+		expect(existsSync(join(testDir, ".opencode", "skills", "test-skill", "SKILL.md"))).toBe(true)
 
 		// Read receipt to get canonical IDs
 		const receiptPath = join(testDir, ".ocx", "receipt.jsonc")
@@ -288,10 +288,10 @@ describe("ocx remove security", () => {
 		expect(exitCode).toBe(0)
 
 		// Verify plugin file deleted
-		expect(existsSync(join(testDir, "plugins", "test-plugin.ts"))).toBe(false)
+		expect(existsSync(join(testDir, ".opencode", "plugins", "test-plugin.ts"))).toBe(false)
 
 		// Verify skill file still exists
-		expect(existsSync(join(testDir, "skills", "test-skill", "SKILL.md"))).toBe(true)
+		expect(existsSync(join(testDir, ".opencode", "skills", "test-skill", "SKILL.md"))).toBe(true)
 
 		// Verify receipt updated: plugin removed, skill remains
 		const receiptAfter = parseJsonc(await readFile(receiptPath, "utf-8")) as Record<string, unknown>
@@ -336,7 +336,7 @@ describe("ocx remove UX behavior", () => {
 		await runCLI(["add", "kdco/test-plugin"], testDir)
 
 		// Verify file exists
-		const pluginPath = join(testDir, "plugins", "test-plugin.ts")
+		const pluginPath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
 		expect(existsSync(pluginPath)).toBe(true)
 
 		// Modify the file to break integrity
@@ -383,7 +383,7 @@ describe("ocx remove UX behavior", () => {
 		await runCLI(["add", "kdco/test-plugin"], testDir)
 
 		// Verify file exists
-		const pluginPath = join(testDir, "plugins", "test-plugin.ts")
+		const pluginPath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
 		expect(existsSync(pluginPath)).toBe(true)
 
 		// Modify the file to break integrity
@@ -431,7 +431,7 @@ describe("ocx remove UX behavior", () => {
 		await runCLI(["add", "kdco/test-plugin"], testDir)
 
 		// Verify file exists
-		const pluginPath = join(testDir, "plugins", "test-plugin.ts")
+		const pluginPath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
 		expect(existsSync(pluginPath)).toBe(true)
 
 		// Capture receipt state before dry-run
@@ -517,7 +517,7 @@ describe("ocx remove UX behavior", () => {
 		await runCLI(["add", "kdco/test-plugin"], testDir)
 
 		// Verify file exists
-		const pluginPath = join(testDir, "plugins", "test-plugin.ts")
+		const pluginPath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
 		expect(existsSync(pluginPath)).toBe(true)
 
 		// Modify the file to break integrity

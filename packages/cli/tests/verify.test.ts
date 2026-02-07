@@ -155,7 +155,7 @@ describe("ocx verify", () => {
 		await installComponent(testDir, "kdco/test-plugin")
 
 		// Modify the installed file
-		const filePath = join(testDir, "plugins/test-plugin.ts")
+		const filePath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
 		expect(existsSync(filePath)).toBe(true)
 		await writeFile(filePath, "// Modified by user - this is different content")
 
@@ -173,7 +173,7 @@ describe("ocx verify", () => {
 		await installComponent(testDir, "kdco/test-plugin")
 
 		// Modify the installed file
-		const filePath = join(testDir, "plugins/test-plugin.ts")
+		const filePath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
 		await writeFile(filePath, "// Modified content")
 
 		const { exitCode, output } = await runCLI(["verify", "--json"], testDir)
@@ -199,7 +199,7 @@ describe("ocx verify", () => {
 		await installComponent(testDir, "kdco/test-plugin")
 
 		// Delete the installed file
-		const filePath = join(testDir, "plugins/test-plugin.ts")
+		const filePath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
 		expect(existsSync(filePath)).toBe(true)
 		await Bun.spawn(["rm", filePath]).exited
 
@@ -216,7 +216,7 @@ describe("ocx verify", () => {
 		await installComponent(testDir, "kdco/test-plugin")
 
 		// Delete the installed file
-		const filePath = join(testDir, "plugins/test-plugin.ts")
+		const filePath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
 		await Bun.spawn(["rm", filePath]).exited
 
 		const { exitCode, output } = await runCLI(["verify", "--json"], testDir)
@@ -244,7 +244,7 @@ describe("ocx verify", () => {
 		await installComponent(testDir, "kdco/test-skill")
 
 		// Modify only the plugin file (skill should remain intact)
-		const pluginPath = join(testDir, "plugins/test-plugin.ts")
+		const pluginPath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
 		await writeFile(pluginPath, "// Modified plugin content")
 
 		const { exitCode, output } = await runCLI(["verify", "--json"], testDir)

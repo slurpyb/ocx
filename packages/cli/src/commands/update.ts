@@ -19,6 +19,7 @@ import {
 import { type DryRunAction, type DryRunResult, outputDryRun } from "../utils/dry-run"
 import { ConfigError, NotFoundError, ValidationError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
+import { resolveTargetPath } from "../utils/paths"
 import { hashBundle, hashContent } from "../utils/receipt"
 import { addCommonOptions, addVerboseOption } from "../utils/shared-options"
 
@@ -90,6 +91,8 @@ export async function runUpdateCore(
 	provider: ConfigProvider,
 ): Promise<void> {
 	const registries = provider.getRegistries()
+	const componentPath = provider.getComponentPath()
+	const isFlattened = componentPath === "" || componentPath === "."
 
 	// -------------------------------------------------------------------------
 	// Guard clauses (Law 1: Early Exit)
@@ -293,7 +296,8 @@ export async function runUpdateCore(
 				)
 				if (!fileObj) continue
 
-				const targetPath = join(provider.cwd, fileObj.target)
+				const resolvedTarget = resolveTargetPath(fileObj.target, isFlattened)
+				const targetPath = join(provider.cwd, resolvedTarget)
 				const targetDir = dirname(targetPath)
 
 				if (!existsSync(targetDir)) {
@@ -303,7 +307,7 @@ export async function runUpdateCore(
 				await writeFile(targetPath, file.content)
 
 				if (options.verbose) {
-					logger.info(`  ✓ Updated ${fileObj.target}`)
+					logger.info(`  ✓ Updated ${resolvedTarget}`)
 				}
 			}
 
@@ -320,8 +324,9 @@ export async function runUpdateCore(
 					(f: ComponentFileObject) => f.path === file.path,
 				)
 				if (!componentFile) throw new Error(`File ${file.path} not found in component manifest`)
+				const resolvedTarget = resolveTargetPath(componentFile.target, isFlattened)
 				fileHashes.push({
-					path: componentFile.target,
+					path: resolvedTarget,
 					hash: hashContent(file.content),
 				})
 			}

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { existsSync, rmSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { ValidationError } from "../src/utils/errors"
 import { getGlobalConfigPath, globalDirectoryExists, resolveTargetPath } from "../src/utils/paths"
 
 describe("global utilities", () => {
@@ -72,9 +73,9 @@ describe("global utilities", () => {
 			expect(result).toBe("plugins/foo.ts")
 		})
 
-		it("V2: always uses root-relative paths (local mode - no .opencode/ prefix)", () => {
+		it("uses .opencode-prefixed paths in local mode", () => {
 			const result = resolveTargetPath("plugins/foo.ts", false)
-			expect(result).toBe("plugins/foo.ts")
+			expect(result).toBe(".opencode/plugins/foo.ts")
 		})
 
 		it("V2: handles nested paths correctly when flattened", () => {
@@ -82,9 +83,28 @@ describe("global utilities", () => {
 			expect(result).toBe("agents/researcher/index.ts")
 		})
 
-		it("V2: handles nested paths correctly when local (no .opencode/ prefix)", () => {
+		it("handles nested paths correctly in local mode", () => {
 			const result = resolveTargetPath("agents/researcher/index.ts", false)
-			expect(result).toBe("agents/researcher/index.ts")
+			expect(result).toBe(".opencode/agents/researcher/index.ts")
+		})
+
+		it("keeps already-prefixed local targets without adding duplicate prefix", () => {
+			const result = resolveTargetPath(".opencode/plugins/foo.ts", false)
+			expect(result).toBe(".opencode/plugins/foo.ts")
+		})
+
+		it("rejects local traversal targets that escape .opencode", () => {
+			expect(() => resolveTargetPath("../plugins/escape.ts", false)).toThrow(ValidationError)
+			expect(() => resolveTargetPath(".opencode/../plugins/escape.ts", false)).toThrow(
+				ValidationError,
+			)
+		})
+
+		it("rejects local absolute-like targets", () => {
+			expect(() => resolveTargetPath("/etc/passwd", false)).toThrow(ValidationError)
+			expect(() => resolveTargetPath("C:\\Windows\\System32\\drivers\\etc\\hosts", false)).toThrow(
+				ValidationError,
+			)
 		})
 	})
 })

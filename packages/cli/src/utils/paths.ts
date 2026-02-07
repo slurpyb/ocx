@@ -1,6 +1,29 @@
 import { stat } from "node:fs/promises"
 import { homedir } from "node:os"
-import { isAbsolute, join } from "node:path"
+import { isAbsolute, join, relative, resolve } from "node:path"
+import { ValidationError } from "./errors"
+import { PathValidationError, validatePath } from "./path-security"
+
+const LOCAL_CONFIG_ROOT = ".opencode"
+const LOCAL_CONFIG_PREFIX = `${LOCAL_CONFIG_ROOT}/`
+
+/**
+ * Strip a single leading .opencode/ prefix so local targets can be
+ * normalized and re-anchored without duplicating the directory.
+ */
+function stripLocalPrefix(target: string): string {
+	const unifiedSeparators = target.replace(/\\/g, "/")
+
+	if (unifiedSeparators === LOCAL_CONFIG_ROOT) {
+		return "."
+	}
+
+	if (unifiedSeparators.startsWith(LOCAL_CONFIG_PREFIX)) {
+		return unifiedSeparators.slice(LOCAL_CONFIG_PREFIX.length)
+	}
+
+	return target
+}
 
 /**
  * Returns the global OpenCode config directory path.
@@ -26,15 +49,42 @@ export async function globalDirectoryExists(): Promise<boolean> {
 }
 
 /**
- * V2: Resolves a component target path for install location.
- * Targets in registry are root-relative (e.g., "plugins/foo.ts").
- * V2 always uses root-relative paths - NO .opencode/ prefix.
+ * Resolves a component target path for install location.
+ *
+ * Targets in registries are root-relative (e.g., "plugins/foo.ts").
+ * - Flattened modes (global/profile) install at root-relative paths.
+ * - Local mode installs under .opencode/.
  *
  * @param target - Root-relative target path from registry (e.g., "plugins/foo.ts")
- * @param _isFlattened - Kept for backward compatibility but ignored in V2
- * @returns The install path: "plugins/foo.ts" (always root-relative)
+ * @param isFlattened - Whether install mode is flattened (global/profile)
+ * @returns Resolved install path for the active mode
  */
-export function resolveTargetPath(target: string, _isFlattened: boolean): string {
-	// V2: Always use root-relative paths
-	return target
+export function resolveTargetPath(target: string, isFlattened: boolean): string {
+	if (isFlattened) {
+		return target
+	}
+
+	const localRelativeTarget = stripLocalPrefix(target)
+	const localRootAbsolute = resolve(LOCAL_CONFIG_ROOT)
+
+	let safeAbsoluteTarget: string
+	try {
+		safeAbsoluteTarget = validatePath(localRootAbsolute, localRelativeTarget)
+	} catch (error) {
+		if (error instanceof PathValidationError) {
+			throw new ValidationError(`Invalid local target "${target}": ${error.message}`)
+		}
+		throw error
+	}
+
+	const normalizedRelativeTarget = relative(localRootAbsolute, safeAbsoluteTarget).replace(
+		/\\/g,
+		"/",
+	)
+
+	if (normalizedRelativeTarget === "." || normalizedRelativeTarget === "") {
+		return LOCAL_CONFIG_ROOT
+	}
+
+	return `${LOCAL_CONFIG_PREFIX}${normalizedRelativeTarget}`
 }

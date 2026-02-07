@@ -53,9 +53,9 @@ describe("ocx add", () => {
 		expect(exitCode).toBe(0)
 
 		// Verify files (V2: root-relative paths)
-		expect(existsSync(join(testDir, "agents/test-agent.md"))).toBe(true)
-		expect(existsSync(join(testDir, "skills/test-skill/SKILL.md"))).toBe(true)
-		expect(existsSync(join(testDir, "plugins/test-plugin.ts"))).toBe(true)
+		expect(existsSync(join(testDir, ".opencode", "agents", "test-agent.md"))).toBe(true)
+		expect(existsSync(join(testDir, ".opencode", "skills", "test-skill", "SKILL.md"))).toBe(true)
+		expect(existsSync(join(testDir, ".opencode", "plugins", "test-plugin.ts"))).toBe(true)
 
 		// V1: Verify receipt file (replaces ocx.lock)
 		const receiptPath = join(testDir, ".ocx/receipt.jsonc")
@@ -97,7 +97,7 @@ describe("ocx add", () => {
 		const { exitCode } = await runCLI(["add", "kdco/test-plugin"], testDir)
 		expect(exitCode).toBe(0)
 		// File should still exist (V2 path)
-		expect(existsSync(join(testDir, "plugins/test-plugin.ts"))).toBe(true)
+		expect(existsSync(join(testDir, ".opencode", "plugins", "test-plugin.ts"))).toBe(true)
 	})
 
 	it("should fail on conflict", async () => {
@@ -117,7 +117,7 @@ describe("ocx add", () => {
 		await runCLI(["add", "kdco/test-plugin"], testDir)
 
 		// Modify the file to create a conflict (V2 path)
-		const filePath = join(testDir, "plugins/test-plugin.ts")
+		const filePath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
 		await writeFile(filePath, "// Modified by user")
 
 		// Try to install again (should fail with conflict)
@@ -410,7 +410,7 @@ describe("ocx add --from", () => {
 		expect(exitCode).toBe(0)
 
 		// Verify file installed
-		expect(existsSync(join(testDir, "plugins/test-plugin.ts"))).toBe(true)
+		expect(existsSync(join(testDir, ".opencode", "plugins", "test-plugin.ts"))).toBe(true)
 
 		// Verify receipt created
 		const receiptPath = join(testDir, ".ocx/receipt.jsonc")
@@ -502,7 +502,7 @@ describe("ocx add --from", () => {
 		expect(output).toContain("dry-run") // Should indicate dry-run mode
 
 		// Verify NO files written
-		expect(existsSync(join(testDir, "plugins/test-plugin.ts"))).toBe(false)
+		expect(existsSync(join(testDir, ".opencode", "plugins", "test-plugin.ts"))).toBe(false)
 
 		// Verify NO receipt created
 		expect(existsSync(join(testDir, ".ocx/receipt.jsonc"))).toBe(false)
@@ -526,9 +526,9 @@ describe("ocx add --from", () => {
 		expect(exitCode).toBe(0)
 
 		// Verify all files installed (agent + skill + plugin)
-		expect(existsSync(join(testDir, "agents/test-agent.md"))).toBe(true)
-		expect(existsSync(join(testDir, "skills/test-skill/SKILL.md"))).toBe(true)
-		expect(existsSync(join(testDir, "plugins/test-plugin.ts"))).toBe(true)
+		expect(existsSync(join(testDir, ".opencode", "agents", "test-agent.md"))).toBe(true)
+		expect(existsSync(join(testDir, ".opencode", "skills", "test-skill", "SKILL.md"))).toBe(true)
+		expect(existsSync(join(testDir, ".opencode", "plugins", "test-plugin.ts"))).toBe(true)
 
 		// Verify receipt contains all 3 components
 		const receiptPath = join(testDir, ".ocx/receipt.jsonc")

@@ -62,7 +62,7 @@ describe("ocx update", () => {
 		await installComponent(testDir, "kdco/test-plugin")
 
 		// Verify initial content
-		const filePath = join(testDir, "plugins/test-plugin.ts")
+		const filePath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
 		const originalContent = await readFile(filePath, "utf-8")
 		expect(originalContent).toContain("test-plugin")
 
@@ -113,10 +113,16 @@ describe("ocx update", () => {
 		expect(output).toContain("Updated")
 
 		// Verify both files were updated
-		const pluginContent = await readFile(join(testDir, "plugins/test-plugin.ts"), "utf-8")
+		const pluginContent = await readFile(
+			join(testDir, ".opencode", "plugins", "test-plugin.ts"),
+			"utf-8",
+		)
 		expect(pluginContent).toBe("// Plugin v2")
 
-		const skillContent = await readFile(join(testDir, "skills/test-skill/SKILL.md"), "utf-8")
+		const skillContent = await readFile(
+			join(testDir, ".opencode", "skills", "test-skill", "SKILL.md"),
+			"utf-8",
+		)
 		expect(skillContent).toBe("# Skill v2")
 	})
 
@@ -131,7 +137,7 @@ describe("ocx update", () => {
 		await installComponent(testDir, "kdco/test-plugin")
 
 		// Record original content
-		const filePath = join(testDir, "plugins/test-plugin.ts")
+		const filePath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
 		const originalContent = await readFile(filePath, "utf-8")
 
 		// Change registry content
@@ -172,7 +178,7 @@ describe("ocx update", () => {
 		await installComponent(testDir, "kdco/test-plugin")
 
 		// Record original content
-		const filePath = join(testDir, "plugins/test-plugin.ts")
+		const filePath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
 		const originalContent = await readFile(filePath, "utf-8")
 		const receiptPath = join(testDir, ".ocx/receipt.jsonc")
 		const originalReceipt = await readFile(receiptPath, "utf-8")
@@ -409,9 +415,9 @@ describe("ocx update", () => {
 		await installComponent(testDir, "kdco/test-agent")
 
 		// Verify all dependencies were installed (matches mock-registry paths)
-		expect(existsSync(join(testDir, "agents/test-agent.md"))).toBe(true)
-		expect(existsSync(join(testDir, "skills/test-skill/SKILL.md"))).toBe(true)
-		expect(existsSync(join(testDir, "plugins/test-plugin.ts"))).toBe(true)
+		expect(existsSync(join(testDir, ".opencode", "agents", "test-agent.md"))).toBe(true)
+		expect(existsSync(join(testDir, ".opencode", "skills", "test-skill", "SKILL.md"))).toBe(true)
+		expect(existsSync(join(testDir, ".opencode", "plugins", "test-plugin.ts"))).toBe(true)
 
 		// Change registry content for the main component only
 		registry.setFileContent("test-agent", "agent.md", "# Agent v2")
@@ -424,7 +430,10 @@ describe("ocx update", () => {
 		expect(output).toContain("Updated")
 
 		// Verify agent was updated
-		const agentContent = await readFile(join(testDir, "agents/test-agent.md"), "utf-8")
+		const agentContent = await readFile(
+			join(testDir, ".opencode", "agents", "test-agent.md"),
+			"utf-8",
+		)
 		expect(agentContent).toBe("# Agent v2")
 	})
 
