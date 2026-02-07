@@ -7,9 +7,8 @@
 import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
-import type { InstalledComponent, Receipt } from "../schemas/config"
+import type { InstalledComponent } from "../schemas/config"
 import { createCanonicalId, parseCanonicalId } from "../schemas/config"
-import { normalizeRegistryUrl } from "./url"
 
 /**
  * Hash file content using SHA-256.
@@ -91,63 +90,6 @@ export async function checkFileIntegrity(
 		missing,
 		details,
 	}
-}
-
-/**
- * Find component entry by canonical ID in receipt.
- *
- * @param receipt - Receipt object
- * @param canonicalId - Canonical component ID
- * @returns Installed component entry or null if not found
- */
-export function findComponentById(
-	receipt: Receipt,
-	canonicalId: string,
-): InstalledComponent | null {
-	return receipt.installed[canonicalId] ?? null
-}
-
-/**
- * Find component entry by file path.
- * Searches all installed components to find which one owns a given file.
- *
- * @param receipt - Receipt object
- * @param filePath - File path to search for
- * @returns Object with canonical ID and entry, or null if not found
- */
-export function findComponentByFile(
-	receipt: Receipt,
-	filePath: string,
-): { canonicalId: string; entry: InstalledComponent } | null {
-	for (const [canonicalId, entry] of Object.entries(receipt.installed)) {
-		if (entry.files.some((f) => f.path === filePath)) {
-			return { canonicalId, entry }
-		}
-	}
-	return null
-}
-
-/**
- * Find all components from a specific registry.
- *
- * @param receipt - Receipt object
- * @param registryUrl - Registry URL to filter by
- * @returns Array of canonical IDs and entries
- */
-export function findComponentsByRegistry(
-	receipt: Receipt,
-	registryUrl: string,
-): Array<{ canonicalId: string; entry: InstalledComponent }> {
-	const normalized = normalizeRegistryUrl(registryUrl)
-	const results: Array<{ canonicalId: string; entry: InstalledComponent }> = []
-
-	for (const [canonicalId, entry] of Object.entries(receipt.installed)) {
-		if (normalizeRegistryUrl(entry.registryUrl) === normalized) {
-			results.push({ canonicalId, entry })
-		}
-	}
-
-	return results
 }
 
 export { createCanonicalId, parseCanonicalId }

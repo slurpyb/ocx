@@ -78,11 +78,6 @@ export class LocalConfigProvider implements ConfigProvider {
 		// Default to .opencode directory for local projects
 		return ".opencode"
 	}
-
-	/** Get the raw config for advanced use cases */
-	getConfig(): OcxConfig {
-		return this.config
-	}
 }
 
 // =============================================================================
