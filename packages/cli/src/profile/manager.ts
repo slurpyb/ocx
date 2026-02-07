@@ -18,6 +18,7 @@ import {
 	getLocalProfileDir,
 	getLocalProfileOcxConfig,
 	getLocalProfileOpencodeConfig,
+	getLocalProfilesDir,
 	getProfileAgents,
 	getProfileDir,
 	getProfileOcxConfig,
@@ -191,15 +192,29 @@ export class ProfileManager {
 
 	/**
 	 * List all profile names.
+	 * @param global - Whether to list global profiles (default: true for backward compatibility)
 	 * @returns Array of profile names
 	 */
-	async list(): Promise<string[]> {
+	async list(global = true): Promise<string[]> {
 		await this.ensureInitialized()
-		const entries = await readdir(this.profilesDir, { withFileTypes: true })
-		return entries
-			.filter((e) => e.isDirectory() && !e.name.startsWith("."))
-			.map((e) => e.name)
-			.sort()
+		const targetDir = global ? this.profilesDir : getLocalProfilesDir(this.cwd)
+
+		try {
+			const entries = await readdir(targetDir, { withFileTypes: true, encoding: "utf8" })
+			return entries
+				.filter((e) => e.isDirectory() && !e.name.startsWith("."))
+				.map((e) => e.name)
+				.sort()
+		} catch (error) {
+			// Local profiles directory may not exist yet; treat as empty list.
+			if (!global && error instanceof Error && "code" in error) {
+				const code = (error as NodeJS.ErrnoException).code
+				if (code === "ENOENT") {
+					return []
+				}
+			}
+			throw error
+		}
 	}
 
 	/**
@@ -548,14 +563,15 @@ export class ProfileManager {
 	 * Priority: override (from -p flag) > OCX_PROFILE env > "default"
 	 *
 	 * @param override - Optional override from --profile flag
+	 * @param global - Whether to resolve against global profiles (default: true)
 	 * @returns Resolved profile name (validated to exist)
 	 * @throws ProfileNotFoundError if resolved profile doesn't exist
 	 */
-	async resolveProfile(override?: string): Promise<string> {
+	async resolveProfile(override?: string, global = true): Promise<string> {
 		// Priority 1: Explicit override from -p/--profile flag
 		if (override !== undefined) {
 			const profileName = requireNonEmptyProfileName(override, "CLI option --profile")
-			if (!(await this.exists(profileName))) {
+			if (!(await this.exists(profileName, global))) {
 				throw new ProfileNotFoundError(profileName)
 			}
 			return profileName
@@ -565,7 +581,7 @@ export class ProfileManager {
 		const envProfile = process.env.OCX_PROFILE
 		if (envProfile !== undefined) {
 			const profileName = requireNonEmptyProfileName(envProfile, "environment variable OCX_PROFILE")
-			if (!(await this.exists(profileName))) {
+			if (!(await this.exists(profileName, global))) {
 				throw new ProfileNotFoundError(profileName)
 			}
 			return profileName
@@ -573,7 +589,7 @@ export class ProfileManager {
 
 		// Priority 3: Fall back to "default" profile
 		const defaultProfile = "default"
-		if (!(await this.exists(defaultProfile))) {
+		if (!(await this.exists(defaultProfile, global))) {
 			throw new ProfileNotFoundError(defaultProfile)
 		}
 		return defaultProfile

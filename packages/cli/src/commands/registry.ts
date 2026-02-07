@@ -91,17 +91,9 @@ export async function runRegistryAddCore(
 	const existingRegistry = registries[name]
 	const isUpdate = name in registries
 
-	// V2: Fetch registry index to enforce namespace matching
+	// Fetch registry index to validate the URL serves a valid registry
 	const { fetchRegistryIndex } = await import("../registry/fetcher")
 	const index = await fetchRegistryIndex(normalizedUrl)
-
-	// Validate alias matches declared namespace
-	if (name !== index.namespace) {
-		throw new ValidationError(
-			`Registry alias "${name}" must match declared namespace "${index.namespace}".\n` +
-				`Either use --name ${index.namespace} or update the registry's namespace field.`,
-		)
-	}
 
 	// Dry-run mode: Build result and return early (BEFORE throwing RegistryExistsError)
 	if (options.dryRun) {

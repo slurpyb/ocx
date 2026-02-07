@@ -95,6 +95,12 @@ export async function runUpdateCore(
 	const isFlattened = componentPath === "" || componentPath === "."
 
 	// -------------------------------------------------------------------------
+	// Parse component specs (Law 2: Parse at boundary before any logic)
+	// -------------------------------------------------------------------------
+
+	const parsedComponents = componentNames.map(parseComponentSpec)
+
+	// -------------------------------------------------------------------------
 	// Guard clauses (Law 1: Early Exit)
 	// -------------------------------------------------------------------------
 
@@ -148,12 +154,6 @@ export async function runUpdateCore(
 				"Use either 'ocx update --all' or 'ocx update --registry <name>'.",
 		)
 	}
-
-	// -------------------------------------------------------------------------
-	// Parse component specs
-	// -------------------------------------------------------------------------
-
-	const parsedComponents = componentNames.map(parseComponentSpec)
 
 	// -------------------------------------------------------------------------
 	// Determine which components to update
@@ -391,13 +391,24 @@ export async function runUpdateCore(
 // =============================================================================
 
 /**
- * Parse a component specifier (just returns the spec as-is).
+ * Parse and validate a component specifier.
  * Law 2: Parse at boundary, trust internally.
+ * Law 4: Fail fast on malformed specifiers before receipt lookup.
+ *
+ * Rejects trailing `@` (empty version) since update always fetches latest.
  *
  * @example
  * parseComponentSpec("kdco/agents") // { component: "kdco/agents" }
+ * parseComponentSpec("kdco/agents@") // throws ConfigError
  */
 function parseComponentSpec(spec: string): ComponentSpec {
+	if (spec.endsWith("@")) {
+		throw new ConfigError(
+			`Invalid version specifier '${spec}'. The trailing '@' has no version.\n` +
+				`Use '${spec.slice(0, -1)}' to update to the latest version.`,
+		)
+	}
+
 	return { component: spec }
 }
 

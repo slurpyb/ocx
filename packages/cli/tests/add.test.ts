@@ -615,11 +615,15 @@ describe("ocx add --json mixed-input contract", () => {
 			getComponentPath: () => ".opencode/components",
 		}
 
-		await runAddCore(["npm:test-plugin", "kdco/test-plugin"], {
-			json: true,
-			quiet: true,
-			trust: true,
-		}, provider)
+		await runAddCore(
+			["npm:test-plugin", "kdco/test-plugin"],
+			{
+				json: true,
+				quiet: true,
+				trust: true,
+			},
+			provider,
+		)
 
 		expect(fetchSpy).toHaveBeenCalled()
 		expect(consoleErrorSpy).not.toHaveBeenCalled()
@@ -680,11 +684,15 @@ describe("ocx add --json mixed-input contract", () => {
 
 		let thrownError: unknown
 		try {
-			await runAddCore(["npm:test-plugin", "kdco/test-plugin"], {
-				json: true,
-				quiet: true,
-				trust: true,
-			}, provider)
+			await runAddCore(
+				["npm:test-plugin", "kdco/test-plugin"],
+				{
+					json: true,
+					quiet: true,
+					trust: true,
+				},
+				provider,
+			)
 		} catch (error) {
 			thrownError = error
 		}

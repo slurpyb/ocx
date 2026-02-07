@@ -5,10 +5,11 @@
 
 import type { Command } from "commander"
 import { LocalConfigProvider } from "../config/provider"
-import { readReceipt } from "../schemas/config"
-import { ConflictError, EXIT_CODES } from "../utils/errors"
+import { type Receipt, readReceipt } from "../schemas/config"
+import { parseQualifiedComponent } from "../schemas/registry"
+import { ConflictError, EXIT_CODES, NotFoundError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
-import { checkFileIntegrity } from "../utils/receipt"
+import { checkFileIntegrity, parseCanonicalId } from "../utils/receipt"
 import { addCommonOptions, addVerboseOption } from "../utils/shared-options"
 
 export interface VerifyOptions {
@@ -36,6 +37,48 @@ export function registerVerifyCommand(program: Command): void {
 	})
 }
 
+// =============================================================================
+// SHORTHAND RESOLUTION (Law 2: Parse at boundary)
+// =============================================================================
+
+/**
+ * Resolve a user-provided component ref to its canonical receipt ID.
+ * Supports both canonical IDs (direct lookup) and shorthand refs (namespace/name).
+ *
+ * @param ref - User-provided component reference (e.g., "kdco/researcher" or full canonical ID)
+ * @param receipt - Receipt to search
+ * @returns Canonical ID from the receipt
+ * @throws NotFoundError if component is not installed
+ */
+function resolveComponentRef(ref: string, receipt: Receipt): string {
+	const installedKeys = Object.keys(receipt.installed)
+
+	// Fast path: direct canonical ID match
+	if (receipt.installed[ref]) {
+		return ref
+	}
+
+	// Shorthand path: resolve "namespace/name" against receipt entries
+	if (ref.includes("/") && !ref.includes("::")) {
+		const { namespace, component } = parseQualifiedComponent(ref)
+		const matchingIds = installedKeys.filter((id) => {
+			const parsed = parseCanonicalId(id)
+			return parsed.namespace === namespace && parsed.name === component
+		})
+
+		if (matchingIds.length === 1) {
+			return matchingIds[0] as string
+		}
+
+		if (matchingIds.length > 1) {
+			return matchingIds[0] as string
+		}
+	}
+
+	// No match found
+	throw new NotFoundError(`Component '${ref}' is not installed.`)
+}
+
 async function runVerify(componentNames: string[], options: VerifyOptions): Promise<void> {
 	const cwd = options.cwd ?? process.cwd()
 	const provider = await LocalConfigProvider.requireInitialized(cwd)
@@ -52,7 +95,24 @@ async function runVerify(componentNames: string[], options: VerifyOptions): Prom
 	}
 
 	// Determine which components to verify
-	const toVerify = componentNames.length > 0 ? componentNames : Object.keys(receipt.installed)
+	// Resolve shorthand refs (e.g., "kdco/researcher") to canonical receipt IDs
+	let toVerify: string[]
+	if (componentNames.length > 0) {
+		toVerify = []
+		for (const name of componentNames) {
+			try {
+				toVerify.push(resolveComponentRef(name, receipt))
+			} catch (error) {
+				// Re-throw NotFoundError to halt with clear message (Law 4: Fail Fast)
+				if (error instanceof NotFoundError) {
+					throw error
+				}
+				throw error
+			}
+		}
+	} else {
+		toVerify = Object.keys(receipt.installed)
+	}
 
 	const spin =
 		options.quiet || options.json ? null : createSpinner({ text: "Verifying components..." })
@@ -70,6 +130,7 @@ async function runVerify(componentNames: string[], options: VerifyOptions): Prom
 	for (const canonicalId of toVerify) {
 		const entry = receipt.installed[canonicalId]
 		if (!entry) {
+			// Should not reach here after resolution, but guard defensively
 			if (componentNames.length > 0) {
 				logger.warn(`Component '${canonicalId}' not found in receipt.`)
 			}

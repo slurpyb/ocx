@@ -267,21 +267,67 @@ describe("ocx verify", () => {
 	})
 
 	// =========================================================================
-	// Unknown requested canonical ID
+	// Shorthand component ref resolution
 	// =========================================================================
 
-	it("should warn for unknown canonical ID but not fail", async () => {
+	it("should verify a specific component by shorthand ref", async () => {
+		testDir = await setupProject("verify-shorthand")
+
+		await installComponent(testDir, "kdco/test-plugin")
+		await installComponent(testDir, "kdco/test-skill")
+
+		// Verify using shorthand "namespace/name" instead of full canonical ID
+		const { exitCode, output } = await runCLI(["verify", "kdco/test-plugin"], testDir)
+
+		expect(exitCode).toBe(0)
+		expect(output).toContain("All components verified successfully")
+	})
+
+	it("should fail for shorthand ref not installed", async () => {
+		testDir = await setupProject("verify-shorthand-notfound")
+
+		await installComponent(testDir, "kdco/test-plugin")
+
+		// Verify a component that is not installed via shorthand
+		const { exitCode, output } = await runCLI(["verify", "kdco/nonexistent"], testDir)
+
+		// Should fail with NOT_FOUND
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("not installed")
+	})
+
+	it("should detect integrity failure via shorthand ref", async () => {
+		testDir = await setupProject("verify-shorthand-integrity")
+
+		await installComponent(testDir, "kdco/test-plugin")
+
+		// Corrupt the installed file
+		const filePath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
+		expect(existsSync(filePath)).toBe(true)
+		await writeFile(filePath, "// Corrupted content via shorthand test")
+
+		// Verify using shorthand ref - should detect integrity failure
+		const { exitCode, output } = await runCLI(["verify", "kdco/test-plugin"], testDir)
+
+		expect(exitCode).toBe(6) // EXIT_CODES.CONFLICT
+		expect(output).toContain("integrity check failed")
+		expect(output).toContain("Modified")
+	})
+
+	// =========================================================================
+	// Unknown requested component
+	// =========================================================================
+
+	it("should fail for unknown component ref", async () => {
 		testDir = await setupProject("verify-unknown")
 
 		await installComponent(testDir, "kdco/test-plugin")
 
-		// Verify a non-existent component - should warn but exit 0 since
-		// the command doesn't fail for unknown components (non-fatal warning)
+		// Verify a non-existent component - should fail with NOT_FOUND
 		const { exitCode, output } = await runCLI(["verify", "unknown-component"], testDir)
 
-		// Command succeeds (warning is non-fatal)
-		expect(exitCode).toBe(0)
-		expect(output).toContain("not found")
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("not installed")
 	})
 
 	// =========================================================================

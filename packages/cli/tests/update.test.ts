@@ -353,6 +353,38 @@ describe("ocx update", () => {
 	// Already up to date tests
 	// =========================================================================
 
+	// =========================================================================
+	// Invalid version specifier tests (trailing @)
+	// =========================================================================
+
+	it("should reject trailing @ with CONFIG error (exit 78)", async () => {
+		testDir = await setupProject("update-trailing-at")
+
+		// Install a component so receipt exists
+		await installComponent(testDir, "kdco/test-plugin")
+
+		// Try to update with trailing @ (empty version specifier)
+		const { exitCode, output } = await runCLI(["update", "kdco/test-plugin@"], testDir)
+
+		expect(exitCode).toBe(78) // ConfigError exit code
+		expect(output).toContain("Invalid version specifier")
+		expect(output).toContain("kdco/test-plugin@")
+	})
+
+	it("should reject trailing @ for any component name", async () => {
+		testDir = await setupProject("update-trailing-at-any")
+
+		// Install a component so receipt exists
+		await installComponent(testDir, "kdco/test-plugin")
+
+		// Even a non-installed component with trailing @ should fail at parse, not receipt lookup
+		const { exitCode, output } = await runCLI(["update", "kdco/researcher@"], testDir)
+
+		expect(exitCode).toBe(78) // ConfigError, NOT 66 (NotFoundError)
+		expect(output).toContain("Invalid version specifier")
+		expect(output).toContain("kdco/researcher")
+	})
+
 	it("should skip components with matching hash (already up to date)", async () => {
 		testDir = await setupProject("update-up-to-date")
 

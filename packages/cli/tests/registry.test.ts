@@ -27,7 +27,7 @@ describe("ocx registry", () => {
 	})
 
 	it("should add a registry", async () => {
-		// V2: Registry alias must match namespace (kdco)
+		// Alias is user-chosen; does not need to match registry namespace
 		const { exitCode, output } = await runCLI(
 			["registry", "add", registry.url, "--name", "kdco"],
 			testDir,
@@ -44,6 +44,26 @@ describe("ocx registry", () => {
 		const config = parseJsonc(configContent) as TestOcxConfig
 		expect(config.registries.kdco).toBeDefined()
 		expect(config.registries.kdco.url).toBe(registry.url)
+	})
+
+	it("should allow arbitrary alias that differs from registry namespace", async () => {
+		// Registry declares namespace "kdco", but alias "my-custom-alias" should be accepted
+		const { exitCode, output } = await runCLI(
+			["registry", "add", registry.url, "--name", "my-custom-alias"],
+			testDir,
+		)
+
+		if (exitCode !== 0) {
+			console.log(output)
+		}
+		expect(exitCode).toBe(0)
+		expect(output).toContain("Added registry to local config: my-custom-alias")
+
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const configContent = await Bun.file(configPath).text()
+		const config = parseJsonc(configContent) as TestOcxConfig
+		expect(config.registries["my-custom-alias"]).toBeDefined()
+		expect(config.registries["my-custom-alias"].url).toBe(registry.url)
 	})
 
 	it("should list configured registries", async () => {
@@ -101,7 +121,7 @@ describe("registry add --force", () => {
 	})
 
 	it("should error when adding duplicate registry without --force", async () => {
-		// Add initial registry (V2: use namespace kdco)
+		// Add initial registry
 		await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
 
 		// Try to add again without --force - same URL, same name
@@ -113,7 +133,7 @@ describe("registry add --force", () => {
 	})
 
 	it("should overwrite registry with --force flag", async () => {
-		// Add initial registry (V2: use namespace kdco)
+		// Add initial registry
 		await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
 
 		// Overwrite with --force (same registry, just testing --force works)
@@ -506,8 +526,7 @@ describe("ocx registry --global", () => {
 	})
 
 	it("should auto-generate name from URL for global registry", async () => {
-		// V2: Auto-generated name must match namespace; can't work with namespace validation
-		// Instead test with explicit --name
+		// Auto-generated name from hostname is always accepted (no namespace constraint)
 		const result = await runCLI(
 			["registry", "add", "--global", registry.url, "--name", "kdco"],
 			testDir,
@@ -562,7 +581,7 @@ describe("registry commands with --profile", () => {
 	})
 
 	it("should add registry to specific profile", async () => {
-		// V2: Use mock registry with namespace kdco
+		// V2: Use mock registry
 		const result = await runCLI(
 			["registry", "add", registry.url, "--name", "kdco", "--profile", "test-profile"],
 			testDir,
@@ -737,7 +756,7 @@ describe("registry commands with --profile", () => {
 	it("should ignore OCX_PROFILE env var when listing without --profile flag", async () => {
 		const env = { XDG_CONFIG_HOME: globalTestDir }
 
-		// Set up profile with registry via CLI (V2: use mock registry with namespace kdco)
+		// Set up profile with registry via CLI
 		await runCLI(["profile", "add", "env-test-profile"], testDir, { env })
 		await runCLI(
 			["registry", "add", registry.url, "--name", "kdco", "--profile", "env-test-profile"],
@@ -763,7 +782,7 @@ describe("registry commands with --profile", () => {
 
 		// Assert: local registry IS present (proves local scope used)
 		expect(localReg).toBeDefined()
-		// V2: Since both use same namespace (kdco), local wins (profile env var ignored)
+		// Since both use same alias (kdco), local wins (profile env var ignored)
 		expect(output.data.registries).toHaveLength(1)
 	})
 })
