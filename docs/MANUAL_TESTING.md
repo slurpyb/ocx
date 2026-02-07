@@ -67,7 +67,16 @@ When testing:
 
 ### Prerequisites
 
-> **Note:** Replace `$OCX_REPO` in the commands below with the path to your local OCX repository clone.
+> **MUST:** Use one persistent shell session for the entire test run. Environment variables set in one terminal are not visible in others. Do not split commands across multiple terminal windows or tabs.
+
+Set up the environment variables at the start of your session:
+
+```bash
+export OCX_REPO=/path/to/your/ocx/clone
+export OCX_BIN="$OCX_REPO/packages/cli/dist/index.js"
+```
+
+> **Note:** Replace `/path/to/your/ocx/clone` with the actual path to your local OCX repository.
 
 Before running any tests, build the CLI from source:
 
@@ -83,23 +92,26 @@ This ensures you're testing the current codebase, not a system-installed version
 
 For pre-release testing, use locally built registries instead of deployed URLs.
 
+**REQUIRED:** Both registries MUST be running before proceeding to Section 2 or any
+subsequent tests. All component and profile operations depend on these local servers.
+
 **Terminal 1: KDCO Registry (components)**
 ```bash
 cd "$OCX_REPO/workers/kdco-registry"
-bun run build
-wrangler dev
+bun run dev
 # Serves on http://localhost:8787
 ```
 
 **Terminal 2: OCX Kit Registry (profiles)**
 ```bash
 cd "$OCX_REPO/workers/ocx-kit"
-bun run build
-wrangler dev --port 8788
+bun run dev --port 8788
 # Serves on http://localhost:8788
 ```
 
-Keep these terminals running during all manual tests.
+**CRITICAL:** Keep both terminals running for the ENTIRE manual test session. Do not
+stop or restart the servers between sections. If a server dies, restart it before
+continuing any tests.
 
 **Verify registries are accessible:**
 ```bash
@@ -107,37 +119,60 @@ curl http://localhost:8787/index.json | head -5
 curl http://localhost:8788/index.json | head -5
 ```
 
+Both curl commands must return JSON output. If either fails, the corresponding
+registry server is not running—start it before proceeding.
+
 ### 1.1 Create Isolated Environment
 
 - [ ] **Setup:** Clean slate for testing
 - [ ] **Commands:**
   ```bash
   export XDG_CONFIG_HOME=/tmp/ocx-v2-test
-  alias ocx="$OCX_REPO/packages/cli/dist/index.js"
   mkdir -p /tmp/ocx-v2-test-project
   cd /tmp/ocx-v2-test-project
   git init
   ```
 - [ ] **Expected:** Environment variables set, test project directory created
 
+### Preflight Checklist
+
+Run these checks before each major section to verify your environment:
+
+```bash
+echo $XDG_CONFIG_HOME           # Should show /tmp/ocx-v2-test
+test -f "$OCX_BIN" && echo "OK: Binary exists" || echo "FAIL: Binary not found"
+$OCX_BIN --version              # Should show current dev version
+$OCX_BIN profile rm --help | grep -q '\-\-global' && echo "OK: Help works" || echo "FAIL: Help error"
+```
+
+**Registry Health Check (fail-fast):**
+```bash
+curl -sf http://localhost:8787/index.json > /dev/null && echo "OK: KDCO registry (8787)" || echo "FAIL: KDCO registry not running"
+curl -sf http://localhost:8788/index.json > /dev/null && echo "OK: Kit registry (8788)" || echo "FAIL: Kit registry not running"
+```
+
+All checks must pass before proceeding. If either registry check fails, restart
+the corresponding server now before continuing.
+
+> **REMINDER:** If a registry server died during testing, restart it with `bun run dev`
+> (port 8787 for KDCO, port 8788 for Kit) before resuming tests.
+
 ### Verify Dev Build
 
 Confirm the dev build is being used:
 
 ```bash
-type ocx
-# Expected: ocx is aliased to `$OCX_REPO/packages/cli/dist/index.js'
-
-ocx --version
-# Should match package.json version
+$OCX_BIN --version
+# Should match package.json version (e.g., 0.5.0)
 ```
 
-If `type ocx` shows a different command (e.g., `/usr/local/bin/ocx`), the alias didn't take effect. Re-run the alias command in your current shell.
+If the version does not match the current codebase, verify `$OCX_BIN` points to the correct path.
+
 - [ ] **Verify:**
   ```bash
-  echo $XDG_CONFIG_HOME  # Should show /tmp/ocx-v2-test
-  type ocx               # Should show alias to local dev build
-  ocx --version          # Should show current version
+  echo $XDG_CONFIG_HOME           # Should show /tmp/ocx-v2-test
+  test -f "$OCX_BIN" && echo "OK: Binary exists"
+  $OCX_BIN --version              # Should show current dev version
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -151,9 +186,15 @@ If `type ocx` shows a different command (e.g., `/usr/local/bin/ocx`), the alias 
   mkdir -p /tmp/ocx-v2-test-project
   cd /tmp/ocx-v2-test-project
   git init
+  # Re-establish XDG isolation after cleanup
+  export XDG_CONFIG_HOME=/tmp/ocx-v2-test
+  # Re-run preflight checklist before proceeding
+  echo $XDG_CONFIG_HOME
+  test -f "$OCX_BIN" && echo "OK: Binary exists"
+  $OCX_BIN --version
   ```
 - [ ] **Expected:** Fresh environment for next test section
-- [ ] **Verify:** Directories recreated, git initialized
+- [ ] **Verify:** Directories recreated, git initialized, XDG isolation active
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 1.3 Complete Teardown
@@ -187,7 +228,7 @@ Test cases from README.md lines 38-54.
 ### 2.1 `ocx init --global`
 
 - [ ] **Setup:** Fresh sandbox (Section 1.1)
-- [ ] **Command:** `ocx init --global`
+- [ ] **Command:** `$OCX_BIN init --global`
 - [ ] **Expected:** Creates `~/.config/opencode/` with global config and default profile
 - [ ] **Verify:**
   ```bash
@@ -200,14 +241,23 @@ Test cases from README.md lines 38-54.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 2.2 `ocx profile add work`
+### 2.2 `ocx profile add work` (Manual Creation)
+
+> **Note:** Sections 2.2 and 2.4 are **alternative paths**. Choose ONE:
+> - **2.2**: Create profile manually from template
+> - **2.4**: Install profile from registry
+>
+> If running both sequentially, remove the profile first:
+> ```bash
+> $OCX_BIN profile rm work --global
+> ```
 
 - [ ] **Setup:** Global profiles initialized (Section 2.1)
 - [ ] **Command:** `ocx profile add work --global`
 - [ ] **Expected:** Creates new profile `work` with template files
 - [ ] **Verify:**
   ```bash
-  ocx profile list  # Should show: default, work
+  $OCX_BIN profile list  # Should show: default, work
   ls -la $XDG_CONFIG_HOME/opencode/profiles/work/
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -215,7 +265,7 @@ Test cases from README.md lines 38-54.
 ### 2.3 Add Global Registry
 
 - [ ] **Setup:** Profiles initialized (Section 2.1)
-- [ ] **Command:** `ocx registry add http://localhost:8788 --name kit --global`
+- [ ] **Command:** `$OCX_BIN registry add http://localhost:8788 --name kit --global`
 - [ ] **Expected:** Adds registry to global config
 - [ ] **Verify:**
   ```bash
@@ -223,33 +273,40 @@ Test cases from README.md lines 38-54.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 2.4 Install Profile from Registry
+### 2.4 Install Profile from Registry (Alternative to 2.2)
+
+> **Note:** This is an **alternative** to Section 2.2. Both create a profile named `work`.
+> Choose ONE path (2.2 OR 2.4), not both.
+>
+> If you already ran 2.2, either:
+> - Skip this section, OR
+> - Remove the existing profile first: `ocx profile rm work --global`
 
 - [ ] **Setup:** Global registry configured (Section 2.3)
-- [ ] **Command:** `ocx profile add work --source kit/omo --global`
+- [ ] **Command:** `$OCX_BIN profile add work --source kit/omo --global`
 - [ ] **Expected:** Downloads and installs profile from registry
 - [ ] **Verify:**
   ```bash
-  ocx profile show work
+  $OCX_BIN profile show work
   ls -la $XDG_CONFIG_HOME/opencode/profiles/work/
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 2.5 Launch OpenCode with Profile
 
-- [ ] **Setup:** Work profile exists (Section 2.2 or 2.4)
-- [ ] **Command:** `cd /tmp/ocx-v2-test-project && ocx oc -p work run "echo hello"`
+- [ ] **Setup:** Work profile exists (Section 2.2 OR 2.4 — complete one of them first)
+- [ ] **Command:** `cd /tmp/ocx-v2-test-project && $OCX_BIN oc -p work run "echo hello"`
 - [ ] **Expected:** OpenCode runs with work profile, executes command
 - [ ] **Verify:** Command output shows "hello"
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 2.6 Set Default Profile via Environment
 
-- [ ] **Setup:** Work profile exists (Section 2.2 or 2.4)
+- [ ] **Setup:** Work profile exists (Section 2.2 OR 2.4 — complete one of them first)
 - [ ] **Commands:**
   ```bash
   export OCX_PROFILE=work
-  ocx oc run "echo hello"
+  $OCX_BIN oc run "echo hello"
   ```
 - [ ] **Expected:** Uses work profile automatically without `-p` flag
 - [ ] **Verify:** Command executes successfully
@@ -264,7 +321,7 @@ Test cases from README.md lines 66-86.
 ### 3.1 `ocx init` (Local)
 
 - [ ] **Setup:** Fresh test project directory
-- [ ] **Command:** `ocx init`
+- [ ] **Command:** `$OCX_BIN init`
 - [ ] **Expected:** Creates `.opencode/` directory with config files
 - [ ] **Verify:**
   ```bash
@@ -276,8 +333,22 @@ Test cases from README.md lines 66-86.
 
 ### 3.2 One-Command Install with Ephemeral Registry
 
+> **Note:** Sections 3.2 and 3.3 are **alternative tests**. Choose ONE:
+> - **3.2**: Install component from registry (includes plugins)
+> - **3.3**: Add npm plugin directly
+>
+> If running both sequentially, reset the environment first:
+> ```bash
+> rm -rf /tmp/ocx-v2-test
+> rm -rf /tmp/ocx-v2-test-project
+> mkdir -p /tmp/ocx-v2-test-project
+> cd /tmp/ocx-v2-test-project
+> git init
+> $OCX_BIN init
+> ```
+
 - [ ] **Setup:** Local config initialized (Section 3.1)
-- [ ] **Command:** `ocx add kdco/workspace --from http://localhost:8787`
+- [ ] **Command:** `$OCX_BIN add kdco/workspace --from http://localhost:8787`
 - [ ] **Expected:** Installs component without saving registry
 - [ ] **Verify:**
   ```bash
@@ -289,8 +360,15 @@ Test cases from README.md lines 66-86.
 
 ### 3.3 Add npm Plugin Directly
 
-- [ ] **Setup:** Local config initialized (Section 3.1)
-- [ ] **Command:** `ocx add npm:@franlol/opencode-md-table-formatter`
+> **Note:** This is an **alternative** to Section 3.2. Both modify `.opencode/opencode.jsonc`.
+> Choose ONE path (3.2 OR 3.3), not both.
+>
+> If you already ran 3.2, either:
+> - Skip this section, OR
+> - Reset the environment first (see 3.2 reset commands)
+
+- [ ] **Setup:** Local config initialized (Section 3.1), plugin not already added
+- [ ] **Command:** `$OCX_BIN add npm:@franlol/opencode-md-table-formatter`
 - [ ] **Expected:** Plugin is registered in `.opencode/opencode.jsonc`; actual installation is handled by OpenCode runtime
 - [ ] **Verify:**
   ```bash
@@ -303,14 +381,14 @@ Test cases from README.md lines 66-86.
 - [ ] **Setup:** Local config initialized (Section 3.1)
 - [ ] **Commands:**
   ```bash
-  ocx registry add http://localhost:8787 --name kdco
-  ocx add kdco/workspace
+  $OCX_BIN registry add http://localhost:8787 --name kdco
+  $OCX_BIN add kdco/workspace
   ```
 - [ ] **Expected:** Registry saved to config, component installed
 - [ ] **Verify:**
   ```bash
   cat .opencode/ocx.jsonc  # Should contain kdco registry
-  ocx registry list  # Should show kdco
+  $OCX_BIN registry list  # Should show kdco
   ls .opencode/  # Should contain workspace files
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -324,7 +402,7 @@ All variations from CLI.md lines 33-126.
 ### 4.1 `ocx init` (Default Local)
 
 - [ ] **Setup:** Fresh test project directory
-- [ ] **Command:** `ocx init`
+- [ ] **Command:** `$OCX_BIN init`
 - [ ] **Expected:** Creates `.opencode/` with default config
 - [ ] **Verify:**
   ```bash
@@ -336,7 +414,7 @@ All variations from CLI.md lines 33-126.
 ### 4.2 `ocx init --global`
 
 - [ ] **Setup:** Fresh sandbox
-- [ ] **Command:** `ocx init --global`
+- [ ] **Command:** `$OCX_BIN init --global`
 - [ ] **Expected:** Creates `~/.config/opencode/` and default profile
 - [ ] **Verify:**
   ```bash
@@ -348,24 +426,17 @@ All variations from CLI.md lines 33-126.
 ### 4.3 `ocx init` (Default Behavior)
 
 - [ ] **Setup:** Test project directory
-- [ ] **Command:** `ocx init`
+- [ ] **Command:** `$OCX_BIN init`
 - [ ] **Expected:** Creates config with defaults, no prompts required
 - [ ] **Verify:** `.opencode/` created with defaults
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 4.4 `ocx init` (Error on Existing)
+### 4.4 `ocx init` (Error on Existing Local Config)
 
-- [ ] **Setup:** Existing `.opencode/` directory
-- [ ] **Commands:**
-  ```bash
-  ocx init
-  ocx init  # Run again
-  ```
-- [ ] **Expected:** Second run fails with error (config already exists)
-- [ ] **Verify:**
-  ```bash
-  # Should error: ocx.jsonc already exists
-  ```
+- [ ] **Setup:** Local config already exists (run Section 4.1 or 4.3 first)
+- [ ] **Command:** `$OCX_BIN init`
+- [ ] **Expected:** Fails with error (config already exists)
+- [ ] **Verify:** Error message indicates `ocx.jsonc` already exists
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 4.5 `ocx init --registry <path>` (Registry Scaffold Only)
@@ -374,7 +445,7 @@ All variations from CLI.md lines 33-126.
 - [ ] **Commands:**
   ```bash
   cd /tmp
-  ocx init --registry ./ocx-test-registry --namespace my-org
+  $OCX_BIN init --registry ./ocx-test-registry --namespace my-org
   ```
 - [ ] **Expected:** Creates registry project at specified path
 - [ ] **Verify:**
@@ -382,13 +453,14 @@ All variations from CLI.md lines 33-126.
   ls ./ocx-test-registry/
   cat ./ocx-test-registry/registry.jsonc
   rm -rf ./ocx-test-registry
+  cd /tmp/ocx-v2-test-project
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 4.6 `ocx init --registry` (Scaffold Registry)
 
 - [ ] **Setup:** Empty directory for registry
-- [ ] **Command:** `ocx init --registry my-registry --namespace my-org`
+- [ ] **Command:** `$OCX_BIN init --registry my-registry --namespace my-org`
 - [ ] **Expected:** Scaffolds complete registry project
 - [ ] **Verify:**
   ```bash
@@ -401,7 +473,7 @@ All variations from CLI.md lines 33-126.
 ### 4.7 `ocx init --registry` with Author
 
 - [ ] **Setup:** Empty directory
-- [ ] **Command:** `ocx init --registry my-registry --namespace acme --author "Acme Corp"`
+- [ ] **Command:** `$OCX_BIN init --registry my-registry --namespace acme --author "Acme Corp"`
 - [ ] **Expected:** Scaffolds registry with custom author
 - [ ] **Verify:**
   ```bash
@@ -413,7 +485,7 @@ All variations from CLI.md lines 33-126.
 ### 4.8 `ocx init --registry --canary`
 
 - [ ] **Setup:** Empty directory
-- [ ] **Command:** `ocx init --registry my-registry --canary --namespace test`
+- [ ] **Command:** `$OCX_BIN init --registry my-registry --canary --namespace test`
 - [ ] **Expected:** Uses canary template (main branch)
 - [ ] **Verify:** Registry scaffolded successfully
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -424,14 +496,17 @@ All variations from CLI.md lines 33-126.
 
 All variations from CLI.md lines 129-253.
 
+> **Section Setup:** Run cleanup (Section 1.2) before starting this section to ensure
+> no existing local config or cwd state interferes with `init` commands.
+
 ### 5.1 Add Registry Component (Fully Qualified)
 
 - [ ] **Setup:** Local config with registry configured
 - [ ] **Commands:**
   ```bash
-  ocx init
-  ocx registry add http://localhost:8787 --name kdco
-  ocx add kdco/researcher
+  $OCX_BIN init
+  $OCX_BIN registry add http://localhost:8787 --name kdco
+  $OCX_BIN add kdco/researcher
   ```
 - [ ] **Expected:** Component installed to `.opencode/`
 - [ ] **Verify:**
@@ -441,22 +516,41 @@ All variations from CLI.md lines 129-253.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 5.2 One-Command Install with `--from`
+### 5.2 One-Command Install with `--from` (Ephemeral Registry)
 
-- [ ] **Setup:** Local config initialized
-- [ ] **Command:** `ocx add kdco/workspace --from http://localhost:8787`
-- [ ] **Expected:** Installs without saving registry
+> **Note:** This test is an **alternative** to Section 5.1. Both install a component
+> from the kdco registry, but 5.1 persists the registry while 5.2 uses `--from` for
+> ephemeral access (registry NOT saved to config).
+>
+> If running sequentially after 5.1, first clean up to ensure the registry is not
+> already persisted:
+> ```bash
+> rm -rf /tmp/ocx-v2-test
+> rm -rf /tmp/ocx-v2-test-project
+> mkdir -p /tmp/ocx-v2-test-project
+> cd /tmp/ocx-v2-test-project
+> git init
+> export XDG_CONFIG_HOME=/tmp/ocx-v2-test
+> ```
+
+- [ ] **Setup:** Fresh local config (NO registry configured)
+  ```bash
+  $OCX_BIN init
+  # Do NOT run registry add - the --from flag provides ephemeral access
+  ```
+- [ ] **Command:** `$OCX_BIN add kdco/workspace --from http://localhost:8787`
+- [ ] **Expected:** Installs component without saving registry to config
 - [ ] **Verify:**
   ```bash
-  cat .opencode/ocx.jsonc  # Should NOT contain registry
-  cat .ocx/receipt.jsonc  # Should list component
+  cat .opencode/ocx.jsonc  # Should NOT contain kdco registry
+  cat .ocx/receipt.jsonc  # Should list kdco/workspace component
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 5.3 Add with Specific Profile
 
 - [ ] **Setup:** Profile configured with registry
-- [ ] **Command:** `ocx add kdco/researcher --profile work`
+- [ ] **Command:** `$OCX_BIN add kdco/researcher --profile work`
 - [ ] **Expected:** Uses profile's registry for resolution
 - [ ] **Verify:** Component installed successfully
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -464,18 +558,18 @@ All variations from CLI.md lines 129-253.
 ### 5.4 Add npm Plugin (Unscoped)
 
 - [ ] **Setup:** Local config initialized
-- [ ] **Command:** `ocx add npm:opencode-plugin-foo`
+- [ ] **Command:** `$OCX_BIN add npm:chalk`
 - [ ] **Expected:** Plugin entry added to `.opencode/opencode.jsonc` plugins array; runtime installation handled by OpenCode
 - [ ] **Verify:**
   ```bash
-  cat .opencode/opencode.jsonc  # Should contain plugin in "plugins" array
+  cat .opencode/opencode.jsonc  # Should contain "chalk" in "plugins" array
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 5.5 Add npm Plugin (Scoped)
 
 - [ ] **Setup:** Local config initialized
-- [ ] **Command:** `ocx add npm:@franlol/opencode-md-table-formatter`
+- [ ] **Command:** `$OCX_BIN add npm:@franlol/opencode-md-table-formatter`
 - [ ] **Expected:** Plugin entry added to `.opencode/opencode.jsonc` plugins array; runtime installation handled by OpenCode
 - [ ] **Verify:**
   ```bash
@@ -485,8 +579,21 @@ All variations from CLI.md lines 129-253.
 
 ### 5.6 Add npm Plugin with Version
 
+> **Note:** This is an **alternative** to Section 5.5 for the same package.
+> Running 5.5 first adds `@franlol/opencode-md-table-formatter` without a version,
+> which conflicts with this versioned add.
+>
+> If running sequentially after 5.5, reset to a fresh local config first:
+> ```bash
+> rm -rf /tmp/ocx-v2-test-project
+> mkdir -p /tmp/ocx-v2-test-project
+> cd /tmp/ocx-v2-test-project
+> git init
+> $OCX_BIN init
+> ```
+
 - [ ] **Setup:** Local config initialized
-- [ ] **Command:** `ocx add npm:@franlol/opencode-md-table-formatter@0.0.3`
+- [ ] **Command:** `$OCX_BIN add npm:@franlol/opencode-md-table-formatter@0.0.3`
 - [ ] **Expected:** Plugin entry added to `.opencode/opencode.jsonc`; runtime installation handled by OpenCode
 - [ ] **Verify:**
   ```bash
@@ -497,7 +604,7 @@ All variations from CLI.md lines 129-253.
 ### 5.7 Add Multiple Components
 
 - [ ] **Setup:** Registry configured
-- [ ] **Command:** `ocx add kdco/researcher kdco/code-philosophy kdco/notify`
+- [ ] **Command:** `$OCX_BIN add kdco/researcher kdco/code-philosophy kdco/notify`
 - [ ] **Expected:** Installs all three components
 - [ ] **Verify:**
   ```bash
@@ -508,28 +615,35 @@ All variations from CLI.md lines 129-253.
 
 ### 5.8 Add with `--dry-run`
 
+> **Note:** Uses `kdco/workspace` (not installed in Section 5.7) to ensure
+> deterministic behavior in sequential test runs.
+
 - [ ] **Setup:** Registry configured
-- [ ] **Command:** `ocx add kdco/researcher --dry-run`
+- [ ] **Command:** `$OCX_BIN add kdco/workspace --dry-run`
 - [ ] **Expected:** Shows what would be installed without making changes
 - [ ] **Verify:**
   ```bash
-  cat .ocx/receipt.jsonc  # Should NOT list component
-  ls .opencode/  # Should NOT contain component files
+  cat .ocx/receipt.jsonc  # Should NOT list kdco/workspace (dry-run makes no changes)
+  ls .opencode/  # Should NOT contain workspace component files
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 5.9 Add with `--trust` (Bypass Plugin Validation)
 
 - [ ] **Setup:** Local config initialized
-- [ ] **Command:** `ocx add npm:some-non-esm-package --trust`
-- [ ] **Expected:** Skips ESM validation, installs anyway
-- [ ] **Verify:** Package installed despite validation skip
+- [ ] **Command:** `$OCX_BIN add npm:lodash --trust`
+- [ ] **Expected:** Skips ESM plugin validation and adds package entry anyway
+- [ ] **Verify:**
+  ```bash
+  cat .opencode/opencode.jsonc  # Should contain "lodash" in "plugin" array
+  ```
+- [ ] **Note:** This specifically tests trust-bypass behavior for non-ESM packages.
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 5.10 Add with `--json` Output
 
 - [ ] **Setup:** Registry configured
-- [ ] **Command:** `ocx add kdco/researcher --json`
+- [ ] **Command:** `$OCX_BIN add kdco/researcher --json`
 - [ ] **Expected:** Outputs machine-readable JSON
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -537,7 +651,7 @@ All variations from CLI.md lines 129-253.
 ### 5.11 Add with `--verbose`
 
 - [ ] **Setup:** Registry configured
-- [ ] **Command:** `ocx add kdco/researcher --verbose`
+- [ ] **Command:** `$OCX_BIN add kdco/researcher --verbose`
 - [ ] **Expected:** Shows detailed file operations
 - [ ] **Verify:** Verbose output includes file paths
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -550,8 +664,15 @@ All variations from CLI.md lines 256-361.
 
 ### 6.1 Update Specific Component
 
-- [ ] **Setup:** Component installed
-- [ ] **Command:** `ocx update kdco/researcher`
+> **Note:** Component must be installed first. Complete Section 5.1, or run:
+> ```bash
+> $OCX_BIN init
+> $OCX_BIN registry add http://localhost:8787 --name kdco
+> $OCX_BIN add kdco/researcher
+> ```
+
+- [ ] **Setup:** Component installed (Section 5.1)
+- [ ] **Command:** `$OCX_BIN update kdco/researcher`
 - [ ] **Expected:** Updates to latest version
 - [ ] **Verify:**
   ```bash
@@ -562,7 +683,7 @@ All variations from CLI.md lines 256-361.
 ### 6.2 Update Multiple Components
 
 - [ ] **Setup:** Multiple components installed
-- [ ] **Command:** `ocx update kdco/researcher kdco/notify`
+- [ ] **Command:** `$OCX_BIN update kdco/researcher kdco/notify`
 - [ ] **Expected:** Updates both components
 - [ ] **Verify:**
   ```bash
@@ -573,7 +694,7 @@ All variations from CLI.md lines 256-361.
 ### 6.3 Update All Components (`--all`)
 
 - [ ] **Setup:** Multiple components installed
-- [ ] **Command:** `ocx update --all`
+- [ ] **Command:** `$OCX_BIN update --all`
 - [ ] **Expected:** Updates all installed components
 - [ ] **Verify:**
   ```bash
@@ -584,7 +705,7 @@ All variations from CLI.md lines 256-361.
 ### 6.4 Update All with `--dry-run`
 
 - [ ] **Setup:** Components installed
-- [ ] **Command:** `ocx update --all --dry-run`
+- [ ] **Command:** `$OCX_BIN update --all --dry-run`
 - [ ] **Expected:** Shows what would be updated without applying
 - [ ] **Verify:**
   ```bash
@@ -596,7 +717,7 @@ All variations from CLI.md lines 256-361.
 ### 6.5 Update by Registry (`--registry`)
 
 - [ ] **Setup:** Components from multiple registries installed
-- [ ] **Command:** `ocx update --registry kdco`
+- [ ] **Command:** `$OCX_BIN update --registry kdco`
 - [ ] **Expected:** Updates only kdco components
 - [ ] **Verify:**
   ```bash
@@ -607,15 +728,15 @@ All variations from CLI.md lines 256-361.
 ---
 
 - [ ] **Setup:** Component installed
-- [ ] **Command:** `ocx update kdco/researcher --json`
+- [ ] **Command:** `$OCX_BIN update kdco/researcher --json`
 - [ ] **Expected:** Machine-readable JSON output
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 6.9 Update with `--verbose`
+### 6.6 Update with `--verbose`
 
 - [ ] **Setup:** Component installed
-- [ ] **Command:** `ocx update kdco/researcher --verbose`
+- [ ] **Command:** `$OCX_BIN update kdco/researcher --verbose`
 - [ ] **Expected:** Detailed file change information
 - [ ] **Verify:** Verbose output shows file operations
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -629,7 +750,7 @@ All variations from CLI.md lines 439-516.
 ### 7.1 Search All Available Components
 
 - [ ] **Setup:** Registry configured
-- [ ] **Command:** `ocx search`
+- [ ] **Command:** `$OCX_BIN search`
 - [ ] **Expected:** Lists all components from configured registries
 - [ ] **Verify:** Output shows component list
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -637,7 +758,7 @@ All variations from CLI.md lines 439-516.
 ### 7.2 Search with Query
 
 - [ ] **Setup:** Registry configured
-- [ ] **Command:** `ocx search agent`
+- [ ] **Command:** `$OCX_BIN search agent`
 - [ ] **Expected:** Lists components matching "agent"
 - [ ] **Verify:** Results filtered by query
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -645,7 +766,7 @@ All variations from CLI.md lines 439-516.
 ### 7.3 Search with Higher Limit
 
 - [ ] **Setup:** Registry configured
-- [ ] **Command:** `ocx search agents --limit 50`
+- [ ] **Command:** `$OCX_BIN search agents --limit 50`
 - [ ] **Expected:** Shows up to 50 results
 - [ ] **Verify:** Limit respected in output
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -653,7 +774,7 @@ All variations from CLI.md lines 439-516.
 ### 7.4 List Installed Components Only
 
 - [ ] **Setup:** Components installed
-- [ ] **Command:** `ocx search --installed`
+- [ ] **Command:** `$OCX_BIN search --installed`
 - [ ] **Expected:** Shows only installed components with versions
 - [ ] **Verify:**
   ```bash
@@ -665,7 +786,7 @@ All variations from CLI.md lines 439-516.
 ### 7.5 Search with `--json` Output
 
 - [ ] **Setup:** Registry configured
-- [ ] **Command:** `ocx search --json`
+- [ ] **Command:** `$OCX_BIN search --json`
 - [ ] **Expected:** Machine-readable JSON component list
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -673,7 +794,7 @@ All variations from CLI.md lines 439-516.
 ### 7.6 Search with `--verbose`
 
 - [ ] **Setup:** Registry configured
-- [ ] **Command:** `ocx search agents --verbose`
+- [ ] **Command:** `$OCX_BIN search agents --verbose`
 - [ ] **Expected:** Detailed component information including registry details
 - [ ] **Verify:** Verbose output shows extended metadata
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -681,7 +802,7 @@ All variations from CLI.md lines 439-516.
 ### 7.7 Search Alias: `ocx list`
 
 - [ ] **Setup:** Registry configured
-- [ ] **Command:** `ocx list`
+- [ ] **Command:** `$OCX_BIN list`
 - [ ] **Expected:** Same output as `ocx search`
 - [ ] **Verify:** Lists all components
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -695,11 +816,11 @@ All subcommands from CLI.md lines 519-705.
 ### 8.1 `ocx registry add` (Local, Name from Hostname)
 
 - [ ] **Setup:** Local config initialized
-- [ ] **Command:** `ocx registry add http://localhost:8787 --name kdco`
+- [ ] **Command:** `$OCX_BIN registry add http://localhost:8787 --name kdco`
 - [ ] **Expected:** Registry added with custom name "kdco"
 - [ ] **Verify:**
   ```bash
-  ocx registry list  # Should show kdco
+  $OCX_BIN registry list  # Should show kdco
   cat .opencode/ocx.jsonc  # Should contain registry
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -707,30 +828,30 @@ All subcommands from CLI.md lines 519-705.
 ### 8.2 `ocx registry add` with Custom Name
 
 - [ ] **Setup:** Local config initialized
-- [ ] **Command:** `ocx registry add http://localhost:8787 --name kdco`
+- [ ] **Command:** `$OCX_BIN registry add http://localhost:8787 --name kdco`
 - [ ] **Expected:** Registry added with custom name "kdco"
 - [ ] **Verify:**
   ```bash
-  ocx registry list  # Should show kdco
+  $OCX_BIN registry list  # Should show kdco
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 8.3 `ocx registry add --global`
 
 - [ ] **Setup:** Global profiles initialized
-- [ ] **Command:** `ocx registry add http://localhost:8787 --name kdco --global`
+- [ ] **Command:** `$OCX_BIN registry add http://localhost:8787 --name kdco --global`
 - [ ] **Expected:** Registry added to global config
 - [ ] **Verify:**
   ```bash
   cat $XDG_CONFIG_HOME/opencode/ocx.jsonc  # Should contain kdco
-  ocx registry list --global  # Should show kdco
+  $OCX_BIN registry list --global  # Should show kdco
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 8.4 `ocx registry add --force` (Update Existing)
 
 - [ ] **Setup:** Registry already configured
-- [ ] **Command:** `ocx registry add https://new-url.kdco.dev --name kdco --force`
+- [ ] **Command:** `$OCX_BIN registry add https://new-url.kdco.dev --name kdco --force`
 - [ ] **Expected:** Updates existing registry URL
 - [ ] **Verify:**
   ```bash
@@ -740,8 +861,12 @@ All subcommands from CLI.md lines 519-705.
 
 ### 8.5 `ocx registry add` with `--json` Output
 
+> **Note:** Alternative to Sections 8.1/8.2. If those already ran, `kdco` registry
+> already exists. Either skip this test, remove the registry first
+> (`$OCX_BIN registry remove kdco`), or use a different name.
+
 - [ ] **Setup:** Local config initialized
-- [ ] **Command:** `ocx registry add http://localhost:8787 --name kdco --json`
+- [ ] **Command:** `$OCX_BIN registry add http://localhost:8787 --name kdco --json`
 - [ ] **Expected:** Machine-readable JSON confirmation
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -749,11 +874,11 @@ All subcommands from CLI.md lines 519-705.
 ### 8.6 `ocx registry remove` (Local)
 
 - [ ] **Setup:** Registry configured locally
-- [ ] **Command:** `ocx registry remove kdco`
+- [ ] **Command:** `$OCX_BIN registry remove kdco`
 - [ ] **Expected:** Registry removed from local config
 - [ ] **Verify:**
   ```bash
-  ocx registry list  # Should NOT show kdco
+  $OCX_BIN registry list  # Should NOT show kdco
   cat .opencode/ocx.jsonc  # Should NOT contain kdco
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -761,7 +886,7 @@ All subcommands from CLI.md lines 519-705.
 ### 8.7 `ocx registry remove --global`
 
 - [ ] **Setup:** Registry configured globally
-- [ ] **Command:** `ocx registry remove kdco --global`
+- [ ] **Command:** `$OCX_BIN registry remove kdco --global`
 - [ ] **Expected:** Registry removed from global config
 - [ ] **Verify:**
   ```bash
@@ -772,7 +897,7 @@ All subcommands from CLI.md lines 519-705.
 ### 8.8 `ocx registry list` (Local)
 
 - [ ] **Setup:** Registries configured locally
-- [ ] **Command:** `ocx registry list`
+- [ ] **Command:** `$OCX_BIN registry list`
 - [ ] **Expected:** Lists local registries
 - [ ] **Verify:** Output matches `.opencode/ocx.jsonc` content
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -780,7 +905,7 @@ All subcommands from CLI.md lines 519-705.
 ### 8.9 `ocx registry list --global`
 
 - [ ] **Setup:** Registries configured globally
-- [ ] **Command:** `ocx registry list --global`
+- [ ] **Command:** `$OCX_BIN registry list --global`
 - [ ] **Expected:** Lists global registries
 - [ ] **Verify:** Output matches global config
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -788,7 +913,7 @@ All subcommands from CLI.md lines 519-705.
 ### 8.10 `ocx registry list --json`
 
 - [ ] **Setup:** Registries configured
-- [ ] **Command:** `ocx registry list --json`
+- [ ] **Command:** `$OCX_BIN registry list --json`
 - [ ] **Expected:** Machine-readable JSON with registry list
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -808,7 +933,7 @@ All variations from CLI.md lines 708-790.
   mkdir -p /tmp/test-registry/files/agent
   echo '{"name": "test-registry", "version": "1.0.0", "components": {}}' > /tmp/test-registry/registry.jsonc
   cd /tmp/test-registry
-  ocx build
+  $OCX_BIN build
   ```
 - [ ] **Expected:** Builds to `./dist/`
 - [ ] **Verify:**
@@ -820,8 +945,14 @@ All variations from CLI.md lines 708-790.
 
 ### 9.2 Build from Specific Directory
 
-- [ ] **Setup:** Registry source directory
-- [ ] **Command:** `ocx build /tmp/test-registry`
+> **Note:** Section 9.1 deletes `/tmp/test-registry`. Recreate it first:
+> ```bash
+> mkdir -p /tmp/test-registry/files/agent
+> echo '{"name": "test-registry", "version": "1.0.0", "components": {}}' > /tmp/test-registry/registry.jsonc
+> ```
+
+- [ ] **Setup:** Registry source directory (recreate if needed)
+- [ ] **Command:** `$OCX_BIN build /tmp/test-registry`
 - [ ] **Expected:** Builds registry from specified path to `./dist/` in current working directory
 - [ ] **Verify:**
   ```bash
@@ -832,8 +963,14 @@ All variations from CLI.md lines 708-790.
 
 ### 9.3 Build with Custom Output Directory
 
-- [ ] **Setup:** Registry source directory
-- [ ] **Command:** `ocx build /tmp/test-registry --out ./public`
+> **Note:** Section 9.1 deletes `/tmp/test-registry`. Recreate it first:
+> ```bash
+> mkdir -p /tmp/test-registry/files/agent
+> echo '{"name": "test-registry", "version": "1.0.0", "components": {}}' > /tmp/test-registry/registry.jsonc
+> ```
+
+- [ ] **Setup:** Registry source directory (recreate if needed)
+- [ ] **Command:** `$OCX_BIN build /tmp/test-registry --out ./public`
 - [ ] **Expected:** Builds to `./public/` instead of `./dist/`
 - [ ] **Verify:**
   ```bash
@@ -845,7 +982,7 @@ All variations from CLI.md lines 708-790.
 ### 9.4 Build with `--json` Output
 
 - [ ] **Setup:** Registry source directory
-- [ ] **Command:** `ocx build /tmp/test-registry --json`
+- [ ] **Command:** `$OCX_BIN build /tmp/test-registry --json`
 - [ ] **Expected:** Machine-readable JSON build summary
 - [ ] **Verify:** Output is valid JSON with component count
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -859,18 +996,18 @@ Self-management commands from CLI.md lines 793-870.
 ### 10.1 `ocx self update`
 
 - [ ] **Setup:** OCX installed
-- [ ] **Command:** `ocx self update`
+- [ ] **Command:** `$OCX_BIN self update`
 - [ ] **Expected:** Updates to latest version
 - [ ] **Verify:**
   ```bash
-  ocx --version  # Version should update
+  $OCX_BIN --version  # Version should update
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 10.2 `ocx self update --force`
 
 - [ ] **Setup:** OCX installed
-- [ ] **Command:** `ocx self update --force`
+- [ ] **Command:** `$OCX_BIN self update --force`
 - [ ] **Expected:** Forces reinstall even if on latest version
 - [ ] **Verify:** Command completes successfully
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -878,7 +1015,7 @@ Self-management commands from CLI.md lines 793-870.
 ### 10.3 `ocx self update --method npm`
 
 - [ ] **Setup:** OCX installed via npm
-- [ ] **Command:** `ocx self update --method npm`
+- [ ] **Command:** `$OCX_BIN self update --method npm`
 - [ ] **Expected:** Uses npm for update
 - [ ] **Verify:** Update completes via npm
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -886,7 +1023,7 @@ Self-management commands from CLI.md lines 793-870.
 ### 10.4 `ocx self uninstall --dry-run`
 
 - [ ] **Setup:** OCX installed with test config
-- [ ] **Command:** `ocx self uninstall --dry-run`
+- [ ] **Command:** `$OCX_BIN self uninstall --dry-run`
 - [ ] **Expected:** Shows what would be removed without deleting
 - [ ] **Verify:**
   ```bash
@@ -898,7 +1035,7 @@ Self-management commands from CLI.md lines 793-870.
 ### 10.5 `ocx self uninstall` (Config Only)
 
 - [ ] **Setup:** Test environment (NOT production!)
-- [ ] **Command:** `ocx self uninstall`
+- [ ] **Command:** `$OCX_BIN self uninstall`
 - [ ] **Expected:** Removes config files, prints binary removal command for package-managed installs
 - [ ] **Verify:**
   ```bash
@@ -916,7 +1053,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.1 `ocx profile list`
 
 - [ ] **Setup:** Global profiles initialized
-- [ ] **Command:** `ocx profile list`
+- [ ] **Command:** `$OCX_BIN profile list`
 - [ ] **Expected:** Lists all profiles (no active indicator)
 - [ ] **Verify:**
   ```bash
@@ -927,7 +1064,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.2 `ocx p ls` (Alias)
 
 - [ ] **Setup:** Global profiles initialized
-- [ ] **Command:** `ocx p ls`
+- [ ] **Command:** `$OCX_BIN p ls`
 - [ ] **Expected:** Same output as `ocx profile list`
 - [ ] **Verify:** Lists profiles
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -935,7 +1072,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.3 `ocx profile list --json`
 
 - [ ] **Setup:** Global profiles initialized
-- [ ] **Command:** `ocx profile list --json`
+- [ ] **Command:** `$OCX_BIN profile list --json`
 - [ ] **Expected:** Machine-readable JSON with profile list
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -943,11 +1080,11 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.4 `ocx profile add work` (Empty Profile)
 
 - [ ] **Setup:** Global profiles initialized
-- [ ] **Command:** `ocx profile add work --global`
+- [ ] **Command:** `$OCX_BIN profile add work --global`
 - [ ] **Expected:** Creates new empty profile with template files
 - [ ] **Verify:**
   ```bash
-  ocx p ls  # Should show work
+  $OCX_BIN p ls  # Should show work
   ls $XDG_CONFIG_HOME/opencode/profiles/work/
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -955,11 +1092,11 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.5 `ocx profile add` Clone from Existing
 
 - [ ] **Setup:** Profile "work" exists
-- [ ] **Command:** `ocx profile add client-x --clone work --global`
+- [ ] **Command:** `$OCX_BIN profile add client-x --clone work --global`
 - [ ] **Expected:** Clones work profile to client-x
 - [ ] **Verify:**
   ```bash
-  ocx p ls  # Should show both work and client-x
+  $OCX_BIN p ls  # Should show both work and client-x
   diff $XDG_CONFIG_HOME/opencode/profiles/work/ocx.jsonc \
        $XDG_CONFIG_HOME/opencode/profiles/client-x/ocx.jsonc
   ```
@@ -968,22 +1105,26 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.6 `ocx profile add` Install from Registry (Shorthand)
 
 - [ ] **Setup:** Global registry configured
-- [ ] **Command:** `ocx profile add ws --source kit/ws --global`
+- [ ] **Command:** `$OCX_BIN profile add ws --source kit/ws --global`
 - [ ] **Expected:** Downloads profile from kit registry
 - [ ] **Verify:**
   ```bash
-  ocx p show ws
+  $OCX_BIN p show ws
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 11.7 `ocx profile add` Install from URL
 
-- [ ] **Setup:** None required
-- [ ] **Command:** `ocx profile add ws --source kit/ws --from http://localhost:8788 --global`
+> **Note:** Alternative to Section 11.6. Both create a profile named `ws`.
+> If 11.6 already ran, either skip this test, remove the profile first
+> (`$OCX_BIN profile remove ws --global`), or use a different name.
+
+- [ ] **Setup:** None required (or remove existing `ws` profile first)
+- [ ] **Command:** `$OCX_BIN profile add ws --source kit/ws --from http://localhost:8788 --global`
 - [ ] **Expected:** Downloads profile from ephemeral registry URL
 - [ ] **Verify:**
   ```bash
-  ocx p show ws
+  $OCX_BIN p show ws
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -992,31 +1133,31 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Setup:** Profile "ws" already exists
 - [ ] **Commands:**
   ```bash
-  ocx profile remove ws --global
-  ocx profile add ws --source kit/ws --global
+  $OCX_BIN profile remove ws --global
+  $OCX_BIN profile add ws --source kit/ws --global
   ```
 - [ ] **Expected:** Removes and reinstalls profile
 - [ ] **Verify:**
   ```bash
-  ocx p show ws  # Should show fresh content
+  $OCX_BIN p show ws  # Should show fresh content
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 11.9 `ocx p add` (Alias)
 
 - [ ] **Setup:** Global profiles initialized
-- [ ] **Command:** `ocx p add personal --global`
+- [ ] **Command:** `$OCX_BIN p add personal --global`
 - [ ] **Expected:** Creates new profile (same as `profile add`)
 - [ ] **Verify:**
   ```bash
-  ocx p ls  # Should show personal
+  $OCX_BIN p ls  # Should show personal
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 11.10 `ocx profile remove work` (Local Default)
 
 - [ ] **Setup:** Local profile "work" exists
-- [ ] **Command:** `ocx profile remove work`
+- [ ] **Command:** `$OCX_BIN profile remove work`
 - [ ] **Expected:** Deletes local profile immediately (no confirmation)
 - [ ] **Verify:**
   ```bash
@@ -1027,11 +1168,11 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.11 `ocx profile remove --global`
 
 - [ ] **Setup:** Global profile "old-profile" exists
-- [ ] **Command:** `ocx profile remove old-profile --global`
+- [ ] **Command:** `$OCX_BIN profile remove old-profile --global`
 - [ ] **Expected:** Deletes global profile (no confirmation)
 - [ ] **Verify:**
   ```bash
-  ocx p ls  # Should NOT show old-profile
+  $OCX_BIN p ls  # Should NOT show old-profile
   ls $XDG_CONFIG_HOME/opencode/profiles/  # old-profile/ should be gone
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1039,7 +1180,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.12 `ocx p rm` (Alias)
 
 - [ ] **Setup:** Profile exists
-- [ ] **Command:** `ocx p rm old-profile`
+- [ ] **Command:** `$OCX_BIN p rm old-profile`
 - [ ] **Expected:** Deletes profile (same as `profile remove`)
 - [ ] **Verify:** Profile deleted
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1047,7 +1188,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.13 `ocx profile move work client-work` (Local Default)
 
 - [ ] **Setup:** Local profile "work" exists
-- [ ] **Command:** `ocx profile move work client-work`
+- [ ] **Command:** `$OCX_BIN profile move work client-work`
 - [ ] **Expected:** Renames local profile from work to client-work
 - [ ] **Verify:**
   ```bash
@@ -1058,11 +1199,11 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.14 `ocx profile move --global`
 
 - [ ] **Setup:** Global profile "work" exists
-- [ ] **Command:** `ocx profile move work client-work --global`
+- [ ] **Command:** `$OCX_BIN profile move work client-work --global`
 - [ ] **Expected:** Renames global profile from work to client-work
 - [ ] **Verify:**
   ```bash
-  ocx p ls  # Should show client-work, NOT work
+  $OCX_BIN p ls  # Should show client-work, NOT work
   ls $XDG_CONFIG_HOME/opencode/profiles/  # client-work/ exists, work/ gone
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1070,18 +1211,18 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.15 `ocx p mv` (Alias)
 
 - [ ] **Setup:** Profile exists
-- [ ] **Command:** `ocx p mv personal home`
+- [ ] **Command:** `$OCX_BIN p mv personal home`
 - [ ] **Expected:** Renames profile (same as `profile move`)
 - [ ] **Verify:**
   ```bash
-  ocx p ls  # Should show home
+  $OCX_BIN p ls  # Should show home
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 11.16 `ocx profile show` (Current Profile)
 
 - [ ] **Setup:** Profile active via environment or flag
-- [ ] **Command:** `OCX_PROFILE=work ocx profile show`
+- [ ] **Command:** `OCX_PROFILE=work $OCX_BIN profile show`
 - [ ] **Expected:** Shows currently resolved profile details
 - [ ] **Verify:** Output displays work profile info
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1089,7 +1230,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.17 `ocx profile show work`
 
 - [ ] **Setup:** Profile "work" exists
-- [ ] **Command:** `ocx profile show work`
+- [ ] **Command:** `$OCX_BIN profile show work`
 - [ ] **Expected:** Shows work profile config and files
 - [ ] **Verify:**
   ```bash
@@ -1100,7 +1241,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.18 `ocx p show` (Alias)
 
 - [ ] **Setup:** Profile exists
-- [ ] **Command:** `ocx p show work`
+- [ ] **Command:** `$OCX_BIN p show work`
 - [ ] **Expected:** Same output as `profile show work`
 - [ ] **Verify:** Profile details displayed
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1108,7 +1249,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 11.19 `ocx profile show --json`
 
 - [ ] **Setup:** Profile exists
-- [ ] **Command:** `ocx profile show work --json`
+- [ ] **Command:** `$OCX_BIN profile show work --json`
 - [ ] **Expected:** Machine-readable JSON with profile details
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1122,7 +1263,7 @@ All subcommands from CLI.md lines 1276-1381.
 ### 12.1 `ocx config show` (Current Scope)
 
 - [ ] **Setup:** Local config initialized
-- [ ] **Command:** `ocx config show`
+- [ ] **Command:** `$OCX_BIN config show`
 - [ ] **Expected:** Shows merged config from current scope
 - [ ] **Verify:**
   ```bash
@@ -1133,7 +1274,7 @@ All subcommands from CLI.md lines 1276-1381.
 ### 12.2 `ocx config show --origin`
 
 - [ ] **Setup:** Local config with profile active
-- [ ] **Command:** `ocx config show --origin`
+- [ ] **Command:** `$OCX_BIN config show --origin`
 - [ ] **Expected:** Shows config with source annotations
 - [ ] **Verify:**
   ```bash
@@ -1144,7 +1285,7 @@ All subcommands from CLI.md lines 1276-1381.
 ### 12.3 `ocx config show -p work`
 
 - [ ] **Setup:** Profile "work" exists
-- [ ] **Command:** `ocx config show -p work`
+- [ ] **Command:** `$OCX_BIN config show -p work`
 - [ ] **Expected:** Shows config from work profile scope
 - [ ] **Verify:** Output shows work profile settings
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1152,7 +1293,7 @@ All subcommands from CLI.md lines 1276-1381.
 ### 12.4 `ocx config show --json`
 
 - [ ] **Setup:** Config exists
-- [ ] **Command:** `ocx config show --json`
+- [ ] **Command:** `$OCX_BIN config show --json`
 - [ ] **Expected:** Machine-readable JSON config
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1160,7 +1301,7 @@ All subcommands from CLI.md lines 1276-1381.
 ### 12.5 `ocx config edit` (Local)
 
 - [ ] **Setup:** Local config exists, `$EDITOR` set
-- [ ] **Command:** `EDITOR=cat ocx config edit`
+- [ ] **Command:** `EDITOR=cat $OCX_BIN config edit`
 - [ ] **Expected:** Opens `.opencode/ocx.jsonc` in editor
 - [ ] **Verify:**
   ```bash
@@ -1171,7 +1312,7 @@ All subcommands from CLI.md lines 1276-1381.
 ### 12.6 `ocx config edit --global`
 
 - [ ] **Setup:** Global config exists, `$EDITOR` set
-- [ ] **Command:** `EDITOR=cat ocx config edit --global`
+- [ ] **Command:** `EDITOR=cat $OCX_BIN config edit --global`
 - [ ] **Expected:** Opens `~/.config/opencode/ocx.jsonc` in editor
 - [ ] **Verify:** Editor opens global config
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1179,7 +1320,7 @@ All subcommands from CLI.md lines 1276-1381.
 ### 12.7 `ocx config edit -p work`
 
 - [ ] **Setup:** Profile "work" exists, `$EDITOR` set
-- [ ] **Command:** `EDITOR=cat ocx config edit -p work`
+- [ ] **Command:** `EDITOR=cat $OCX_BIN config edit -p work`
 - [ ] **Expected:** Opens work profile's `ocx.jsonc` in editor
 - [ ] **Verify:** Editor opens profile config
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1193,7 +1334,7 @@ All variations from CLI.md lines 1383-1509.
 ### 13.1 `ocx opencode` (Default Profile)
 
 - [ ] **Setup:** Default profile exists, test project directory
-- [ ] **Command:** `cd /tmp/ocx-v2-test-project && ocx oc run "echo hello"`
+- [ ] **Command:** `cd /tmp/ocx-v2-test-project && $OCX_BIN oc run "echo hello"`
 - [ ] **Expected:** Launches OpenCode with default profile
 - [ ] **Verify:** Output shows "hello"
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1201,7 +1342,7 @@ All variations from CLI.md lines 1383-1509.
 ### 13.2 `ocx opencode -p work`
 
 - [ ] **Setup:** Work profile exists
-- [ ] **Command:** `ocx oc -p work run "echo hello"`
+- [ ] **Command:** `$OCX_BIN oc -p work run "echo hello"`
 - [ ] **Expected:** Launches with work profile explicitly
 - [ ] **Verify:** Command executes successfully
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1212,7 +1353,7 @@ All variations from CLI.md lines 1383-1509.
 - [ ] **Commands:**
   ```bash
   export OCX_PROFILE=work
-  ocx oc run "echo hello"
+  $OCX_BIN oc run "echo hello"
   ```
 - [ ] **Expected:** Uses profile from environment variable
 - [ ] **Verify:** Command executes with work profile
@@ -1221,7 +1362,7 @@ All variations from CLI.md lines 1383-1509.
 ### 13.4 `ocx oc` (Alias)
 
 - [ ] **Setup:** Profile exists
-- [ ] **Command:** `ocx oc run "echo hello"`
+- [ ] **Command:** `$OCX_BIN oc run "echo hello"`
 - [ ] **Expected:** Same behavior as `ocx opencode`
 - [ ] **Verify:** Command executes
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1229,7 +1370,7 @@ All variations from CLI.md lines 1383-1509.
 ### 13.5 `ocx opencode --no-rename`
 
 - [ ] **Setup:** Profile exists, in terminal with window support
-- [ ] **Command:** `ocx oc --no-rename run "echo hello"`
+- [ ] **Command:** `$OCX_BIN oc --no-rename run "echo hello"`
 - [ ] **Expected:** Skips automatic window renaming
 - [ ] **Verify:** Terminal window name unchanged
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1237,7 +1378,7 @@ All variations from CLI.md lines 1383-1509.
 ### 13.6 `ocx oc -- --help` (Pass-Through to OpenCode)
 
 - [ ] **Setup:** OpenCode installed
-- [ ] **Command:** `ocx oc -- --help`
+- [ ] **Command:** `$OCX_BIN oc -- --help`
 - [ ] **Expected:** Shows OpenCode's help, not OCX help
 - [ ] **Verify:** Help output is from OpenCode
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1247,8 +1388,10 @@ All variations from CLI.md lines 1383-1509.
 - [ ] **Setup:** Multiple profiles, `OCX_PROFILE` set
 - [ ] **Commands:**
   ```bash
+  unset OCX_PROFILE
   export OCX_PROFILE=default
-  ocx oc -p work run "echo hello"
+  $OCX_BIN oc -p work run "echo hello"
+  unset OCX_PROFILE
   ```
 - [ ] **Expected:** Uses work profile (flag overrides env)
 - [ ] **Verify:** Work profile used
@@ -1259,17 +1402,23 @@ All variations from CLI.md lines 1383-1509.
 - [ ] **Setup:** Profile exists, no local config
 - [ ] **Commands:**
   ```bash
+  unset OCX_PROFILE
   export OCX_PROFILE=work
-  ocx oc run "echo hello"
+  $OCX_BIN oc run "echo hello"
+  unset OCX_PROFILE
   ```
-- [ ] **Expected:** Uses profile from environment
+- [ ] **Expected:** Uses profile from environment variable
 - [ ] **Verify:** Work profile used
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 13.9 Profile Resolution: Local Config Field
 
 - [ ] **Setup:** `.opencode/ocx.jsonc` with `"profile": "work"`
-- [ ] **Command:** `ocx oc run "echo hello"`
+- [ ] **Commands:**
+  ```bash
+  unset OCX_PROFILE
+  $OCX_BIN oc run "echo hello"
+  ```
 - [ ] **Expected:** Uses profile specified in local config
 - [ ] **Verify:**
   ```bash
@@ -1283,7 +1432,8 @@ All variations from CLI.md lines 1383-1509.
 - [ ] **Commands:**
   ```bash
   unset OCX_PROFILE
-  ocx oc run "echo hello"
+  $OCX_BIN oc run "echo hello"
+  unset OCX_PROFILE
   ```
 - [ ] **Expected:** Falls back to default profile
 - [ ] **Verify:** Default profile used
@@ -1292,7 +1442,7 @@ All variations from CLI.md lines 1383-1509.
 ### 13.11 Custom Binary via Profile Config
 
 - [ ] **Setup:** Profile with `"bin": "/custom/path/opencode"`
-- [ ] **Command:** `ocx oc -p work run "echo hello"`
+- [ ] **Command:** `$OCX_BIN oc -p work run "echo hello"`
 - [ ] **Expected:** Uses custom binary from profile config
 - [ ] **Verify:**
   ```bash
@@ -1306,7 +1456,7 @@ All variations from CLI.md lines 1383-1509.
 - [ ] **Commands:**
   ```bash
   export OPENCODE_BIN=/custom/path/opencode
-  ocx oc run "echo hello"
+  $OCX_BIN oc run "echo hello"
   ```
 - [ ] **Expected:** Uses binary from environment variable
 - [ ] **Verify:** Custom binary executed
@@ -1323,13 +1473,13 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Setup:** Global profile "work" exists, local config specifies profile
 - [ ] **Commands:**
   ```bash
-  ocx init --global
-  ocx profile add work --global
-  ocx config edit -p work  # Add registries
+  $OCX_BIN init --global
+  $OCX_BIN profile add work --global
+  $OCX_BIN config edit -p work  # Add registries
   cd /tmp/ocx-v2-test-project
-  ocx init
+  $OCX_BIN init
   # Edit .opencode/ocx.jsonc to add: "profile": "work"
-  ocx config show --origin
+  $OCX_BIN config show --origin
   ```
 - [ ] **Expected:** Local overlay takes precedence over global base
 - [ ] **Verify:** `--origin` shows layering sources
@@ -1342,7 +1492,7 @@ From PROFILES.md - advanced profile behaviors.
   ```bash
   # Create profile with exclude: ["**/AGENTS.md"]
   echo "# Test" > AGENTS.md
-  ocx oc -p work run "echo hello"
+  $OCX_BIN oc -p work run "echo hello"
   ```
 - [ ] **Expected:** AGENTS.md excluded from OpenCode context
 - [ ] **Verify:** File not visible to OpenCode
@@ -1357,7 +1507,7 @@ From PROFILES.md - advanced profile behaviors.
   # "exclude": ["**/AGENTS.md"]
   # "include": ["./AGENTS.md"]
   echo "# Test" > AGENTS.md
-  ocx oc -p work run "echo hello"
+  $OCX_BIN oc -p work run "echo hello"
   ```
 - [ ] **Expected:** Root AGENTS.md included despite exclude pattern
 - [ ] **Verify:** Include overrides exclude
@@ -1368,10 +1518,10 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Setup:** Global registry configured, profile with different registry
 - [ ] **Commands:**
   ```bash
-  ocx registry add https://registry-a.com --name a --global
-  ocx profile add work --global
-  ocx config edit -p work  # Add registry-b.com
-  ocx search -p work
+  $OCX_BIN registry add https://registry-a.com --name a --global
+  $OCX_BIN profile add work --global
+  $OCX_BIN config edit -p work  # Add registry-b.com
+  $OCX_BIN search -p work
   ```
 - [ ] **Expected:** Only profile's registries visible, NOT global
 - [ ] **Verify:** Search shows only registry-b components
@@ -1382,9 +1532,9 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Setup:** Local config with registries, no profile
 - [ ] **Commands:**
   ```bash
-  ocx init
-  ocx registry add https://registry-c.com --name c
-  ocx search
+  $OCX_BIN init
+  $OCX_BIN registry add https://registry-c.com --name c
+  $OCX_BIN search
   ```
 - [ ] **Expected:** Only local registries visible
 - [ ] **Verify:** Search shows only registry-c components
@@ -1397,7 +1547,7 @@ From PROFILES.md - advanced profile behaviors.
   ```bash
   # Profile opencode.jsonc: {"agents": ["coder"]}
   # Local opencode.jsonc: {"agents": ["researcher"]}
-  ocx config show -p work
+  $OCX_BIN config show -p work
   ```
 - [ ] **Expected:** Configs merge (profile → local)
 - [ ] **Verify:** Both agent sets visible
@@ -1414,7 +1564,7 @@ From PROFILES.md - advanced profile behaviors.
   echo "# Root" > AGENTS.md
   echo "# Subdir" > subdir/AGENTS.md
   cd subdir
-  ocx oc run "echo hello"
+  $OCX_BIN oc run "echo hello"
   ```
 - [ ] **Expected:** Files discovered from subdir up to git root (AGENTS → CLAUDE → CONTEXT priority; first type wins)
 - [ ] **Verify:** Both AGENTS.md files considered (deepest first)
@@ -1430,7 +1580,7 @@ From PROFILES.md - advanced profile behaviors.
   echo "# Agents" > AGENTS.md
   echo "# Claude" > CLAUDE.md
   echo "# Context" > CONTEXT.md
-  ocx oc run "echo hello"
+  $OCX_BIN oc run "echo hello"
   ```
 - [ ] **Expected:** Only AGENTS.md is loaded; CLAUDE.md and CONTEXT.md are ignored (AGENTS → CLAUDE → CONTEXT priority)
 - [ ] **Verify:** First type wins behavior enforced
@@ -1445,7 +1595,7 @@ From PROFILES.md - advanced profile behaviors.
   git init
   rm -f AGENTS.md CLAUDE.md
   echo "# Context" > CONTEXT.md
-  ocx oc run "echo hello"
+  $OCX_BIN oc run "echo hello"
   ```
 - [ ] **Expected:** CONTEXT.md loads, but document that it is deprecated (AGENTS.md or CLAUDE.md preferred)
 - [ ] **Verify:** CONTEXT.md loaded successfully
@@ -1458,7 +1608,7 @@ From PROFILES.md - advanced profile behaviors.
   ```bash
   echo "# Profile instructions" > $XDG_CONFIG_HOME/opencode/profiles/work/AGENTS.md
   echo "# Project instructions" > /tmp/ocx-v2-test-project/AGENTS.md
-  ocx oc -p work run "echo hello"
+  $OCX_BIN oc -p work run "echo hello"
   ```
 - [ ] **Expected:** Profile instructions loaded last (highest priority)
 - [ ] **Verify:** Profile AGENTS.md overrides project
@@ -1468,7 +1618,7 @@ From PROFILES.md - advanced profile behaviors.
 
 #### Test: Default creates local profile
 - [ ] **Setup:** In a project directory with `.opencode/` initialized
-- [ ] **Command:** `ocx profile add test-local`
+- [ ] **Command:** `$OCX_BIN profile add test-local`
 - [ ] **Expected:** Creates local profile at `.opencode/profiles/test-local/`
 - [ ] **Verify:**
   ```bash
@@ -1478,7 +1628,7 @@ From PROFILES.md - advanced profile behaviors.
 
 #### Test: --global creates global profile
 - [ ] **Setup:** Global config initialized
-- [ ] **Command:** `ocx profile add test-global --global`
+- [ ] **Command:** `$OCX_BIN profile add test-global --global`
 - [ ] **Expected:** Creates global profile at `$XDG_CONFIG_HOME/opencode/profiles/test-global/`
 - [ ] **Verify:**
   ```bash
@@ -1488,7 +1638,7 @@ From PROFILES.md - advanced profile behaviors.
 
 #### Test: ocx profile list shows only global profiles
 - [ ] **Setup:** Both local and global profiles exist
-- [ ] **Command:** `ocx profile list`
+- [ ] **Command:** `$OCX_BIN profile list`
 - [ ] **Expected:** Shows only global profiles, not local ones
 - [ ] **Verify:** Local profile name should NOT appear in list
 
@@ -1496,16 +1646,16 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Setup:** Create both global and local profiles with same name
 - [ ] **Commands:**
   ```bash
-  ocx init --global
-  ocx profile add test --global
+  $OCX_BIN init --global
+  $OCX_BIN profile add test --global
   # Add to global profile ocx.jsonc: {"registries": {"global-reg": {"url": "https://global.com"}}}
   
   cd /tmp/ocx-v2-test-project
-  ocx init
-  ocx profile add test  # Local with same name
+  $OCX_BIN init
+  $OCX_BIN profile add test  # Local with same name
   # Add to local profile ocx.jsonc: {"registries": {"local-reg": {"url": "https://local.com"}}}
   
-  ocx config show -p test
+  $OCX_BIN config show -p test
   ```
 - [ ] **Expected:** Both registries appear in merged config
 - [ ] **Verify:** 
@@ -1521,7 +1671,7 @@ Common errors from CLI.md error tables.
 ### 15.1 Error: No ocx.jsonc Found (Init)
 
 - [ ] **Setup:** Empty directory, no config
-- [ ] **Command:** `ocx add kdco/researcher`
+- [ ] **Command:** `$OCX_BIN add kdco/researcher`
 - [ ] **Expected:** Error: "No ocx.jsonc found"
 - [ ] **Verify:** Exit code 78 (CONFIG error)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1529,7 +1679,7 @@ Common errors from CLI.md error tables.
 ### 15.2 Error: Registry Not Found
 
 - [ ] **Setup:** Config initialized, registry not configured
-- [ ] **Command:** `ocx add unknown/component`
+- [ ] **Command:** `$OCX_BIN add unknown/component`
 - [ ] **Expected:** Error: "Registry not found"
 - [ ] **Verify:** Exit code 66 (NOT_FOUND)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1537,7 +1687,7 @@ Common errors from CLI.md error tables.
 ### 15.3 Error: Component Not Installed (Update)
 
 - [ ] **Setup:** Config initialized, component not installed
-- [ ] **Command:** `ocx update kdco/researcher`
+- [ ] **Command:** `$OCX_BIN update kdco/researcher`
 - [ ] **Expected:** Error: "Component 'kdco/researcher' is not installed"
 - [ ] **Verify:** Exit code 66 (NOT_FOUND)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1547,9 +1697,9 @@ Common errors from CLI.md error tables.
 - [ ] **Setup:** Component already installed, modified locally
 - [ ] **Commands:**
   ```bash
-  ocx add kdco/researcher
+  $OCX_BIN add kdco/researcher
   echo "// modified" >> .opencode/agents/file.md
-  ocx add kdco/researcher
+  $OCX_BIN add kdco/researcher
   ```
 - [ ] **Expected:** Error: "File conflicts detected"
 - [ ] **Verify:** Exit code 6 (CONFLICT)
@@ -1560,8 +1710,8 @@ Common errors from CLI.md error tables.
 - [ ] **Setup:** Registry configured
 - [ ] **Commands:**
   ```bash
-  ocx registry add http://localhost:8787 --name kdco
-  ocx registry add https://other.com --name kdco
+  $OCX_BIN registry add http://localhost:8787 --name kdco
+  $OCX_BIN registry add https://other.com --name kdco
   ```
 - [ ] **Expected:** Error: "Registry 'kdco' already exists"
 - [ ] **Verify:** Exit code 6 (CONFLICT)
@@ -1570,7 +1720,7 @@ Common errors from CLI.md error tables.
 ### 15.6 Error: Invalid Version Specifier (Update)
 
 - [ ] **Setup:** Component installed
-- [ ] **Command:** `ocx update kdco/researcher@`
+- [ ] **Command:** `$OCX_BIN update kdco/researcher@`
 - [ ] **Expected:** Error: "Invalid version specifier"
 - [ ] **Verify:** Exit code 78 (CONFIG)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1578,7 +1728,7 @@ Common errors from CLI.md error tables.
 ### 15.7 Error: Mutually Exclusive Options (Update)
 
 - [ ] **Setup:** Components installed
-- [ ] **Command:** `ocx update --all --registry kdco`
+- [ ] **Command:** `$OCX_BIN update --all --registry kdco`
 - [ ] **Expected:** Error: "Cannot use --all with --registry"
 - [ ] **Verify:** Exit code 1 (GENERAL)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1586,19 +1736,19 @@ Common errors from CLI.md error tables.
 ### 15.8 Error: Profile Not Found (Move)
 
 - [ ] **Setup:** Profiles initialized
-- [ ] **Command:** `ocx profile move nonexistent new-name`
+- [ ] **Command:** `$OCX_BIN profile move nonexistent new-name`
 - [ ] **Expected:** Error: "Profile 'nonexistent' not found"
 - [ ] **Verify:** Exit code 66 (NOT_FOUND)
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 15.9 Error: Profile Already Exists (Move)
 
-- [ ] **Setup:** Multiple profiles exist
+- [ ] **Setup:** Multiple global profiles exist
 - [ ] **Commands:**
   ```bash
-  ocx profile add work --global
-  ocx profile add client --global
-  ocx profile move work client
+  $OCX_BIN profile add work --global
+  $OCX_BIN profile add client --global
+  $OCX_BIN profile move work client --global
   ```
 - [ ] **Expected:** Error: "Cannot move: profile 'client' already exists"
 - [ ] **Verify:** Exit code 6 (CONFLICT)
@@ -1610,7 +1760,7 @@ Common errors from CLI.md error tables.
 - [ ] **Commands:**
   ```bash
   # Manually corrupt hash in receipt
-  ocx update kdco/researcher
+  $OCX_BIN update kdco/researcher
   ```
 - [ ] **Expected:** Error: "Integrity check failed"
 - [ ] **Verify:** Exit code indicates integrity failure
