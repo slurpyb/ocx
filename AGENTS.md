@@ -1,497 +1,163 @@
 # AGENTS.md
 
-Guidelines for AI agents working in the OCX codebase.
+Practical guide for coding agents working in the OCX monorepo.
 
-## Project Overview
+## Project Snapshot
 
-OCX is a monorepo for the OpenCode extension CLI tool. It manages component registries,
-configuration files, and provides commands for adding/building/searching components.
+- **Project:** OCX (OpenCode extension CLI + registries + workers)
+- **Runtime:** Bun (`bun@1.3.5` from root `package.json`)
+- **Language:** TypeScript (`strict: true`)
+- **Monorepo orchestration:** Turbo (`turbo run ...`)
+- **Primary package:** `packages/cli` (published `ocx` CLI)
 
-- **Runtime:** Bun (v1.3.5+)
-- **Build System:** Turbo
-- **Language:** TypeScript (strict mode, ESNext)
+## Repository Layout (high-signal only)
 
-## Build/Lint/Test Commands
-
-### Root Commands (via Turbo)
-
-```bash
-bun run build          # Build all packages
-bun run test           # Run all tests
-bun run check          # Lint (Biome) + type check (tsc)
-bun run format         # Auto-fix formatting with Biome
+```text
+packages/cli/          Main CLI implementation and tests
+registry/              Registry source packages
+workers/ocx/           OCX worker
+workers/kdco-registry/ KDCO registry worker
+workers/ocx-kit/       Kit worker/registry
 ```
 
-### Running a Single Test
+## Build, Lint, Type-Check, Test
+
+### Root commands (run from repo root)
 
 ```bash
-# Run a specific test file
+bun run build    # turbo run build
+bun run check    # turbo run check (Biome + TypeScript)
+bun run test     # turbo run test
+bun run format   # biome check --write .
+```
+
+Notes from `turbo.json`:
+- `test` depends on `^build` (workspace dependencies build first)
+- `check` has no extra dependency wiring (runs per package task)
+
+### Single-test commands (explicit examples)
+
+```bash
+# Run one exact test file from repo root
 bun test packages/cli/tests/add.test.ts
 
-# Run tests matching a pattern
-bun test --grep "should resolve"
+# Run one exact test file from repo root (another example)
+bun test packages/cli/tests/opencode.test.ts
+
+# Run matching tests by name
+bun test --grep "should resolve profile"
 
 # Run tests in watch mode
 bun test --watch
 ```
 
-### Package-Specific Commands
+### Package-level commands
 
 From `packages/cli/`:
+
 ```bash
-bun test               # Run CLI tests only
-bun run check:biome    # Biome lint only
-bun run check:types    # TypeScript type check only
-bun run build          # Build CLI package
+bun run build
+bun run check
+bun run check:biome
+bun run check:types
+bun test
 ```
 
-## Code Style Guidelines
+## Code Style and Conventions
 
-### Formatting (Biome)
+### Formatting (Biome, from `biome.json`)
 
-- **Indentation:** Tabs (width 2)
-- **Line width:** 100 characters max
-- **Quotes:** Double quotes for strings
-- **Semicolons:** As needed (omit when possible)
-- **Trailing commas:** All (including multi-line)
+- Tabs, width 2
+- Max line width 100
+- Double quotes
+- Semicolons: `asNeeded`
+- Import organization enabled (`source.organizeImports: on`)
 
 ### Imports
 
-```typescript
-// Use `import type` for type-only imports
-import type { Config } from "./types"
-import { parseConfig } from "./parser"
+- Use `import type` for type-only imports (enforced)
+- Prefer external imports first, then internal modules
+- Do not hand-sort aggressively; let Biome organize when possible
 
-// Imports are auto-organized - don't manually sort
-// Order: external packages, then internal modules
-```
+### TypeScript and types
 
-### TypeScript
+- `strict: true` is required
+- `noUnusedVariables` and `noUnusedImports` are enforced as errors
+- Prefer explicit return types on exported/public functions
+- Parse boundary input with Zod; use `z.infer<typeof Schema>` for shared types
+- Avoid `any`; prefer `unknown` + parsing
+- In `packages/cli`, `noUncheckedIndexedAccess` is enabled
 
-- **Strict mode:** Always enabled
-- **No unused variables:** Error (prefix with `_` if intentional)
-- **No unused imports:** Error (auto-removed by Biome)
-- **Explicit return types:** Recommended for public APIs
-- **Use `z.infer<typeof Schema>`** for Zod schema types
-
-### Naming Conventions
+### Naming conventions
 
 | Element | Convention | Example |
-|---------|------------|---------|
-| Functions/variables | camelCase | `fetchRegistry`, `configPath` |
-| Types/interfaces | PascalCase | `RegistryConfig`, `ComponentMeta` |
-| Classes | PascalCase | `OCXError`, `NetworkError` |
-| Constants | SCREAMING_SNAKE | `EXIT_CODES`, `DEFAULT_TIMEOUT` |
-| Files | kebab-case | `handle-error.ts`, `json-output.ts` |
-
-### Functions
-
-```typescript
-/**
- * Brief description of what the function does.
- * @param name - Description of parameter
- * @returns Description of return value
- */
-export async function fetchComponent(baseUrl: string, name: string): Promise<ComponentManifest> {
-  // Implementation
-}
-```
-
-- Use JSDoc comments for public APIs
-- Prefer `async/await` over `.then()` chains
-- Use early returns to reduce nesting
-- Keep functions focused and single-purpose
-
-## Error Handling
-
-### Custom Error Classes
-
-All errors extend `OCXError` base class in `packages/cli/src/utils/errors.ts`:
-
-```typescript
-import { NotFoundError, NetworkError, ConfigError } from "./utils/errors"
-
-// Throw specific error types
-throw new NotFoundError("Component not found", "my-component")
-throw new NetworkError("Failed to fetch", url, originalError)
-throw new ConfigError("Invalid configuration", "missing 'name' field")
-```
-
-### Available Error Types
-
-| Error Class | Use Case |
-|-------------|----------|
-| `NotFoundError` | Resource doesn't exist |
-| `NetworkError` | HTTP/fetch failures |
-| `ConfigError` | Invalid configuration |
-| `ValidationError` | Schema/input validation failures |
-| `ConflictError` | Resource already exists |
-| `IntegrityError` | Checksum/hash mismatches |
-
-### Exit Codes
-
-Use `EXIT_CODES` constant for consistent exit behavior:
-```typescript
-import { EXIT_CODES } from "./utils/errors"
-process.exit(EXIT_CODES.VALIDATION_ERROR)
-```
-
-### CLI Error Wrapper
-
-Wrap command handlers with `handleError()`:
-```typescript
-import { handleError } from "./utils/handle-error"
-
-program
-  .command("add")
-  .action(handleError(async (options) => {
-    // Command implementation
-  }))
-```
-
-## Patterns & Conventions
-
-### Schemas (Zod)
-
-```typescript
-import { z } from "zod"
-
-// Define schema with JSDoc
-/** Configuration for a component */
-export const componentManifestSchema = z.object({
-  name: z.string(),
-  version: z.string().optional(),
-})
-
-// Export inferred type
-export type ComponentManifest = z.infer<typeof componentManifestSchema>
-```
-
-### CLI Commands (Commander)
-
-```typescript
-import { Command } from "commander"
-
-export function registerAddCommand(program: Command) {
-  program
-    .command("add <component>")
-    .description("Add a component to your project")
-    .option("-r, --registry <url>", "Registry URL")
-    .action(handleError(addCommand))
-}
-```
-
-### File I/O
-
-```typescript
-// Use Bun.file() API
-const file = Bun.file(path)
-const content = await file.text()
-
-// JSONC for config files (supports comments)
-import { parse } from "jsonc-parser"
-const config = parse(content)
-```
-
-### Testing (bun:test)
-
-```typescript
-import { describe, it, expect, beforeAll, afterAll } from "bun:test"
-
-describe("add command", () => {
-  beforeAll(async () => {
-    // Setup
-  })
-
-  it("should add component to project", async () => {
-    const result = await addComponent("button")
-    expect(result.success).toBe(true)
-  })
-})
-```
-
-## Project Structure
-
-```
-packages/cli/          # Main CLI tool (@ocx/cli)
-  src/
-    commands/          # CLI command implementations
-      profile/         # Profile management commands
-      config/          # Config commands (show, edit)
-      add.ts           # Add components
-      search.ts        # Search registries
-      opencode.ts      # Launch OpenCode
-      init.ts          # Initialize configs
-      registry.ts      # Registry management
-      update.ts        # Update components
-      build.ts         # Build components
-    config/            # Config providers and resolution
-    profile/           # Profile management (manager, paths)
-    registry/          # Registry fetching/resolution
-    schemas/           # Zod schemas and config parsing
-    utils/             # Shared utilities, errors, logging
-  tests/               # Test files (*.test.ts)
-
-registry/              # Component registry source files
-  src/kdco/            # KDCO registry components
-
-workers/               # Cloudflare Workers
-  ocx/                 # Main OCX worker
-  kdco-registry/       # KDCO registry API worker
-```
-
-## Profile System Architecture
-
-OCX provides a global profile system for managing multiple OpenCode configurations. Profiles enable you to maintain separate configurations for different contexts (work, personal, clients) without modifying project directories.
-
-### Key Components
-
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| `ProfileManager` | `src/profile/manager.ts` | Static factory for profile CRUD operations |
-| `profile/paths.ts` | `src/profile/paths.ts` | Path constants and helpers for profile directories |
-| `ConfigProvider` | `src/config/provider.ts` | Provides config from a single isolated scope |
-| Profile commands | `src/commands/profile/` | list, add, remove, move, show, config |
-| Config commands | `src/commands/config/` | show, edit |
-| OpenCode commands | `src/commands/opencode/` | Launch OpenCode with profile config |
-| Init commands | `src/commands/init/` | Initialize global/local configs |
-
-### Directory Structure
-
-```
-~/.config/opencode/
-├── ocx.jsonc                 # Global base config
-└── profiles/
-    ├── default/
-    │   ├── ocx.jsonc         # Profile OCX settings
-    │   ├── opencode.jsonc    # Profile OpenCode config
-    │   └── AGENTS.md         # Profile instructions
-    └── work/
-        ├── ocx.jsonc
-        ├── opencode.jsonc
-        └── AGENTS.md
-
-.opencode/                    # Local config (no profiles)
-├── ocx.jsonc
-└── opencode.jsonc
-```
-
-### Profile Resolution Priority
-
-Profiles are resolved in this order:
-
-1. `--profile <name>` / `-p <name>` flag (explicit override)
-2. `OCX_PROFILE` environment variable
-3. `default` profile (if it exists)
-4. No profile (base configs only)
-
-### Configuration Merging
-
-OCX configs (`ocx.jsonc`) **merge when using profiles**:
-
-**Profile Layering:**
-- Global profile + local profile (if both exist with same name) = merged config
-- Deep merge with local winning on conflicts
-- Registries merge (local adds to global)
-- Arrays replace (local wins)
-
-**Registry Isolation:**
-Global base config registries are ONLY used for downloading profiles, not components.
-When using a profile, registries come from merged profile config.
-
-### How `ocx opencode` Works
-
-1. **Profile resolution**: Uses priority order (flag > env var > default > none)
-2. **Config isolation**: Uses registries from ACTIVE SCOPE ONLY (profile or local, not both)
-3. **Instruction file discovery**:
-   - Walks UP from project directory to git root
-   - Finds AGENTS.md, CLAUDE.md, CONTEXT.md at each level
-   - Filters by `exclude`/`include` patterns from profile's `ocx.jsonc`
-   - Include patterns override exclude patterns (TypeScript/Vite style)
-4. **Window naming** (optional): Sets terminal/tmux window name to `[profile]:repo/branch` for session identification
-5. **Spawn OpenCode**: Launches OpenCode with isolated OCX registries and merged OpenCode settings, plus discovered instructions
-6. **Working directory**: OpenCode runs directly in the project directory
-
-### Instruction File Discovery
-
-OCX doesn't exclude anything by default. A clean ocx.jsonc includes all project instruction files. The default profile template ships an exclude list for security.
-
-**The default profile template uses this exclude list:**
-
-```jsonc
-{
-  "exclude": [
-    "**/AGENTS.md",
-    "**/CLAUDE.md",
-    "**/CONTEXT.md",
-    "**/.opencode/**",
-    "**/opencode.jsonc",
-    "**/opencode.json"
-  ]
-}
-```
-
-**To include project files**, modify your profile's `ocx.jsonc`:
-
-```jsonc
-{
-  // Include all project AGENTS.md files by removing from exclude
-  "exclude": ["**/CLAUDE.md", "**/CONTEXT.md", "**/.opencode/**", "**/opencode.jsonc", "**/opencode.json"]
-}
-```
-
-Or use include patterns to override excludes (TypeScript/Vite style):
-
-```jsonc
-{
-  "exclude": ["**/AGENTS.md", "**/CLAUDE.md", "**/CONTEXT.md", "**/.opencode/**", "**/opencode.jsonc", "**/opencode.json"],
-  "include": ["./docs/AGENTS.md"]  // Include only specific file
-}
-```
-
-Files are discovered deepest-first and profile instructions come last (highest priority).
-
-### Custom OpenCode Binary
-
-To use a custom OpenCode binary (e.g., a development build), set the `bin` option in your profile's `ocx.jsonc`:
-
-```jsonc
-{
-  "bin": "/path/to/custom/opencode"
-}
-```
-
-**Resolution order:**
-1. `bin` in profile's `ocx.jsonc`
-2. `OPENCODE_BIN` environment variable
-3. `opencode` (system PATH)
-
-### Profile Management
-
-Use profile commands to manage multiple configurations:
-
-#### Profile Commands
-
-| Command | Alias | Description |
-|---------|-------|-------------|
-| `ocx profile list` | `ocx p ls` | List all global profiles |
-| `ocx profile add <name>` | `ocx p add` | Create new profile or install from registry |
-| `ocx profile remove <name>` | `ocx p rm` | Delete profile |
-| `ocx profile move <old> <new>` | `ocx p mv` | Rename a profile |
-| `ocx profile show <name>` | `ocx p show` | Display profile contents |
-
-#### Config Commands
-
-| Command | Alias | Description |
-|---------|-------|-------------|
-| `ocx config show` | - | Show config from current scope |
-| `ocx config show --origin` | - | Show config with sources |
-| `ocx config edit` | - | Edit local config |
-| `ocx config edit --global` | - | Edit global config |
-
-#### OpenCode Commands
-
-| Command | Alias | Description |
-|---------|-------|-------------|
-| `ocx opencode` | `ocx oc` | Launch OpenCode with config |
-| `ocx opencode -p <name>` | `ocx oc -p` | Launch with specific profile |
-
-#### Init Commands
-
-| Command | Alias | Description |
-|---------|-------|-------------|
-| `ocx init` | - | Initialize local .opencode/ |
-| `ocx init --global` | - | Initialize global profiles |
-
-#### Self Commands
-
-| Command | Description |
-|---------|-------------|
-| `ocx self uninstall` | Remove OCX config and binary |
-| `ocx self uninstall --dry-run` | Preview what would be removed |
-
-**What gets removed by `self uninstall`:**
-- `~/.config/opencode/profiles/` - All profiles
-- `~/.config/opencode/ocx.jsonc` - Global OCX config
-- `~/.config/opencode/` - Root directory (only if empty after cleanup)
-- Binary executable (for curl installs only; package-managed prints command)
-
-**Exit Codes:**
-- `0` - Success (all items removed, already missing, or dry-run)
-- `1` - Error (package-managed install detected, permission denied)
-- `2` - Safety error (containment violation, root is symlink)
-
-**Safety:**
-- Only removes OCX-managed files (allowlist approach)
-- Unexpected files in root directory are left untouched
-- Symlinks are unlinked, not followed
-- Root directory only deleted if empty after cleanup
-- Package-managed installs print removal command instead of deleting
-
-#### Command Examples
-
-```bash
-# Initialize global profiles
-ocx init --global
-
-# Create and use a global work profile
-ocx profile add work --global
-ocx config edit -p work  # Edit profile settings
-
-# Install profile from registry (requires global registry config)
-ocx registry add https://ocx-kit.kdco.dev --name kit --global
-ocx profile add ws --source kit/ws --global
-
-# Launch OpenCode with a specific profile
-ocx opencode -p work
-
-# Or use environment variable
-OCX_PROFILE=work ocx opencode
-
-# Clone settings from existing profile
-ocx profile add client-x --clone work --global
-
-# View configuration from current scope
-ocx config show
-ocx config show --origin  # See where each setting comes from
-
-# Initialize local config in project
-ocx init
-ocx config edit  # Edit local config
-```
-
-## Quick Reference
-
-```bash
-# Development workflow
-bun install            # Install dependencies
-bun run build          # Build all
-bun run check          # Verify code quality
-bun run test           # Run tests
-bun run format         # Fix formatting
-
-# Single test
-bun test packages/cli/tests/add.test.ts
-```
-
-## Schema Synchronization
-
-OCX schemas mirror OpenCode's configuration format. To update schemas when OpenCode releases new config options:
-
-### Reference Sources
-
-- **Official JSON Schema:** https://opencode.ai/config.json
-- **Source Code:** https://github.com/sst/opencode/blob/dev/packages/opencode/src/config/config.ts
-
-### Sync Process
-
-1. Check the OpenCode changelog or config.ts for new fields
-2. Update `packages/cli/src/schemas/registry.ts` with new Zod schemas
-3. Follow existing patterns (JSDoc comments, `.passthrough()` for objects)
-4. Run `bun run check` and `bun run test` to verify
-5. Update this document with sync date
-
-### Last Synced
-
-- **Date:** 2026-01-05
-- **OpenCode Version:** Latest (dev branch)
+|---|---|---|
+| variables/functions | camelCase | `resolveProfile`, `configPath` |
+| types/interfaces | PascalCase | `RegistryConfig`, `ProfileContext` |
+| classes | PascalCase | `OCXError`, `NetworkError` |
+| constants | SCREAMING_SNAKE_CASE | `EXIT_CODES` |
+| files | kebab-case | `handle-error.ts` |
+
+### Error handling
+
+- Use typed errors from `packages/cli/src/utils/errors.ts`
+- Prefer specific classes: `NotFoundError`, `NetworkError`, `ConfigError`, `ValidationError`, `ConflictError`, `IntegrityError`
+- Profile-specific errors exist for profile workflows (`ProfileNotFoundError`, `ProfileExistsError`, etc.)
+- Use `EXIT_CODES` for deterministic process exits
+- In Commander actions, either:
+  - wrap handlers with `wrapAction(...)`, or
+  - use `try/catch` and delegate to `handleError(error, options)`
+- At CLI entrypoint level, errors are finalized through `handleError(...)`
+- Fail fast with clear, actionable messages (do not swallow errors)
+
+### Testing conventions (`bun:test`)
+
+- Use `describe/it/expect` from `bun:test`
+- For CLI behavior tests, use shared helpers in `packages/cli/tests/helpers.ts`
+  - `runCLI(...)` for subprocess execution
+  - `runCLIIsolated(...)` for deterministic environment tests
+  - `createTempDir(...)` + `cleanupTempDir(...)` for fixture lifecycle
+- Assert on **exit code + output**, not output alone
+- Prefer deterministic tests (explicit env and temp paths)
+- Keep tests independent; clean up in `afterEach`/`afterAll`
+
+### Practical implementation patterns
+
+- Prefer focused functions with early returns (guard clauses)
+- Parse input at boundaries; keep internals on trusted types
+- Use `Bun.file()` / `Bun.write()` for Bun-native file access
+- Use JSONC parsing (`jsonc-parser`) for config files
+- Prefer `async/await` over chained `.then()` in CLI logic
+- Avoid hidden mutation and side effects where possible
+
+## OCX-specific Architecture Notes (condensed)
+
+### Profile resolution priority
+
+1. `--profile` / `-p`
+2. `OCX_PROFILE`
+3. `default` profile
+4. fallback: base/no profile
+
+### Profile config behavior
+
+- Profile OCX configs merge global + local profile layers (local wins conflicts)
+- Array fields replace; object fields deep-merge
+- Active profile scope isolates registry behavior for component operations
+
+### `ocx opencode` behavior (summary)
+
+- Resolves active profile via priority above
+- Discovers instruction files while walking up to git root
+- Applies include/exclude patterns from profile config
+- Launches OpenCode with merged settings and isolated OCX config scope
+
+## Cursor / Copilot Rule Files
+
+Checked repository root for:
+
+- `.cursor/rules/`
+- `.cursorrules`
+- `.github/copilot-instructions.md`
+
+**Status:** none of these files are present in this repo currently.
