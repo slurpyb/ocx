@@ -1,5 +1,14 @@
-import { describe, expect, it, mock } from "bun:test"
+import { afterEach, describe, expect, it, mock, spyOn } from "bun:test"
+import { mkdir, writeFile } from "node:fs/promises"
+import { dirname, join } from "node:path"
 import { Command } from "commander"
+import { cleanupTempDir, createTempDir } from "../helpers"
+
+async function importSelfUpdateCommandModule() {
+	const modulePath = require.resolve("../../src/commands/self/update.js")
+	delete require.cache[modulePath]
+	return import("../../src/commands/self/update.js")
+}
 
 // =============================================================================
 // Tests for postAction Hook Behavior
@@ -207,5 +216,107 @@ describe("postAction hook behavior", () => {
 			expect(capturedActionCommand?.parent?.name()).toBe("config")
 			expect(capturedActionCommand?.parent?.parent?.name()).toBe("ocx")
 		})
+	})
+})
+
+describe("self update --json curl strict output", () => {
+	let testDir: string
+
+	afterEach(async () => {
+		mock.restore()
+		if (testDir) {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("emits one JSON payload and suppresses curl spinner output", async () => {
+		testDir = await createTempDir("self-update-json-curl")
+		const executablePath = join(testDir, "bin", "ocx")
+		await mkdir(dirname(executablePath), { recursive: true })
+		await writeFile(executablePath, "old-binary")
+
+		const createSpinnerMock = mock(() => ({
+			start: mock(() => {}),
+			fail: mock(() => {}),
+			succeed: mock(() => {}),
+			text: "",
+		}))
+		const notifyUpdatedMock = mock(() => {})
+
+		mock.module("../../src/self-update/check.js", () => ({
+			EXPLICIT_UPDATE_TIMEOUT_MS: 10_000,
+			checkForUpdate: mock(async () => ({
+				ok: true,
+				current: "1.0.0",
+				latest: "1.1.0",
+				updateAvailable: true,
+			})),
+		}))
+
+		mock.module("../../src/self-update/detect-method.js", () => ({
+			detectInstallMethod: () => "curl",
+			parseInstallMethod: (input: string) => {
+				if (input !== "curl") {
+					throw new Error(`unexpected method: ${input}`)
+				}
+				return "curl"
+			},
+			getExecutablePath: () => executablePath,
+		}))
+
+		mock.module("../../src/self-update/verify.js", () => ({
+			fetchChecksums: mock(
+				async () =>
+					new Map<string, string>([
+						["ocx-darwin-arm64", "abc123"],
+						["ocx-darwin-x64", "abc123"],
+					]),
+			),
+			verifyChecksum: mock(async () => {}),
+		}))
+
+		mock.module("../../src/self-update/notify.js", () => ({
+			notifyUpdated: notifyUpdatedMock,
+			notifyUpToDate: mock(() => {}),
+		}))
+
+		mock.module("../../src/utils/spinner.js", () => ({
+			createSpinner: createSpinnerMock,
+		}))
+
+		spyOn(global, "fetch").mockImplementation(
+			mock(
+				async () =>
+					new Response(new Uint8Array([1, 2, 3]), {
+						status: 200,
+						headers: { "content-length": "3" },
+					}),
+			) as unknown as typeof fetch,
+		)
+
+		const consoleLogSpy = spyOn(console, "log").mockImplementation(() => {})
+		const consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {})
+
+		const { registerSelfUpdateCommand } = await importSelfUpdateCommandModule()
+
+		const program = new Command()
+		const selfCommand = program.command("self")
+		registerSelfUpdateCommand(selfCommand)
+
+		await program.parseAsync(["node", "ocx", "self", "update", "--json", "--method", "curl"])
+
+		expect(createSpinnerMock).not.toHaveBeenCalled()
+		expect(notifyUpdatedMock).not.toHaveBeenCalled()
+		expect(consoleErrorSpy).not.toHaveBeenCalled()
+		expect(consoleLogSpy).toHaveBeenCalledTimes(1)
+
+		const payload = JSON.parse(String(consoleLogSpy.mock.calls[0]?.[0] ?? "")) as {
+			success: boolean
+			data?: { method?: string; updated?: boolean }
+		}
+
+		expect(payload.success).toBe(true)
+		expect(payload.data?.method).toBe("curl")
+		expect(payload.data?.updated).toBe(true)
 	})
 })

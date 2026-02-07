@@ -11,11 +11,17 @@
  * - Package-managed install detection
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs"
 import { rm } from "node:fs/promises"
 import { join } from "node:path"
 import { cleanupTempDir, createTempDir, runCLI, runCLIIsolated } from "./helpers"
+
+async function importSelfUninstallCommandModule() {
+	const modulePath = require.resolve("../src/commands/self/uninstall.js")
+	delete require.cache[modulePath]
+	return import("../src/commands/self/uninstall.js")
+}
 
 // =============================================================================
 // Test Setup Helpers
@@ -681,5 +687,82 @@ describe("ocx self uninstall (idempotency)", () => {
 
 		// Should exit 0 (curl behavior), proving isolation works
 		expect(exitCode).toBe(0)
+	})
+})
+
+describe("ocx self uninstall --json win32 output hygiene", () => {
+	let testDir: string
+
+	afterEach(async () => {
+		mock.restore()
+		if (testDir) {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("does not emit human logger output on win32 JSON binary path", async () => {
+		testDir = await createTempDir("uninstall-json-win32")
+		createMockGlobalConfig(testDir)
+
+		const binaryPath = join(testDir, "bin", "ocx.exe")
+		mkdirSync(join(testDir, "bin"), { recursive: true })
+		writeFileSync(binaryPath, "binary")
+
+		const loggerInfoMock = mock(() => {})
+		const consoleLogSpy = spyOn(console, "log").mockImplementation(() => {})
+
+		mock.module("../src/self-update/detect-method.js", () => ({
+			detectInstallMethod: () => "curl",
+			parseInstallMethod: () => "curl",
+			getExecutablePath: () => binaryPath,
+		}))
+
+		mock.module("../src/utils/logger.js", () => ({
+			logger: {
+				info: loggerInfoMock,
+				success: mock(() => {}),
+				warn: mock(() => {}),
+				error: mock(() => {}),
+				log: mock(() => {}),
+				break: mock(() => {}),
+			},
+			highlight: {
+				path: (value: string) => value,
+				command: (value: string) => value,
+			},
+		}))
+
+		const originalPlatform = process.platform
+		const originalXdg = process.env.XDG_CONFIG_HOME
+		Object.defineProperty(process, "platform", { value: "win32" })
+		process.env.XDG_CONFIG_HOME = testDir
+
+		const exitSpy = spyOn(process, "exit").mockImplementation(((code?: number) => {
+			throw new Error(`EXIT:${code ?? 0}`)
+		}) as (...args: [number?]) => never)
+
+		try {
+			const { runUninstall } = await importSelfUninstallCommandModule()
+			await expect(runUninstall({ json: true })).rejects.toThrow("EXIT:0")
+		} finally {
+			exitSpy.mockRestore()
+			Object.defineProperty(process, "platform", { value: originalPlatform })
+			if (originalXdg === undefined) {
+				delete process.env.XDG_CONFIG_HOME
+			} else {
+				process.env.XDG_CONFIG_HOME = originalXdg
+			}
+		}
+
+		expect(loggerInfoMock).not.toHaveBeenCalled()
+		expect(consoleLogSpy).toHaveBeenCalledTimes(1)
+
+		const jsonCalls = consoleLogSpy.mock.calls as Array<[unknown]>
+		const payloadRaw = jsonCalls[0]?.[0]
+		const payload =
+			typeof payloadRaw === "string"
+				? (JSON.parse(payloadRaw) as { success?: boolean })
+				: ((payloadRaw ?? {}) as { success?: boolean })
+		expect(payload.success).toBe(true)
 	})
 })

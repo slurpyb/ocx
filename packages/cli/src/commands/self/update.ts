@@ -35,7 +35,8 @@ import {
 import { notifyUpdated, notifyUpToDate } from "../../self-update/notify"
 import { fetchChecksums, verifyChecksum } from "../../self-update/verify"
 import { SelfUpdateError } from "../../utils/errors"
-import { wrapAction } from "../../utils/handle-error"
+import { handleError } from "../../utils/handle-error"
+import { outputJson } from "../../utils/json-output"
 import { createSpinner } from "../../utils/spinner"
 
 // =============================================================================
@@ -61,6 +62,14 @@ const UPDATE_ERROR_MESSAGES: Record<CheckFailure["reason"], string> = {
 interface UpdateOptions {
 	force?: boolean
 	method?: string
+	json?: boolean
+}
+
+interface SelfUpdateResult {
+	current: string
+	latest: string
+	method: InstallMethod
+	updated: boolean
 }
 
 // =============================================================================
@@ -74,6 +83,7 @@ interface UpdateOptions {
  */
 async function updateCommand(options: UpdateOptions): Promise<void> {
 	const method = options.method ? parseInstallMethod(options.method) : detectInstallMethod()
+	const jsonOutput = options.json === true
 
 	// Check current version with explicit timeout (user is willing to wait)
 	const result = await checkForUpdate(undefined, EXPLICIT_UPDATE_TIMEOUT_MS)
@@ -88,7 +98,19 @@ async function updateCommand(options: UpdateOptions): Promise<void> {
 
 	// Early exit: already up to date (unless forced)
 	if (!updateAvailable && !options.force) {
-		notifyUpToDate(current)
+		if (jsonOutput) {
+			outputJson({
+				success: true,
+				data: {
+					current,
+					latest,
+					method,
+					updated: false,
+				} satisfies SelfUpdateResult,
+			})
+		} else {
+			notifyUpToDate(current)
+		}
 		return
 	}
 
@@ -96,7 +118,7 @@ async function updateCommand(options: UpdateOptions): Promise<void> {
 
 	switch (method) {
 		case "curl": {
-			await updateViaCurl(current, targetVersion)
+			await updateViaCurl(current, targetVersion, jsonOutput)
 			break
 		}
 
@@ -105,9 +127,21 @@ async function updateCommand(options: UpdateOptions): Promise<void> {
 		case "bun":
 		case "yarn":
 		case "unknown": {
-			await updateViaPackageManager(method, current, targetVersion)
+			await updateViaPackageManager(method, current, targetVersion, jsonOutput)
 			break
 		}
+	}
+
+	if (jsonOutput) {
+		outputJson({
+			success: true,
+			data: {
+				current,
+				latest: targetVersion,
+				method,
+				updated: true,
+			} satisfies SelfUpdateResult,
+		})
 	}
 }
 
@@ -121,7 +155,11 @@ async function updateCommand(options: UpdateOptions): Promise<void> {
  * SECURITY: Verifies checksum BEFORE replacing the binary.
  * Flow: Download -> Verify -> Swap (atomic)
  */
-async function updateViaCurl(current: string, targetVersion: string): Promise<void> {
+async function updateViaCurl(
+	current: string,
+	targetVersion: string,
+	jsonOutput: boolean,
+): Promise<void> {
 	// Get platform target name for checksum lookup
 	const url = getDownloadUrl(targetVersion)
 	const filename = url.split("/").pop()
@@ -141,7 +179,7 @@ async function updateViaCurl(current: string, targetVersion: string): Promise<vo
 	}
 
 	// Download to temp file (does NOT replace binary yet)
-	const { tempPath, execPath } = await downloadToTemp(targetVersion)
+	const { tempPath, execPath } = await downloadToTemp(targetVersion, { quiet: jsonOutput })
 
 	// SECURITY: Verify checksum BEFORE replacing the binary
 	try {
@@ -155,7 +193,9 @@ async function updateViaCurl(current: string, targetVersion: string): Promise<vo
 	// Checksum verified - now safe to atomically swap
 	atomicReplace(tempPath, execPath)
 
-	notifyUpdated(current, targetVersion)
+	if (!jsonOutput) {
+		notifyUpdated(current, targetVersion)
+	}
 }
 
 /**
@@ -181,14 +221,15 @@ async function updateViaPackageManager(
 	method: Exclude<InstallMethod, "curl">,
 	current: string,
 	targetVersion: string,
+	jsonOutput: boolean,
 ): Promise<void> {
 	// SECURITY: Validate version format to prevent command injection
 	if (!SEMVER_PATTERN.test(targetVersion)) {
 		throw new SelfUpdateError(`Invalid version format: ${targetVersion}`)
 	}
 
-	const spin = createSpinner({ text: `Updating via ${method}...` })
-	spin.start()
+	const spin = jsonOutput ? null : createSpinner({ text: `Updating via ${method}...` })
+	spin?.start()
 
 	try {
 		switch (method) {
@@ -218,16 +259,18 @@ async function updateViaPackageManager(
 			}
 		}
 
-		spin.succeed(`Updated via ${method}`)
-		notifyUpdated(current, targetVersion)
+		spin?.succeed(`Updated via ${method}`)
+		if (!jsonOutput) {
+			notifyUpdated(current, targetVersion)
+		}
 	} catch (error) {
 		// Re-throw SelfUpdateError as-is
 		if (error instanceof SelfUpdateError) {
-			spin.fail(`Update failed`)
+			spin?.fail(`Update failed`)
 			throw error
 		}
 
-		spin.fail(`Update failed`)
+		spin?.fail(`Update failed`)
 		throw new SelfUpdateError(
 			`Failed to run ${method}: ${error instanceof Error ? error.message : String(error)}`,
 		)
@@ -249,9 +292,12 @@ export function registerSelfUpdateCommand(parent: Command): void {
 		.description("Update OCX to the latest version")
 		.option("-f, --force", "Reinstall even if already up to date")
 		.option("--method <method>", "Override install method detection (curl|npm|pnpm|bun)")
-		.action(
-			wrapAction(async (options: UpdateOptions) => {
+		.option("--json", "Output as JSON")
+		.action(async (options: UpdateOptions) => {
+			try {
 				await updateCommand(options)
-			}),
-		)
+			} catch (error) {
+				handleError(error, { json: options.json })
+			}
+		})
 }

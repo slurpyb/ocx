@@ -57,6 +57,12 @@ export function registerUpdateCheckHook(program: Command): void {
 			return
 		}
 
+		// Skip for JSON-mode commands (strict machine output contract)
+		const actionOptions = actionCommand.opts<{ json?: boolean }>()
+		if (actionOptions.json) {
+			return
+		}
+
 		// Check environment conditions
 		if (!shouldCheckForUpdate()) return
 

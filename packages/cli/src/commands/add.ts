@@ -34,6 +34,7 @@ import {
 	normalizeRegistryUrl,
 	warnCompatIssues,
 } from "../utils/index"
+import { outputJson } from "../utils/json-output"
 import {
 	extractPackageName,
 	fetchPackageVersion,
@@ -149,6 +150,17 @@ export interface AddOptions {
 	from?: string
 }
 
+interface NpmAddResult {
+	plugins: string[]
+	dryRun: boolean
+}
+
+interface RegistryAddResult {
+	installed: string[]
+	opencode: boolean
+	dryRun: boolean
+}
+
 export function registerAddCommand(program: Command): void {
 	const cmd = program
 		.command("add")
@@ -173,28 +185,30 @@ export function registerAddCommand(program: Command): void {
 
 	cmd.action(async (components: string[], options: AddOptions) => {
 		try {
+			const runtimeOptions = options.json ? { ...options, quiet: true, verbose: false } : options
+
 			// Create appropriate provider based on flags
 			let provider: ConfigProvider
 
-			if (options.profile) {
+			if (runtimeOptions.profile) {
 				// Use ConfigResolver with profile - cwd is the profile directory
-				const resolver = await ConfigResolver.create(options.cwd ?? process.cwd(), {
-					profile: options.profile,
+				const resolver = await ConfigResolver.create(runtimeOptions.cwd ?? process.cwd(), {
+					profile: runtimeOptions.profile,
 				})
 				// Profile mode: install to profile directory, not working directory
-				const profileDir = getProfileDir(options.profile)
+				const profileDir = getProfileDir(runtimeOptions.profile)
 				provider = {
 					cwd: profileDir,
 					getRegistries: () => resolver.getRegistries(),
 					getComponentPath: () => resolver.getComponentPath(),
 				}
-			} else if (options.global) {
+			} else if (runtimeOptions.global) {
 				provider = await GlobalConfigProvider.requireInitialized()
 			} else {
-				provider = await LocalConfigProvider.requireInitialized(options.cwd ?? process.cwd())
+				provider = await LocalConfigProvider.requireInitialized(runtimeOptions.cwd ?? process.cwd())
 			}
 
-			await runAddCore(components, options, provider)
+			await runAddCore(components, runtimeOptions, provider)
 		} catch (error) {
 			handleError(error, { json: options.json })
 		}
@@ -225,9 +239,19 @@ export async function runAddCore(
 		(i): i is AddInput & { type: "registry" } => i.type === "registry",
 	)
 
+	const shouldAggregateJson = Boolean(
+		options.json && npmInputs.length > 0 && registryInputs.length > 0,
+	)
+	const executionOptions = shouldAggregateJson
+		? { ...options, json: false, quiet: true, verbose: false }
+		: options
+
+	let npmResult: NpmAddResult | undefined
+	let registryResult: RegistryAddResult | undefined
+
 	// Handle npm plugins first
 	if (npmInputs.length > 0) {
-		await handleNpmPlugins(npmInputs, options, cwd)
+		npmResult = await handleNpmPlugins(npmInputs, executionOptions, cwd, !shouldAggregateJson)
 	}
 
 	// Handle registry components (existing flow)
@@ -236,7 +260,22 @@ export async function runAddCore(
 		const registryComponentNames = registryInputs.map((i) =>
 			i.namespace ? `${i.namespace}/${i.component}` : i.component,
 		)
-		await runRegistryAddCore(registryComponentNames, options, provider)
+		registryResult = await runRegistryAddCore(
+			registryComponentNames,
+			executionOptions,
+			provider,
+			!shouldAggregateJson,
+		)
+	}
+
+	if (shouldAggregateJson) {
+		outputJson({
+			success: true,
+			plugins: npmResult?.plugins ?? [],
+			installed: registryResult?.installed ?? [],
+			opencode: registryResult?.opencode ?? false,
+			dryRun: Boolean(npmResult?.dryRun || registryResult?.dryRun),
+		})
 	}
 }
 
@@ -248,7 +287,8 @@ async function handleNpmPlugins(
 	inputs: Array<{ type: "npm"; name: string; version?: string }>,
 	options: AddOptions,
 	cwd: string,
-): Promise<void> {
+	emitJson = true,
+): Promise<NpmAddResult> {
 	const spin = options.quiet ? null : createSpinner({ text: "Validating npm packages..." })
 	spin?.start()
 
@@ -346,8 +386,13 @@ async function handleNpmPlugins(
 				summary: `Would add ${inputs.length} npm plugin(s)`,
 			}
 
-			outputDryRun(dryRunResult, { json: options.json, quiet: options.quiet })
-			return
+			if (emitJson || !options.json) {
+				outputDryRun(dryRunResult, { json: options.json, quiet: options.quiet })
+			}
+			return {
+				plugins: inputs.map((input) => formatPluginEntry(input.name, input.version)),
+				dryRun: true,
+			}
 		}
 
 		// Update opencode.json with new plugins
@@ -361,18 +406,16 @@ async function handleNpmPlugins(
 			}
 		}
 
-		if (options.json) {
-			console.log(
-				JSON.stringify(
-					{
-						success: true,
-						plugins: inputs.map((i) => formatPluginEntry(i.name, i.version)),
-					},
-					null,
-					2,
-				),
-			)
+		const addedPlugins = inputs.map((input) => formatPluginEntry(input.name, input.version))
+
+		if (options.json && emitJson) {
+			outputJson({
+				success: true,
+				plugins: addedPlugins,
+			})
 		}
+
+		return { plugins: addedPlugins, dryRun: false }
 	} catch (error) {
 		spin?.fail("Failed to add npm plugins")
 		throw error
@@ -387,7 +430,9 @@ async function runRegistryAddCore(
 	componentNames: string[],
 	options: AddOptions,
 	provider: ConfigProvider,
-): Promise<void> {
+	emitJson = true,
+): Promise<RegistryAddResult> {
+	const suppressHumanOutput = Boolean(options.quiet || options.json)
 	const cwd = provider.cwd
 	// V2: Determine if we're in flattened mode (profile/global vs local)
 	const isFlattened = !!(options.global || options.profile)
@@ -445,7 +490,7 @@ async function runRegistryAddCore(
 		receipt = existingReceipt
 	}
 
-	const spin = options.quiet ? null : createSpinner({ text: "Resolving dependencies..." })
+	const spin = suppressHumanOutput ? null : createSpinner({ text: "Resolving dependencies..." })
 	spin?.start()
 
 	try {
@@ -480,7 +525,7 @@ async function runRegistryAddCore(
 
 		// Version compatibility check (skip if disabled via flag)
 		const skipCompat = options.skipCompatCheck
-		if (!skipCompat) {
+		if (!skipCompat && !suppressHumanOutput) {
 			for (const [namespace, index] of registryIndexes) {
 				const issues = collectCompatIssues({
 					registry: { opencode: index.opencode, ocx: index.ocx },
@@ -505,13 +550,19 @@ async function runRegistryAddCore(
 				summary: `Would add ${resolved.components.length} component(s)`,
 			}
 
-			outputDryRun(dryRunResult, { json: options.json, quiet: options.quiet })
-			return
+			if (emitJson || !options.json) {
+				outputDryRun(dryRunResult, { json: options.json, quiet: options.quiet })
+			}
+			return {
+				installed: resolved.installOrder,
+				opencode: Boolean(resolved.opencode),
+				dryRun: true,
+			}
 		}
 
 		// Phase 1: Fetch all files and perform pre-flight checks (Law 4: Fail Fast)
 		// We check ALL conflicts BEFORE writing ANY files to ensure atomic behavior
-		const fetchSpin = options.quiet ? null : createSpinner({ text: "Fetching components..." })
+		const fetchSpin = suppressHumanOutput ? null : createSpinner({ text: "Fetching components..." })
 		fetchSpin?.start()
 
 		const componentBundles: {
@@ -608,36 +659,38 @@ async function runRegistryAddCore(
 
 		// Fail fast on conflicts BEFORE any writes (Law 4)
 		if (allConflicts.length > 0) {
-			logger.error("")
-			logger.error("File conflicts detected:")
-
 			// Group conflicts by ownership
 			const ownedConflicts = allConflicts.filter((c) => c.owningComponent !== null)
 			const unownedConflicts = allConflicts.filter((c) => c.owningComponent === null)
 
-			// Show owned conflicts with update suggestions
-			if (ownedConflicts.length > 0) {
+			if (!suppressHumanOutput) {
 				logger.error("")
-				logger.error("Files from installed components (use 'ocx update' or 'ocx remove'):")
-				for (const conflict of ownedConflicts) {
-					// owningComponent is guaranteed non-null in ownedConflicts
-					if (conflict.owningComponent) {
-						const componentName = extractComponentName(conflict.owningComponent)
-						logger.error(`  ✗ ${conflict.path} (from ${componentName})`)
+				logger.error("File conflicts detected:")
+
+				// Show owned conflicts with update suggestions
+				if (ownedConflicts.length > 0) {
+					logger.error("")
+					logger.error("Files from installed components (use 'ocx update' or 'ocx remove'):")
+					for (const conflict of ownedConflicts) {
+						// owningComponent is guaranteed non-null in ownedConflicts
+						if (conflict.owningComponent) {
+							const componentName = extractComponentName(conflict.owningComponent)
+							logger.error(`  ✗ ${conflict.path} (from ${componentName})`)
+						}
 					}
 				}
-			}
 
-			// Show unowned conflicts with manual resolution hint
-			if (unownedConflicts.length > 0) {
-				logger.error("")
-				logger.error("Files not managed by OCX (resolve manually):")
-				for (const conflict of unownedConflicts) {
-					logger.error(`  ✗ ${conflict.path}`)
+				// Show unowned conflicts with manual resolution hint
+				if (unownedConflicts.length > 0) {
+					logger.error("")
+					logger.error("Files not managed by OCX (resolve manually):")
+					for (const conflict of unownedConflicts) {
+						logger.error(`  ✗ ${conflict.path}`)
+					}
 				}
-			}
 
-			logger.error("")
+				logger.error("")
+			}
 
 			// Build context-aware error message
 			let errorMessage = `${allConflicts.length} file(s) have conflicts.\n`
@@ -661,7 +714,9 @@ async function runRegistryAddCore(
 		}
 
 		// Phase 3: Install all components (no conflicts possible at this point)
-		const installSpin = options.quiet ? null : createSpinner({ text: "Installing components..." })
+		const installSpin = suppressHumanOutput
+			? null
+			: createSpinner({ text: "Installing components..." })
 		installSpin?.start()
 
 		for (const { component, files, computedHash, canonicalId } of componentBundles) {
@@ -743,7 +798,7 @@ async function runRegistryAddCore(
 				: join(cwd, ".opencode/package.json")
 
 		if (hasNpmDeps || hasNpmDevDeps) {
-			const npmSpin = options.quiet
+			const npmSpin = suppressHumanOutput
 				? null
 				: createSpinner({ text: `Updating ${packageJsonPath}...` })
 			npmSpin?.start()
@@ -768,21 +823,21 @@ async function runRegistryAddCore(
 		// V1: Save receipt file
 		await writeReceipt(cwd, receipt)
 
-		if (options.json) {
-			console.log(
-				JSON.stringify(
-					{
-						success: true,
-						installed: resolved.installOrder,
-						opencode: !!resolved.opencode,
-					},
-					null,
-					2,
-				),
-			)
+		if (options.json && emitJson) {
+			outputJson({
+				success: true,
+				installed: resolved.installOrder,
+				opencode: !!resolved.opencode,
+			})
 		} else if (!options.quiet) {
 			logger.info("")
 			logger.success(`Done! Installed ${resolved.components.length} components.`)
+		}
+
+		return {
+			installed: resolved.installOrder,
+			opencode: !!resolved.opencode,
+			dryRun: false,
 		}
 	} catch (error) {
 		// Only fail the resolve spinner if it's still running (error during resolution)

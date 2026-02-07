@@ -295,6 +295,104 @@ export function expectJsonError(output: string, options: ExpectJsonErrorOptions)
 	return parsed
 }
 
+export type StrictJsonPayload = Record<string, unknown>
+type StrictJsonChannel = "stdout" | "stderr"
+
+function resolveStrictJsonChannel(result: CLIResult): {
+	channel: StrictJsonChannel
+	output: string
+} {
+	const hasStdout = result.stdout.trim().length > 0
+	const hasStderr = result.stderr.trim().length > 0
+
+	if (hasStdout && hasStderr) {
+		throw new Error(
+			`strict JSON policy violation: expected exactly one output channel, but both stdout and stderr have content.\n--- stdout ---\n${result.stdout}\n--- stderr ---\n${result.stderr}\n--------------`,
+		)
+	}
+
+	if (!hasStdout && !hasStderr) {
+		throw new Error(
+			"strict JSON policy violation: expected JSON output on stdout or stderr, but both channels are empty.",
+		)
+	}
+
+	if (hasStdout) {
+		return { channel: "stdout", output: result.stdout }
+	}
+
+	return { channel: "stderr", output: result.stderr }
+}
+
+/**
+ * Assert output channel is exactly one valid JSON document.
+ * Rejects empty output and any human prefix/suffix text.
+ */
+export function expectStrictJsonStdout(
+	output: string,
+	channel: StrictJsonChannel = "stdout",
+): StrictJsonPayload {
+	const trimmed = output.trim()
+	expect(trimmed.length).toBeGreaterThan(0)
+
+	let parsed: unknown
+	try {
+		parsed = JSON.parse(trimmed)
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error)
+		throw new Error(
+			`${channel} must be exactly one valid JSON document. Parse failed: ${message}\n--- ${channel} ---\n${output}\n--------------`,
+		)
+	}
+
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+		throw new Error(`${channel} JSON must be an object. Received: ${JSON.stringify(parsed)}`)
+	}
+
+	return parsed as StrictJsonPayload
+}
+
+/**
+ * Strict JSON success contract:
+ * - exitCode = 0
+ * - exactly one output channel contains JSON (stdout or stderr)
+ * - payload includes success: true
+ */
+export function expectStrictJsonSuccess(result: CLIResult): StrictJsonPayload {
+	expect(result.exitCode).toBe(0)
+
+	const { channel, output } = resolveStrictJsonChannel(result)
+	const payload = expectStrictJsonStdout(output, channel)
+	expect((payload as { success?: unknown }).success).toBe(true)
+	return payload
+}
+
+/**
+ * Strict JSON failure contract:
+ * - exitCode is non-zero
+ * - exactly one output channel contains JSON (stdout or stderr)
+ * - payload includes success: false and an error object
+ */
+export function expectStrictJsonFailure(result: CLIResult): StrictJsonPayload {
+	expect(result.exitCode).not.toBe(0)
+
+	const { channel, output } = resolveStrictJsonChannel(result)
+	const payload = expectStrictJsonStdout(output, channel)
+	expect((payload as { success?: unknown }).success).toBe(false)
+
+	const errorPayload = (payload as { error?: unknown }).error
+	expect(typeof errorPayload).toBe("object")
+	expect(errorPayload).not.toBeNull()
+
+	const typedError = errorPayload as { code?: unknown; message?: unknown }
+	expect(typeof typedError.code).toBe("string")
+	expect(typeof typedError.message).toBe("string")
+	expect((typedError.code as string).length).toBeGreaterThan(0)
+	expect((typedError.message as string).length).toBeGreaterThan(0)
+
+	return payload
+}
+
 /**
  * Convenience wrapper for runCLI with isolation enabled.
  * Automatically sets XDG_CONFIG_HOME to testDir if not provided.

@@ -26,7 +26,7 @@ import {
 	ProfileNotFoundError,
 	ValidationError,
 } from "../../utils/errors"
-import { handleError, logger, normalizeRegistryUrl } from "../../utils/index"
+import { handleError, logger, normalizeRegistryUrl, outputJson } from "../../utils/index"
 import { installProfileFromRegistry } from "./install-from-registry"
 
 // =============================================================================
@@ -80,6 +80,20 @@ interface ProfileAddOptions {
 	source?: string
 	from?: string
 	global?: boolean
+	json?: boolean
+}
+
+interface ProfileAddResult {
+	name: string
+	scope: "local" | "global"
+	mode: "empty" | "clone" | "registry"
+	cloneFrom?: string
+	registry?: {
+		namespace: string
+		component: string
+		url: string
+		ephemeral: boolean
+	}
 }
 
 // =============================================================================
@@ -164,6 +178,7 @@ export function registerProfileAddCommand(parent: Command): void {
 		.option("--source <namespace/component>", "Install from registry (requires --global)")
 		.option("--from <url>", "Ephemeral registry URL for --source (does not persist)")
 		.option("-g, --global", "Create global profile (default: local overlay)")
+		.option("--json", "Output as JSON")
 		.addHelpText(
 			"after",
 			`
@@ -178,9 +193,12 @@ Examples:
 		)
 		.action(async (name: string, options: ProfileAddOptions) => {
 			try {
-				await runProfileAdd(name, options)
+				const result = await runProfileAdd(name, options)
+				if (options.json) {
+					outputJson({ success: true, data: result })
+				}
 			} catch (error) {
-				handleError(error)
+				handleError(error, { json: options.json })
 			}
 		})
 }
@@ -189,7 +207,10 @@ Examples:
 // COMMAND IMPLEMENTATION
 // =============================================================================
 
-async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<void> {
+async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<ProfileAddResult> {
+	const scope = options.global ? "global" : "local"
+	const quiet = options.json === true
+
 	// ==========================================================================
 	// Guard: Validate option combinations (Law 1: Early Exit, Law 4: Fail Fast)
 	// ==========================================================================
@@ -311,38 +332,64 @@ async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<
 
 	// Route: --clone (profile cloning)
 	if (options.clone) {
-		await cloneFromLocalProfile(manager, name, options.clone, options.global ?? false)
-		return
+		await cloneFromLocalProfile(manager, name, options.clone, options.global ?? false, quiet)
+		return {
+			name,
+			scope,
+			mode: "clone",
+			cloneFrom: options.clone,
+		}
 	}
 
 	// Route: --source (registry installation)
 	if (options.source) {
 		const { namespace, component } = parseSourceOption(options.source)
+		let registryUrl: string
 
 		if (options.from) {
 			// Ephemeral registry URL
-			const registryUrl = normalizeRegistryUrl(options.from.trim())
+			registryUrl = normalizeRegistryUrl(options.from.trim())
 			await installProfileFromRegistry({
 				namespace,
 				component,
 				profileName: name,
 				registryUrl,
+				quiet,
 			})
 		} else {
 			// Configured registry
-			const { registryUrl } = await requireGlobalRegistry(namespace)
+			const globalRegistry = await requireGlobalRegistry(namespace)
+			registryUrl = globalRegistry.registryUrl
 			await installProfileFromRegistry({
 				namespace,
 				component,
 				profileName: name,
 				registryUrl,
+				quiet,
 			})
 		}
-		return
+
+		return {
+			name,
+			scope,
+			mode: "registry",
+			registry: {
+				namespace,
+				component,
+				url: registryUrl,
+				ephemeral: Boolean(options.from),
+			},
+		}
 	}
 
 	// Route: No options (empty profile creation)
-	await createEmptyProfile(manager, name, options.global ?? false)
+	await createEmptyProfile(manager, name, options.global ?? false, quiet)
+
+	return {
+		name,
+		scope,
+		mode: "empty",
+	}
 }
 
 /**
@@ -352,6 +399,7 @@ async function createEmptyProfile(
 	manager: ProfileManager,
 	name: string,
 	global: boolean,
+	quiet: boolean,
 ): Promise<void> {
 	const exists = await manager.exists(name, global)
 	if (exists) {
@@ -359,7 +407,9 @@ async function createEmptyProfile(
 	}
 	await manager.add(name, global)
 	const scope = global ? "global" : "local"
-	logger.success(`Created ${scope} profile "${name}"`)
+	if (!quiet) {
+		logger.success(`Created ${scope} profile "${name}"`)
+	}
 }
 
 /**
@@ -370,6 +420,7 @@ async function cloneFromLocalProfile(
 	name: string,
 	sourceName: string,
 	global: boolean,
+	quiet: boolean,
 ): Promise<void> {
 	// Guard: check if target profile already exists (Fail Fast)
 	const exists = await manager.exists(name, global)
@@ -405,5 +456,7 @@ async function cloneFromLocalProfile(
 	await atomicWrite(targetOcxPath, source.ocx)
 
 	const scope = global ? "global" : "local"
-	logger.success(`Created ${scope} profile "${name}" (cloned from "${sourceName}")`)
+	if (!quiet) {
+		logger.success(`Created ${scope} profile "${name}" (cloned from "${sourceName}")`)
+	}
 }

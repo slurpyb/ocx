@@ -96,17 +96,22 @@ export function getDownloadUrl(version: string): string {
  *
  * @param url - URL to download from
  * @param dest - Destination path for the downloaded file
+ * @param options - Download output options
  * @throws SelfUpdateError if download fails
  */
-async function downloadWithProgress(url: string, dest: string): Promise<void> {
-	const spin = createSpinner({ text: "Downloading update..." })
-	spin.start()
+async function downloadWithProgress(
+	url: string,
+	dest: string,
+	options: { quiet?: boolean } = {},
+): Promise<void> {
+	const spin = options.quiet ? null : createSpinner({ text: "Downloading update..." })
+	spin?.start()
 
 	let response: Response
 	try {
 		response = await fetch(url, { redirect: "follow" })
 	} catch (error) {
-		spin.fail("Download failed")
+		spin?.fail("Download failed")
 		throw new SelfUpdateError(
 			`Network error: ${error instanceof Error ? error.message : String(error)}`,
 		)
@@ -114,13 +119,13 @@ async function downloadWithProgress(url: string, dest: string): Promise<void> {
 
 	// Early exit: HTTP error
 	if (!response.ok) {
-		spin.fail("Download failed")
+		spin?.fail("Download failed")
 		throw new SelfUpdateError(`Failed to download: HTTP ${response.status} ${response.statusText}`)
 	}
 
 	// Early exit: no response body
 	if (!response.body) {
-		spin.fail("Download failed")
+		spin?.fail("Download failed")
 		throw new SelfUpdateError("Download failed: Empty response body")
 	}
 
@@ -137,15 +142,15 @@ async function downloadWithProgress(url: string, dest: string): Promise<void> {
 			received += value.length
 
 			// Update progress if we know total size
-			if (total > 0) {
+			if (total > 0 && spin) {
 				const pct = Math.round((received / total) * 100)
 				spin.text = `Downloading... ${pct}%`
 			}
 		}
 		await writer.end()
-		spin.succeed("Download complete")
+		spin?.succeed("Download complete")
 	} catch (error) {
-		spin.fail("Download failed")
+		spin?.fail("Download failed")
 		await writer.end()
 		throw new SelfUpdateError(
 			`Download interrupted: ${error instanceof Error ? error.message : String(error)}`,
@@ -177,17 +182,21 @@ export interface DownloadResult {
  * 3. Return paths for caller to verify before swap
  *
  * @param version - Version to download (without 'v' prefix)
+ * @param options - Download output options
  * @returns Paths for temp file and executable
  * @throws SelfUpdateError if download fails
  */
-export async function downloadToTemp(version: string): Promise<DownloadResult> {
+export async function downloadToTemp(
+	version: string,
+	options: { quiet?: boolean } = {},
+): Promise<DownloadResult> {
 	const execPath = getExecutablePath()
 	const tempPath = `${execPath}.new.${Date.now()}`
 
 	const url = getDownloadUrl(version)
 
 	// 1. Download to temp file
-	await downloadWithProgress(url, tempPath)
+	await downloadWithProgress(url, tempPath, options)
 
 	// 2. Set executable permissions (rwxr-xr-x)
 	try {

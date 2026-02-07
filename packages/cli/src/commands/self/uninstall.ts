@@ -23,7 +23,8 @@ import {
 	type InstallMethod,
 } from "../../self-update/detect-method"
 import { type DryRunAction, type DryRunResult, outputDryRun } from "../../utils/dry-run"
-import { wrapAction } from "../../utils/handle-error"
+import { handleError } from "../../utils/handle-error"
+import { outputJson } from "../../utils/json-output"
 import { highlight, logger } from "../../utils/logger"
 
 // =============================================================================
@@ -77,6 +78,48 @@ interface DeletionResult {
 /** Command options for uninstall */
 interface UninstallOptions {
 	dryRun?: boolean
+	json?: boolean
+}
+
+interface JsonErrorOutput {
+	success: false
+	error: {
+		code: string
+		message: string
+		details?: Record<string, unknown>
+	}
+	exitCode: number
+	meta: {
+		timestamp: string
+	}
+}
+
+function exitWithJsonSuccess(data: Record<string, unknown>, exitCode = 0): never {
+	outputJson({ success: true, data })
+	process.exit(exitCode)
+}
+
+function exitWithJsonFailure(
+	code: string,
+	message: string,
+	exitCode: number,
+	details?: Record<string, unknown>,
+): never {
+	const payload: JsonErrorOutput = {
+		success: false,
+		error: {
+			code,
+			message,
+			...(details && { details }),
+		},
+		exitCode,
+		meta: {
+			timestamp: new Date().toISOString(),
+		},
+	}
+
+	outputJson(payload)
+	process.exit(exitCode)
 }
 
 // =============================================================================
@@ -463,7 +506,10 @@ function executeRemovals(targets: UninstallTarget[]): DeletionResult[] {
  * @param binaryPath - Path to the binary
  * @returns Deletion result
  */
-function removeBinary(binaryPath: string): DeletionResult {
+function removeBinary(
+	binaryPath: string,
+	options: { suppressOutput?: boolean } = {},
+): DeletionResult {
 	const target: UninstallTarget = {
 		rootPath: path.dirname(binaryPath),
 		relativePath: path.basename(binaryPath),
@@ -481,7 +527,9 @@ function removeBinary(binaryPath: string): DeletionResult {
 
 	// On Windows, print instructions for v1 (binary may be locked)
 	if (process.platform === "win32") {
-		logger.info(`To complete uninstall, manually delete: ${target.displayPath}`)
+		if (!options.suppressOutput) {
+			logger.info(`To complete uninstall, manually delete: ${target.displayPath}`)
+		}
 		return { target, success: true, skipped: true }
 	}
 
@@ -509,6 +557,20 @@ function printDryRun(
 	binaryTarget: UninstallTarget | null,
 	installMethod: InstallMethod,
 ): void {
+	const { dryRunResult, hints } = createUninstallDryRunResult(
+		configTargets,
+		binaryTarget,
+		installMethod,
+	)
+
+	outputDryRun(dryRunResult, { hints })
+}
+
+function createUninstallDryRunResult(
+	configTargets: UninstallTarget[],
+	binaryTarget: UninstallTarget | null,
+	installMethod: InstallMethod,
+): { dryRunResult: DryRunResult; hints: string[] } {
 	const existingConfigTargets = configTargets.filter((t) => t.kind !== "missing")
 	const actions: DryRunAction[] = []
 
@@ -548,7 +610,7 @@ function printDryRun(
 		summary: actions.length > 0 ? `Would remove ${actions.length} item(s)` : "Nothing to remove",
 	}
 
-	outputDryRun(dryRunResult, { hints })
+	return { dryRunResult, hints }
 }
 
 /**
@@ -636,6 +698,173 @@ function printNothingToRemove(): void {
 	logger.info("Nothing to remove. OCX is not installed globally.")
 }
 
+function serializeDeletionResult(result: DeletionResult): Record<string, unknown> {
+	return {
+		path: result.target.displayPath,
+		kind: result.target.kind,
+		success: result.success,
+		skipped: result.skipped,
+		...(result.reason && { reason: result.reason }),
+		...(result.error && { error: result.error.message }),
+	}
+}
+
+async function runUninstallJson(options: UninstallOptions): Promise<never> {
+	const rootPath = getGlobalConfigRoot()
+
+	const rootValidation = validateRootDirectory(rootPath)
+	if (!rootValidation.valid) {
+		switch (rootValidation.reason) {
+			case "not-found":
+				break
+			case "symlink":
+				return exitWithJsonFailure(
+					"VALIDATION_ERROR",
+					"Safety error: Global config root is a symlink. Aborting.",
+					UNINSTALL_EXIT_CODES.SAFETY_ERROR,
+				)
+			case "not-directory":
+				return exitWithJsonFailure(
+					"VALIDATION_ERROR",
+					"Safety error: Global config root is not a directory. Aborting.",
+					UNINSTALL_EXIT_CODES.SAFETY_ERROR,
+				)
+			case "permission":
+				return exitWithJsonFailure(
+					"PERMISSION_ERROR",
+					"Error: Cannot access global config root (permission denied).",
+					UNINSTALL_EXIT_CODES.ERROR,
+				)
+		}
+	}
+
+	const configTargets = buildConfigTargets()
+
+	const forbiddenTargets = configTargets.filter((t) => t.safetyStatus === "forbidden")
+	if (forbiddenTargets.length > 0) {
+		return exitWithJsonFailure(
+			"VALIDATION_ERROR",
+			"Safety error: Target escapes containment boundary.",
+			UNINSTALL_EXIT_CODES.SAFETY_ERROR,
+			{
+				targets: forbiddenTargets.map((target) => target.displayPath),
+			},
+		)
+	}
+
+	const errorTargets = configTargets.filter((t) => t.safetyStatus === "error")
+	if (errorTargets.length > 0) {
+		return exitWithJsonFailure(
+			"PERMISSION_ERROR",
+			"Error: Cannot verify containment for targets (permission/IO error).",
+			UNINSTALL_EXIT_CODES.ERROR,
+			{
+				targets: errorTargets.map((target) => target.displayPath),
+			},
+		)
+	}
+
+	const installMethod = detectInstallMethod()
+	const binaryTarget = buildBinaryTarget()
+
+	const existingConfigTargets = configTargets.filter((t) => t.kind !== "missing")
+	const hasBinary = Boolean(binaryTarget && binaryTarget.kind !== "missing")
+	const hasPackageManager = isPackageManaged(installMethod)
+
+	if (existingConfigTargets.length === 0 && !hasBinary && !hasPackageManager) {
+		return exitWithJsonSuccess(
+			{
+				message: "Nothing to remove. OCX is not installed globally.",
+				removed: [],
+				skipped: [],
+			},
+			UNINSTALL_EXIT_CODES.SUCCESS,
+		)
+	}
+
+	if (options.dryRun) {
+		const { dryRunResult, hints } = createUninstallDryRunResult(
+			configTargets,
+			binaryTarget,
+			installMethod,
+		)
+
+		return exitWithJsonSuccess(
+			{
+				...dryRunResult,
+				...(hints.length > 0 && { hints }),
+			},
+			UNINSTALL_EXIT_CODES.SUCCESS,
+		)
+	}
+
+	const configResults = executeRemovals(configTargets)
+
+	let binaryResult: DeletionResult | null = null
+	if (binaryTarget) {
+		binaryResult = removeBinary(binaryTarget.absolutePath, { suppressOutput: true })
+	}
+
+	const hasFailures = configResults.some((r) => !r.success && !r.skipped)
+	const binaryFailed = Boolean(binaryResult && !binaryResult.success && !binaryResult.skipped)
+
+	if (hasFailures || binaryFailed) {
+		return exitWithJsonFailure(
+			"PERMISSION_ERROR",
+			"Failed to remove one or more uninstall targets.",
+			UNINSTALL_EXIT_CODES.ERROR,
+			{
+				configResults: configResults.map(serializeDeletionResult),
+				...(binaryResult && { binaryResult: serializeDeletionResult(binaryResult) }),
+			},
+		)
+	}
+
+	if (isPackageManaged(installMethod)) {
+		return exitWithJsonFailure(
+			"UPDATE_ERROR",
+			`Binary is managed by ${installMethod}. Run: ${getPackageManagerCommand(installMethod)}`,
+			UNINSTALL_EXIT_CODES.ERROR,
+			{
+				installMethod,
+				command: getPackageManagerCommand(installMethod),
+				configResults: configResults.map(serializeDeletionResult),
+				...(binaryResult && { binaryResult: serializeDeletionResult(binaryResult) }),
+			},
+		)
+	}
+
+	const removed = configResults
+		.filter((result) => result.success && !result.skipped)
+		.map((result) => result.target.displayPath)
+	const skipped = configResults
+		.filter((result) => result.skipped)
+		.map((result) => ({
+			path: result.target.displayPath,
+			reason: result.reason ?? "skipped",
+		}))
+
+	if (binaryResult) {
+		if (binaryResult.success && !binaryResult.skipped) {
+			removed.push(binaryResult.target.displayPath)
+		} else if (binaryResult.skipped) {
+			skipped.push({
+				path: binaryResult.target.displayPath,
+				reason: binaryResult.reason ?? "skipped",
+			})
+		}
+	}
+
+	return exitWithJsonSuccess(
+		{
+			removed,
+			skipped,
+			installMethod,
+		},
+		UNINSTALL_EXIT_CODES.SUCCESS,
+	)
+}
+
 // =============================================================================
 // MAIN LOGIC (Law 1: Early Exit for all edge cases at top)
 // =============================================================================
@@ -645,6 +874,11 @@ function printNothingToRemove(): void {
  * @param options - Command options
  */
 export async function runUninstall(options: UninstallOptions): Promise<void> {
+	if (options.json) {
+		await runUninstallJson(options)
+		return
+	}
+
 	const rootPath = getGlobalConfigRoot()
 
 	// 1. Validate root directory
@@ -755,9 +989,12 @@ export function registerSelfUninstallCommand(parent: Command): void {
 		.command("uninstall")
 		.description("Remove OCX global configuration and binary")
 		.option("--dry-run", "Preview what would be removed")
-		.action(
-			wrapAction(async (options: UninstallOptions) => {
+		.option("--json", "Output as JSON")
+		.action(async (options: UninstallOptions) => {
+			try {
 				await runUninstall(options)
-			}),
-		)
+			} catch (error) {
+				handleError(error, { json: options.json })
+			}
+		})
 }

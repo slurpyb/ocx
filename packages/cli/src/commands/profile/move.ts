@@ -7,10 +7,11 @@
 
 import type { Command } from "commander"
 import { ProfileManager } from "../../profile/manager"
-import { handleError, logger } from "../../utils/index"
+import { handleError, logger, outputJson } from "../../utils/index"
 
 interface MoveOptions {
 	global?: boolean
+	json?: boolean
 }
 
 export function registerProfileMoveCommand(parent: Command): void {
@@ -19,11 +20,15 @@ export function registerProfileMoveCommand(parent: Command): void {
 		.alias("mv")
 		.description("Move (rename) a profile")
 		.option("-g, --global", "Move global profile (default: local)")
+		.option("--json", "Output as JSON")
 		.action(async (oldName: string, newName: string, options: MoveOptions) => {
 			try {
-				await runProfileMove(oldName, newName, options)
+				const result = await runProfileMove(oldName, newName, options)
+				if (options.json) {
+					outputJson({ success: true, data: result })
+				}
 			} catch (error) {
-				handleError(error)
+				handleError(error, { json: options.json })
 			}
 		})
 }
@@ -32,16 +37,20 @@ async function runProfileMove(
 	oldName: string,
 	newName: string,
 	options: MoveOptions,
-): Promise<void> {
+): Promise<{ from: string; to: string; scope: "local" | "global"; warnActiveProfile: boolean }> {
 	const manager = await ProfileManager.requireInitialized()
 	const global = options.global ?? false
 
 	const { warnActiveProfile } = await manager.move(oldName, newName, global)
 
-	if (warnActiveProfile) {
+	if (warnActiveProfile && !options.json) {
 		logger.warn(`Moving active profile. Update OCX_PROFILE env var to "${newName}".`)
 	}
 
 	const scope = global ? "global" : "local"
-	logger.success(`Moved ${scope} profile "${oldName}" → "${newName}"`)
+	if (!options.json) {
+		logger.success(`Moved ${scope} profile "${oldName}" → "${newName}"`)
+	}
+
+	return { from: oldName, to: newName, scope, warnActiveProfile }
 }

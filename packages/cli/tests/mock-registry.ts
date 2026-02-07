@@ -57,6 +57,18 @@ export function startMockRegistry(): MockRegistry {
 				},
 			},
 		},
+		researcher: {
+			name: "researcher",
+			type: "agent",
+			description: "Researcher fixture for strict JSON tests",
+			files: [{ path: "agent.md", target: "agents/researcher.md" }],
+			dependencies: [],
+			opencode: {
+				tools: {
+					"research-tool": true,
+				},
+			},
+		},
 		// Profile component for testing profile installation
 		"test-profile": {
 			name: "test-profile",

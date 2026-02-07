@@ -311,7 +311,7 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 					getComponentPath: () => "", // Flat install - no .opencode/ prefix
 				}
 
-				await runAddCore(depRefs, { profile: profileName }, provider)
+				await runAddCore(depRefs, { profile: profileName, quiet }, provider)
 				depsSpin?.succeed(`Installed ${manifest.dependencies.length} dependencies`)
 			} catch (error) {
 				depsSpin?.fail("Failed to install dependencies")

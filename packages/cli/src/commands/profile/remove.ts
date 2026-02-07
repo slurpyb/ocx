@@ -8,10 +8,11 @@
 import type { Command } from "commander"
 import { ProfileManager } from "../../profile/manager"
 import { ProfileNotFoundError } from "../../utils/errors"
-import { handleError, logger } from "../../utils/index"
+import { handleError, logger, outputJson } from "../../utils/index"
 
 interface RemoveOptions {
 	global?: boolean
+	json?: boolean
 }
 
 export function registerProfileRemoveCommand(parent: Command): void {
@@ -20,16 +21,23 @@ export function registerProfileRemoveCommand(parent: Command): void {
 		.alias("rm")
 		.description("Delete a profile")
 		.option("-g, --global", "Remove global profile (default: local)")
+		.option("--json", "Output as JSON")
 		.action(async (name: string, options: RemoveOptions) => {
 			try {
-				await runProfileRemove(name, options)
+				const result = await runProfileRemove(name, options)
+				if (options.json) {
+					outputJson({ success: true, data: result })
+				}
 			} catch (error) {
-				handleError(error)
+				handleError(error, { json: options.json })
 			}
 		})
 }
 
-async function runProfileRemove(name: string, options: RemoveOptions): Promise<void> {
+async function runProfileRemove(
+	name: string,
+	options: RemoveOptions,
+): Promise<{ name: string; scope: "local" | "global" }> {
 	const manager = await ProfileManager.requireInitialized()
 	const global = options.global ?? false
 
@@ -40,5 +48,9 @@ async function runProfileRemove(name: string, options: RemoveOptions): Promise<v
 
 	await manager.remove(name, global)
 	const scope = global ? "global" : "local"
-	logger.success(`Deleted ${scope} profile "${name}"`)
+	if (!options.json) {
+		logger.success(`Deleted ${scope} profile "${name}"`)
+	}
+
+	return { name, scope }
 }
