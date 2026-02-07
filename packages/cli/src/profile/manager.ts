@@ -1,5 +1,5 @@
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises"
-import { parse } from "jsonc-parser"
+import { type ParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser"
 import { mergeOpencodeConfig } from "../registry/merge"
 import type { ProfileOcxConfig } from "../schemas/ocx"
 import { profileOcxConfigSchema } from "../schemas/ocx"
@@ -64,6 +64,73 @@ export const DEFAULT_OCX_CONFIG_TEMPLATE = `{
   "include": []
 }
 `
+
+function formatJsoncParseError(parseErrors: ParseError[]): string {
+	if (parseErrors.length === 0) {
+		return "Unknown parse error"
+	}
+
+	const firstError = parseErrors[0]
+	if (!firstError) {
+		return "Unknown parse error"
+	}
+
+	return `${printParseErrorCode(firstError.error)} at offset ${firstError.offset}`
+}
+
+function parseJsoncOrThrow(content: string, filePath: string): unknown {
+	const parseErrors: ParseError[] = []
+	const parsed = parseJsonc(content, parseErrors, { allowTrailingComma: true })
+
+	if (parseErrors.length > 0) {
+		const errorDetail = formatJsoncParseError(parseErrors)
+		throw new ConfigError(`Invalid JSONC in ${filePath}: ${errorDetail}`)
+	}
+
+	return parsed
+}
+
+function parseProfileOcxConfigOrThrow(
+	rawConfig: unknown,
+	filePath: string,
+	profileName: string,
+): ProfileOcxConfig {
+	const validationResult = profileOcxConfigSchema.safeParse(rawConfig)
+	if (!validationResult.success) {
+		const firstIssue = validationResult.error.issues[0]
+		const issuePath = firstIssue?.path.length ? firstIssue.path.join(".") : "root"
+		const issueMessage = firstIssue?.message ?? "Invalid profile OCX configuration"
+		throw new ConfigError(
+			`Invalid profile "${profileName}" ocx.jsonc at ${filePath}: ${issuePath} ${issueMessage}`,
+		)
+	}
+
+	return validationResult.data
+}
+
+function parseProfileOpencodeConfigOrThrow(
+	rawConfig: unknown,
+	filePath: string,
+	profileName: string,
+): Record<string, unknown> {
+	if (!rawConfig || typeof rawConfig !== "object" || Array.isArray(rawConfig)) {
+		throw new ConfigError(
+			`Invalid profile "${profileName}" opencode.jsonc at ${filePath}: root must be an object`,
+		)
+	}
+
+	return rawConfig as Record<string, unknown>
+}
+
+function requireNonEmptyProfileName(profileName: string, sourceDescription: string): string {
+	if (profileName.trim().length === 0) {
+		throw new ConfigError(
+			`Invalid profile from ${sourceDescription}: value cannot be empty or whitespace`,
+		)
+	}
+
+	return profileName
+}
 
 /**
  * Manages OCX profiles.
@@ -170,8 +237,8 @@ export class ProfileManager {
 		}
 
 		const ocxContent = await ocxFile.text()
-		const ocxRaw = parse(ocxContent)
-		const ocx = profileOcxConfigSchema.parse(ocxRaw)
+		const ocxRaw = parseJsoncOrThrow(ocxContent, ocxPath)
+		const ocx = parseProfileOcxConfigOrThrow(ocxRaw, ocxPath, name)
 
 		// Load opencode.jsonc (optional)
 		const opencodePath = global
@@ -181,7 +248,8 @@ export class ProfileManager {
 		let opencode: Record<string, unknown> | undefined
 		if (await opencodeFile.exists()) {
 			const opencodeContent = await opencodeFile.text()
-			opencode = parse(opencodeContent) as Record<string, unknown>
+			const opencodeRaw = parseJsoncOrThrow(opencodeContent, opencodePath)
+			opencode = parseProfileOpencodeConfigOrThrow(opencodeRaw, opencodePath, name)
 		}
 
 		// Check for AGENTS.md
@@ -246,8 +314,8 @@ export class ProfileManager {
 		}
 
 		const ocxContent = await ocxFile.text()
-		const ocxRaw = parse(ocxContent)
-		const ocx = profileOcxConfigSchema.parse(ocxRaw)
+		const ocxRaw = parseJsoncOrThrow(ocxContent, ocxPath)
+		const ocx = parseProfileOcxConfigOrThrow(ocxRaw, ocxPath, name)
 
 		// Load opencode.jsonc (optional)
 		const opencodePath = getLocalProfileOpencodeConfig(name, cwd)
@@ -255,7 +323,8 @@ export class ProfileManager {
 		let opencode: Record<string, unknown> | undefined
 		if (await opencodeFile.exists()) {
 			const opencodeContent = await opencodeFile.text()
-			opencode = parse(opencodeContent) as Record<string, unknown>
+			const opencodeRaw = parseJsoncOrThrow(opencodeContent, opencodePath)
+			opencode = parseProfileOpencodeConfigOrThrow(opencodeRaw, opencodePath, name)
 		}
 
 		// Check for AGENTS.md
@@ -484,20 +553,22 @@ export class ProfileManager {
 	 */
 	async resolveProfile(override?: string): Promise<string> {
 		// Priority 1: Explicit override from -p/--profile flag
-		if (override) {
-			if (!(await this.exists(override))) {
-				throw new ProfileNotFoundError(override)
+		if (override !== undefined) {
+			const profileName = requireNonEmptyProfileName(override, "CLI option --profile")
+			if (!(await this.exists(profileName))) {
+				throw new ProfileNotFoundError(profileName)
 			}
-			return override
+			return profileName
 		}
 
 		// Priority 2: OCX_PROFILE environment variable
 		const envProfile = process.env.OCX_PROFILE
-		if (envProfile) {
-			if (!(await this.exists(envProfile))) {
-				throw new ProfileNotFoundError(envProfile)
+		if (envProfile !== undefined) {
+			const profileName = requireNonEmptyProfileName(envProfile, "environment variable OCX_PROFILE")
+			if (!(await this.exists(profileName))) {
+				throw new ProfileNotFoundError(profileName)
 			}
-			return envProfile
+			return profileName
 		}
 
 		// Priority 3: Fall back to "default" profile

@@ -21,11 +21,11 @@
  * - Law 5 (Intentional Naming): Names describe exact purpose
  */
 
-import { existsSync, statSync } from "node:fs"
+import { existsSync, readFileSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, relative } from "node:path"
 import { Glob } from "bun"
-import { parse as parseJsonc } from "jsonc-parser"
+import { type ParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser"
 import { ProfileManager } from "../profile/manager"
 import {
 	findLocalConfigDir,
@@ -37,9 +37,10 @@ import {
 } from "../profile/paths"
 import type { Profile } from "../profile/schema"
 import { mergeOpencodeConfig } from "../registry/merge"
-import type { RegistryConfig } from "../schemas/config"
-import { readReceipt } from "../schemas/config"
+import type { OcxConfig, RegistryConfig } from "../schemas/config"
+import { ocxConfigSchema, readReceipt } from "../schemas/config"
 import type { NormalizedOpencodeConfig } from "../schemas/registry"
+import { ConfigError, ProfileNotFoundError, ProfilesNotInitializedError } from "../utils/errors"
 import { resolveGitRootSync } from "../utils/git-root"
 import { resolveRegistryInstructionPaths } from "../utils/instruction-paths"
 import { getGlobalConfigPath } from "../utils/paths"
@@ -84,6 +85,85 @@ export interface ConfigOrigin {
 export interface ResolvedConfigWithOrigin extends ResolvedConfig {
 	/** Origin tracking for each setting (for debugging) */
 	origins: Map<string, ConfigOrigin>
+}
+
+type ProfileResolutionSource = "none" | "local-config" | "cli" | "env" | "default"
+
+function isExplicitProfileSource(source: ProfileResolutionSource): boolean {
+	return source === "local-config" || source === "cli" || source === "env"
+}
+
+function requireNonEmptyExplicitProfile(profileName: string, sourceDescription: string): string {
+	if (profileName.trim().length === 0) {
+		throw new ConfigError(
+			`Invalid profile from ${sourceDescription}: value cannot be empty or whitespace`,
+		)
+	}
+
+	return profileName
+}
+
+function formatJsoncParseError(parseErrors: ParseError[]): string {
+	if (parseErrors.length === 0) {
+		return "Unknown parse error"
+	}
+
+	const firstError = parseErrors[0]
+	if (!firstError) {
+		return "Unknown parse error"
+	}
+
+	return `${printParseErrorCode(firstError.error)} at offset ${firstError.offset}`
+}
+
+function parseLocalOcxConfig(configPath: string): OcxConfig {
+	let text: string
+	try {
+		text = readFileSync(configPath, "utf8")
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : "Unknown read error"
+		throw new ConfigError(`Failed to read local config at ${configPath}: ${reason}`)
+	}
+
+	const parseErrors: ParseError[] = []
+	const parsed = parseJsonc(text, parseErrors, { allowTrailingComma: true })
+	if (parseErrors.length > 0) {
+		const errorDetail = formatJsoncParseError(parseErrors)
+		throw new ConfigError(`Invalid JSONC in local config at ${configPath}: ${errorDetail}`)
+	}
+
+	const validationResult = ocxConfigSchema.safeParse(parsed)
+	if (!validationResult.success) {
+		const firstIssue = validationResult.error.issues[0]
+		const issuePath = firstIssue?.path.length ? firstIssue.path.join(".") : "root"
+		const issueMessage = firstIssue?.message ?? "Invalid OCX config"
+		throw new ConfigError(`Invalid local config at ${configPath}: ${issuePath} ${issueMessage}`)
+	}
+
+	return validationResult.data
+}
+
+function parseLocalOpencodeConfig(configPath: string): Record<string, unknown> {
+	let text: string
+	try {
+		text = readFileSync(configPath, "utf8")
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : "Unknown read error"
+		throw new ConfigError(`Failed to read local OpenCode config at ${configPath}: ${reason}`)
+	}
+
+	const parseErrors: ParseError[] = []
+	const parsed = parseJsonc(text, parseErrors, { allowTrailingComma: true })
+	if (parseErrors.length > 0) {
+		const errorDetail = formatJsoncParseError(parseErrors)
+		throw new ConfigError(`Invalid JSONC in local OpenCode config at ${configPath}: ${errorDetail}`)
+	}
+
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		throw new ConfigError(`Invalid local OpenCode config at ${configPath}: root must be an object`)
+	}
+
+	return parsed as Record<string, unknown>
 }
 
 // =============================================================================
@@ -281,6 +361,9 @@ export class ConfigResolver {
 	 * 4. Fall back to "default" profile (if it exists)
 	 * 5. No profile (base configs only)
 	 *
+	 * Explicit sources (local config, CLI, env) fail fast when invalid.
+	 * Only implicit/default resolution can fall back to base config.
+	 *
 	 * @param cwd - Working directory
 	 * @param options - Optional profile override
 	 * @throws ProfileNotFoundError if specified profile doesn't exist
@@ -288,45 +371,66 @@ export class ConfigResolver {
 	static async create(cwd: string, options?: { profile?: string }): Promise<ConfigResolver> {
 		const manager = ProfileManager.create(cwd)
 
-		// V2: Check local config for profile selection first
+		// Resolve profile intent with explicit precedence:
+		// local config > CLI option > environment > implicit default
 		let profileName: string | null = null
+		let profileSource: ProfileResolutionSource = "none"
 		const localConfigDir = findLocalConfigDir(cwd)
 		if (localConfigDir) {
-			try {
-				const localOcxPath = join(localConfigDir, OCX_CONFIG_FILE)
-				if (existsSync(localOcxPath)) {
-					const text = require("node:fs").readFileSync(localOcxPath, "utf8")
-					const parsed = parseJsonc(text)
-					if (parsed?.profile) {
-						profileName = parsed.profile
-					}
+			const localOcxPath = join(localConfigDir, OCX_CONFIG_FILE)
+			if (existsSync(localOcxPath)) {
+				const localConfig = parseLocalOcxConfig(localOcxPath)
+				if (localConfig.profile !== undefined) {
+					profileName = requireNonEmptyExplicitProfile(
+						localConfig.profile,
+						`local config at ${localOcxPath}`,
+					)
+					profileSource = "local-config"
 				}
-			} catch {
-				// Silent fail - local config is optional
 			}
 		}
 
-		// V2 Priority: local config > options > env var > default > none
-		if (!profileName) {
-			profileName = options?.profile ?? process.env.OCX_PROFILE ?? null
+		// Preserve short-circuit precedence:
+		// once a higher-priority source is selected, lower-priority sources are ignored.
+		if (profileName === null) {
+			if (options?.profile !== undefined) {
+				profileName = requireNonEmptyExplicitProfile(options.profile, "CLI option --profile")
+				profileSource = "cli"
+			} else if (process.env.OCX_PROFILE !== undefined) {
+				profileName = requireNonEmptyExplicitProfile(
+					process.env.OCX_PROFILE,
+					"environment variable OCX_PROFILE",
+				)
+				profileSource = "env"
+			}
+		}
+
+		const isInitialized = await manager.isInitialized()
+		if (isExplicitProfileSource(profileSource) && !isInitialized) {
+			throw new ProfilesNotInitializedError()
 		}
 
 		let profile: Profile | null = null
 
-		if (await manager.isInitialized()) {
-			try {
-				// If profileName is set, use it; otherwise try to resolve default
-				if (profileName) {
-					profile = await manager.getLayered(profileName, cwd)
-				} else {
-					// Try default profile
+		if (isInitialized) {
+			// Explicit sources must fail fast: no fallback to default/base config.
+			if (profileName !== null) {
+				profile = await manager.getLayered(profileName, cwd)
+			} else {
+				try {
+					// Implicit resolution can still fall back to base config.
 					profileName = await manager.resolveProfile()
 					profile = await manager.getLayered(profileName, cwd)
+					profileSource = "default"
+				} catch (error) {
+					if (!(error instanceof ProfileNotFoundError) || error.profile !== "default") {
+						throw error
+					}
+
+					profileName = null
+					profile = null
+					profileSource = "none"
 				}
-			} catch {
-				// No profile resolved - that's OK, we'll just use base configs
-				profileName = null
-				profile = null
 			}
 		}
 
@@ -541,7 +645,8 @@ export class ConfigResolver {
 
 	/**
 	 * Load local ocx.jsonc configuration.
-	 * Returns null if file doesn't exist or fails to parse.
+	 * Returns null if file doesn't exist.
+	 * Throws ConfigError if the file exists but is invalid.
 	 */
 	private loadLocalOcxConfig(): { registries: Record<string, RegistryConfig> } | null {
 		if (!this.localConfigDir) return null
@@ -549,22 +654,16 @@ export class ConfigResolver {
 		const configPath = join(this.localConfigDir, OCX_CONFIG_FILE)
 		if (!existsSync(configPath)) return null
 
-		try {
-			// Synchronous read for simplicity in resolve path
-			const text = require("node:fs").readFileSync(configPath, "utf8")
-			const parsed = parseJsonc(text)
-			return {
-				registries: parsed?.registries ?? {},
-			}
-		} catch {
-			// Silent fail - local config is optional
-			return null
+		const parsed = parseLocalOcxConfig(configPath)
+		return {
+			registries: parsed.registries,
 		}
 	}
 
 	/**
 	 * Load local opencode.jsonc configuration.
-	 * Returns null if file doesn't exist or fails to parse.
+	 * Returns null if file doesn't exist.
+	 * Throws ConfigError if the file exists but is invalid.
 	 */
 	private loadLocalOpencodeConfig(): Record<string, unknown> | null {
 		if (!this.localConfigDir) return null
@@ -572,13 +671,7 @@ export class ConfigResolver {
 		const configPath = join(this.localConfigDir, OPENCODE_CONFIG_FILE)
 		if (!existsSync(configPath)) return null
 
-		try {
-			const text = require("node:fs").readFileSync(configPath, "utf8")
-			return parseJsonc(text) as Record<string, unknown>
-		} catch {
-			// Silent fail - local config is optional
-			return null
-		}
+		return parseLocalOpencodeConfig(configPath)
 	}
 
 	/**

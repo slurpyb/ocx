@@ -10,6 +10,11 @@ import * as fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { ConfigResolver } from "../../src/config/resolver"
+import {
+	ConfigError,
+	ProfileNotFoundError,
+	ProfilesNotInitializedError,
+} from "../../src/utils/errors"
 import { tmpdir } from "../fixture"
 
 // =============================================================================
@@ -69,6 +74,35 @@ describe("ConfigResolver", () => {
 			expect(config.profileName).toBe("work") // NOT "personal"
 		})
 
+		it("short-circuits to CLI profile and ignores invalid OCX_PROFILE", async () => {
+			await using tmp = await tmpdir({
+				git: true,
+				profile: { name: "work", ocxConfig: { registries: {} } },
+			})
+
+			process.env.OCX_PROFILE = "does-not-exist"
+
+			const resolver = await ConfigResolver.create(tmp.path, { profile: "work" })
+			const config = resolver.resolve()
+
+			expect(config.profileName).toBe("work")
+		})
+
+		it("short-circuits to local config profile and ignores invalid lower-priority sources", async () => {
+			await using tmp = await tmpdir({
+				git: true,
+				profile: { name: "local-wins", ocxConfig: { registries: {} } },
+				ocxConfig: { profile: "local-wins" },
+			})
+
+			process.env.OCX_PROFILE = "does-not-exist"
+
+			const resolver = await ConfigResolver.create(tmp.path, { profile: "also-missing" })
+			const config = resolver.resolve()
+
+			expect(config.profileName).toBe("local-wins")
+		})
+
 		it("resolves profile from OCX_PROFILE env when no explicit option", async () => {
 			await using tmp = await tmpdir({
 				git: true,
@@ -116,6 +150,144 @@ describe("ConfigResolver", () => {
 			const config = resolver.resolve()
 
 			expect(config.profileName).toBeNull()
+		})
+
+		it("fails fast for explicit CLI profile when profile does not exist", async () => {
+			await using tmp = await tmpdir({
+				git: true,
+				profile: { name: "default", ocxConfig: { registries: {} } },
+			})
+
+			await expect(ConfigResolver.create(tmp.path, { profile: "missing" })).rejects.toBeInstanceOf(
+				ProfileNotFoundError,
+			)
+		})
+
+		it("fails fast for explicit CLI profile when value is an empty string", async () => {
+			await using tmp = await tmpdir({
+				git: true,
+				profile: { name: "default", ocxConfig: { registries: {} } },
+			})
+
+			process.env.OCX_PROFILE = "default"
+
+			await expect(ConfigResolver.create(tmp.path, { profile: "" })).rejects.toBeInstanceOf(
+				ConfigError,
+			)
+		})
+
+		it("fails fast for explicit OCX_PROFILE when profile does not exist", async () => {
+			await using tmp = await tmpdir({
+				git: true,
+				profile: { name: "default", ocxConfig: { registries: {} } },
+			})
+
+			process.env.OCX_PROFILE = "missing"
+
+			await expect(ConfigResolver.create(tmp.path)).rejects.toBeInstanceOf(ProfileNotFoundError)
+		})
+
+		it("fails fast for explicit OCX_PROFILE when value is whitespace-only", async () => {
+			await using tmp = await tmpdir({
+				git: true,
+				profile: { name: "default", ocxConfig: { registries: {} } },
+			})
+
+			process.env.OCX_PROFILE = "   "
+
+			await expect(ConfigResolver.create(tmp.path)).rejects.toBeInstanceOf(ConfigError)
+		})
+
+		it("fails fast for explicit local profile in .opencode/ocx.jsonc", async () => {
+			await using tmp = await tmpdir({
+				git: true,
+				profile: { name: "default", ocxConfig: { registries: {} } },
+				ocxConfig: { profile: "missing" },
+			})
+
+			process.env.OCX_PROFILE = "default"
+
+			await expect(ConfigResolver.create(tmp.path)).rejects.toBeInstanceOf(ProfileNotFoundError)
+		})
+
+		it("fails fast for empty local profile value in .opencode/ocx.jsonc", async () => {
+			await using tmp = await tmpdir({
+				git: true,
+				profile: { name: "default", ocxConfig: { registries: {} } },
+				ocxConfig: { profile: "" },
+			})
+
+			process.env.OCX_PROFILE = "default"
+
+			await expect(ConfigResolver.create(tmp.path)).rejects.toBeInstanceOf(ConfigError)
+		})
+
+		it("fails fast when local .opencode/ocx.jsonc is malformed (no fallback)", async () => {
+			await using tmp = await tmpdir({
+				git: true,
+				profile: { name: "default", ocxConfig: { registries: {} } },
+			})
+
+			const localConfigDir = path.join(tmp.path, ".opencode")
+			await fs.mkdir(localConfigDir, { recursive: true })
+			await Bun.write(path.join(localConfigDir, "ocx.jsonc"), '{ "profile": "default"')
+
+			process.env.OCX_PROFILE = "default"
+
+			await expect(ConfigResolver.create(tmp.path, { profile: "default" })).rejects.toBeInstanceOf(
+				ConfigError,
+			)
+		})
+
+		it("fails fast when local .opencode/ocx.jsonc has invalid profile type", async () => {
+			await using tmp = await tmpdir({
+				git: true,
+				profile: { name: "default", ocxConfig: { registries: {} } },
+			})
+
+			const localConfigDir = path.join(tmp.path, ".opencode")
+			await fs.mkdir(localConfigDir, { recursive: true })
+			await Bun.write(path.join(localConfigDir, "ocx.jsonc"), JSON.stringify({ profile: 123 }))
+
+			process.env.OCX_PROFILE = "default"
+
+			await expect(ConfigResolver.create(tmp.path)).rejects.toBeInstanceOf(ConfigError)
+		})
+
+		it("fails fast when local .opencode/opencode.jsonc is malformed", async () => {
+			await using tmp = await tmpdir({ git: true })
+
+			const localConfigDir = path.join(tmp.path, ".opencode")
+			await fs.mkdir(localConfigDir, { recursive: true })
+			await Bun.write(path.join(localConfigDir, "opencode.jsonc"), '{ "model": "gpt-5"')
+			delete process.env.OCX_PROFILE
+
+			const resolver = await ConfigResolver.create(tmp.path)
+			expect(() => resolver.resolve()).toThrow(ConfigError)
+		})
+
+		it("does not swallow corrupted implicit default profile", async () => {
+			await using tmp = await tmpdir({
+				git: true,
+				profile: { name: "default", ocxConfig: { registries: {} } },
+			})
+
+			const defaultProfilePath = path.join(xdgDir, "opencode", "profiles", "default", "ocx.jsonc")
+			await Bun.write(defaultProfilePath, '{ "registries": {}')
+
+			delete process.env.OCX_PROFILE
+
+			await expect(ConfigResolver.create(tmp.path)).rejects.toBeInstanceOf(ConfigError)
+		})
+
+		it("throws ProfilesNotInitializedError for explicit env profile when profiles are uninitialized", async () => {
+			await using tmp = await tmpdir({ git: true })
+
+			process.env.OCX_PROFILE = "work"
+
+			await expect(ConfigResolver.create(tmp.path)).rejects.toBeInstanceOf(
+				ProfilesNotInitializedError,
+			)
 		})
 	})
 

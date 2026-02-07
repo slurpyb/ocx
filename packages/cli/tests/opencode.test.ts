@@ -1,6 +1,15 @@
 import { describe, expect, it } from "bun:test"
+import { mkdir } from "node:fs/promises"
+import { join } from "node:path"
 import { buildOpenCodeEnv, dedupeLastWins, resolveOpenCodeBinary } from "../src/commands/opencode"
+import { EXIT_CODES } from "../src/utils/errors"
 import { cleanupTempDir, createTempDir, runCLI, runCLIIsolated } from "./helpers"
+
+async function createProfile(testDir: string, name: string): Promise<void> {
+	const profileDir = join(testDir, "opencode", "profiles", name)
+	await mkdir(profileDir, { recursive: true })
+	await Bun.write(join(profileDir, "ocx.jsonc"), "{}")
+}
 
 describe("dedupeLastWins", () => {
 	it("preserves last occurrence when duplicates exist", () => {
@@ -238,5 +247,198 @@ describe("oc command CLI contract", () => {
 	it("errors when -p flag missing value", async () => {
 		const result = await runCLI(["oc", "-p"], process.cwd())
 		expect(result.exitCode).toBe(1)
+	})
+
+	it("fails fast for invalid --profile without launching opencode", async () => {
+		const testDir = await createTempDir("oc-invalid-cli-profile")
+		try {
+			await createProfile(testDir, "default")
+
+			const result = await runCLIIsolated(["oc", "--no-rename", "--profile", "missing"], testDir, {
+				OPENCODE_BIN: "true",
+			})
+
+			expect(result.exitCode).toBe(EXIT_CODES.NOT_FOUND)
+			expect(result.output).toContain('Profile "missing" not found')
+			expect(result.output).not.toContain("Using profile: default")
+		} finally {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("fails fast for empty --profile value without launching opencode", async () => {
+		const testDir = await createTempDir("oc-empty-cli-profile")
+		try {
+			await createProfile(testDir, "default")
+
+			const result = await runCLIIsolated(["oc", "--no-rename", "--profile="], testDir, {
+				OPENCODE_BIN: "true",
+			})
+
+			expect(result.exitCode).toBe(EXIT_CODES.CONFIG)
+			expect(result.output).toContain("cannot be empty")
+			expect(result.output).not.toContain("Using profile:")
+		} finally {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("fails fast for invalid OCX_PROFILE env without launching opencode", async () => {
+		const testDir = await createTempDir("oc-invalid-env-profile")
+		try {
+			await createProfile(testDir, "default")
+
+			const result = await runCLIIsolated(["oc", "--no-rename"], testDir, {
+				OCX_PROFILE: "missing",
+				OPENCODE_BIN: "true",
+			})
+
+			expect(result.exitCode).toBe(EXIT_CODES.NOT_FOUND)
+			expect(result.output).toContain('Profile "missing" not found')
+		} finally {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("fails fast for whitespace OCX_PROFILE env without launching opencode", async () => {
+		const testDir = await createTempDir("oc-whitespace-env-profile")
+		try {
+			await createProfile(testDir, "default")
+
+			const result = await runCLIIsolated(["oc", "--no-rename"], testDir, {
+				OCX_PROFILE: "   ",
+				OPENCODE_BIN: "true",
+			})
+
+			expect(result.exitCode).toBe(EXIT_CODES.CONFIG)
+			expect(result.output).toContain("cannot be empty")
+			expect(result.output).not.toContain("Using profile:")
+		} finally {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("fails fast for invalid local .opencode profile without fallback", async () => {
+		const testDir = await createTempDir("oc-invalid-local-profile")
+		try {
+			await createProfile(testDir, "default")
+
+			const localConfigDir = join(testDir, ".opencode")
+			await mkdir(localConfigDir, { recursive: true })
+			await Bun.write(join(localConfigDir, "ocx.jsonc"), JSON.stringify({ profile: "missing" }))
+
+			const result = await runCLIIsolated(["oc", "--no-rename"], testDir, {
+				OCX_PROFILE: "default",
+				OPENCODE_BIN: "true",
+			})
+
+			expect(result.exitCode).toBe(EXIT_CODES.NOT_FOUND)
+			expect(result.output).toContain('Profile "missing" not found')
+		} finally {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("fails fast for empty local .opencode profile without fallback", async () => {
+		const testDir = await createTempDir("oc-empty-local-profile")
+		try {
+			await createProfile(testDir, "default")
+
+			const localConfigDir = join(testDir, ".opencode")
+			await mkdir(localConfigDir, { recursive: true })
+			await Bun.write(join(localConfigDir, "ocx.jsonc"), JSON.stringify({ profile: "" }))
+
+			const result = await runCLIIsolated(["oc", "--no-rename"], testDir, {
+				OCX_PROFILE: "default",
+				OPENCODE_BIN: "true",
+			})
+
+			expect(result.exitCode).toBe(EXIT_CODES.CONFIG)
+			expect(result.output).toContain("cannot be empty")
+			expect(result.output).not.toContain("Using profile:")
+		} finally {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("fails fast for malformed local .opencode/ocx.jsonc and does not launch", async () => {
+		const testDir = await createTempDir("oc-malformed-local-config")
+		try {
+			await createProfile(testDir, "default")
+
+			const localConfigDir = join(testDir, ".opencode")
+			await mkdir(localConfigDir, { recursive: true })
+			await Bun.write(join(localConfigDir, "ocx.jsonc"), '{ "profile": "default"')
+
+			const result = await runCLIIsolated(["oc", "--no-rename"], testDir, {
+				OCX_PROFILE: "default",
+				OPENCODE_BIN: "true",
+			})
+
+			expect(result.exitCode).toBe(EXIT_CODES.CONFIG)
+			expect(result.output).toContain("Invalid JSONC")
+			expect(result.output).toContain(".opencode/ocx.jsonc")
+			expect(result.output).not.toContain("Using profile:")
+		} finally {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("fails fast for malformed local .opencode/opencode.jsonc and does not launch", async () => {
+		const testDir = await createTempDir("oc-malformed-local-opencode-config")
+		try {
+			const localConfigDir = join(testDir, ".opencode")
+			await mkdir(localConfigDir, { recursive: true })
+			await Bun.write(join(localConfigDir, "opencode.jsonc"), '{ "model": "gpt-5"')
+
+			const result = await runCLIIsolated(["oc", "--no-rename"], testDir, {
+				OPENCODE_BIN: "true",
+			})
+
+			expect(result.exitCode).toBe(EXIT_CODES.CONFIG)
+			expect(result.output).toContain("Invalid JSONC")
+			expect(result.output).toContain(".opencode/opencode.jsonc")
+			expect(result.output).not.toContain("Using profile:")
+		} finally {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("fails fast for corrupted implicit default profile and does not launch", async () => {
+		const testDir = await createTempDir("oc-corrupted-default-profile")
+		try {
+			await createProfile(testDir, "default")
+			await Bun.write(join(testDir, "opencode", "profiles", "default", "ocx.jsonc"), "{")
+
+			const result = await runCLIIsolated(["oc", "--no-rename"], testDir, {
+				OPENCODE_BIN: "true",
+			})
+
+			expect(result.exitCode).toBe(EXIT_CODES.CONFIG)
+			expect(result.output).toContain("profiles/default/ocx.jsonc")
+			expect(result.output).toContain("Invalid JSONC")
+			expect(result.output).not.toContain("Using profile: default")
+		} finally {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("uses valid --profile and ignores invalid lower-priority OCX_PROFILE", async () => {
+		const testDir = await createTempDir("oc-precedence-short-circuit")
+		try {
+			await createProfile(testDir, "work")
+
+			const result = await runCLIIsolated(["oc", "--no-rename", "--profile", "work"], testDir, {
+				OCX_PROFILE: "missing",
+				OPENCODE_BIN: "false",
+			})
+
+			// /usr/bin/false exits 1, proving launch proceeded with the valid CLI profile.
+			expect(result.exitCode).toBe(1)
+			expect(result.output).toContain("Using profile: work")
+			expect(result.output).not.toContain('Profile "missing" not found')
+		} finally {
+			await cleanupTempDir(testDir)
+		}
 	})
 })

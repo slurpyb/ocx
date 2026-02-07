@@ -9,9 +9,7 @@
 
 import type { Command } from "commander"
 import { ConfigResolver } from "../config/resolver"
-import { ProfileManager } from "../profile/manager"
 import { getProfileOpencodeConfig } from "../profile/paths"
-import { ProfilesNotInitializedError } from "../utils/errors"
 import { getGitInfo } from "../utils/git-context"
 import { handleError, logger } from "../utils/index"
 import { getGlobalConfigPath } from "../utils/paths"
@@ -116,14 +114,6 @@ async function runOpencode(args: string[], options: OpencodeOptions): Promise<vo
 	const resolver = await ConfigResolver.create(projectDir, { profile: options.profile })
 	const config = resolver.resolve()
 	const profile = resolver.getProfile()
-
-	// Guard: If profile is specified but profiles aren't initialized
-	if (options.profile) {
-		const manager = ProfileManager.create()
-		if (!(await manager.isInitialized())) {
-			throw new ProfilesNotInitializedError()
-		}
-	}
 
 	// Print feedback about which profile is being used
 	if (config.profileName) {
