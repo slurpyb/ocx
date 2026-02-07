@@ -30,9 +30,6 @@ export const sharedOptions = {
 	/** Target a specific profile's config */
 	profile: () => new Option("-p, --profile <name>", "Target a specific profile's config"),
 
-	/** Skip confirmation prompts */
-	force: () => new Option("-f, --force", "Skip confirmation prompts"),
-
 	/** Verbose output */
 	verbose: () => new Option("-v, --verbose", "Verbose output"),
 
