@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
 import type { NpmPackageVersion } from "../../src/utils/npm-registry"
 
+const CHECK_MODULE_PATH = require.resolve("../../src/self-update/check.js")
+const NPM_REGISTRY_MODULE_PATH = require.resolve("../../src/utils/npm-registry.js")
+
+function clearCheckModuleCache(): void {
+	delete require.cache[CHECK_MODULE_PATH]
+	delete require.cache[NPM_REGISTRY_MODULE_PATH]
+}
+
 // =============================================================================
 // Test Utilities
 // =============================================================================
@@ -10,9 +18,8 @@ import type { NpmPackageVersion } from "../../src/utils/npm-registry"
  * Required because checkForUpdate reads __VERSION__ at module load time.
  */
 async function importCheckModule() {
-	// Clear the module from cache to allow re-import with different mocks
-	const modulePath = require.resolve("../../src/self-update/check.js")
-	delete require.cache[modulePath]
+	// Clear module cache to avoid cross-test mock poisoning
+	clearCheckModuleCache()
 
 	return import("../../src/self-update/check.js")
 }
@@ -36,6 +43,7 @@ describe("checkForUpdate", () => {
 		// Restore original fetch
 		fetchSpy.mockRestore()
 		global.fetch = originalFetch
+		clearCheckModuleCache()
 	})
 
 	describe("in development mode (__VERSION__ undefined)", () => {
@@ -65,6 +73,7 @@ describe("checkForUpdate", () => {
 
 		afterEach(() => {
 			mock.restore()
+			clearCheckModuleCache()
 		})
 
 		it("returns { ok: false } on network error", async () => {
@@ -116,6 +125,7 @@ describe("checkForUpdate with mocked registry", () => {
 	afterEach(() => {
 		// Restore all mocks
 		mock.restore()
+		clearCheckModuleCache()
 	})
 
 	it("skips update check in dev mode (0.0.0-dev)", async () => {
@@ -209,6 +219,7 @@ describe("checkForUpdate with injected VersionProvider", () => {
 
 	afterEach(() => {
 		mock.restore()
+		clearCheckModuleCache()
 	})
 
 	it("uses injected version provider", async () => {

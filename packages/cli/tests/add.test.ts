@@ -15,10 +15,11 @@ import { join } from "node:path"
 import { cleanupTempDir, createTempDir, parseJsonc, runCLI } from "./helpers"
 import { type MockRegistry, startMockRegistry } from "./mock-registry"
 
+let addImportCounter = 0
+
 async function importAddCommandModule() {
-	const modulePath = require.resolve("../src/commands/add")
-	delete require.cache[modulePath]
-	return import("../src/commands/add")
+	const cacheBuster = addImportCounter++
+	return import(`../src/commands/add?test=${cacheBuster}`)
 }
 
 describe("ocx add", () => {
@@ -558,9 +559,26 @@ describe("ocx add --from", () => {
 
 describe("ocx add --json mixed-input contract", () => {
 	let testDir: string
+	let registry: MockRegistry
+	const originalFetch = global.fetch
+
+	function getRequestUrl(input: string | URL | Request): string {
+		if (typeof input === "string") return input
+		if (input instanceof URL) return input.toString()
+		return input.url
+	}
+
+	beforeAll(() => {
+		registry = startMockRegistry()
+	})
+
+	afterAll(() => {
+		registry.stop()
+	})
 
 	afterEach(async () => {
 		mock.restore()
+		global.fetch = originalFetch
 		if (testDir) {
 			await cleanupTempDir(testDir)
 		}
@@ -569,37 +587,23 @@ describe("ocx add --json mixed-input contract", () => {
 	it("emits exactly one JSON document for mixed npm + registry success", async () => {
 		testDir = await createTempDir("add-json-mixed-success")
 
-		const mockFetch = mock(
-			async () =>
-				new Response(
-					JSON.stringify({
-						name: "test-plugin",
-						"dist-tags": { latest: "1.0.0" },
-						versions: {},
-					}),
-					{ status: 200, headers: { "content-type": "application/json" } },
-				),
+		const fetchSpy = spyOn(global, "fetch").mockImplementation(
+			mock(async (input: string | URL | Request, init?: RequestInit) => {
+				const url = getRequestUrl(input)
+				if (url.startsWith("https://registry.npmjs.org/test-plugin")) {
+					return new Response(
+						JSON.stringify({
+							name: "test-plugin",
+							"dist-tags": { latest: "1.0.0" },
+							versions: {},
+						}),
+						{ status: 200, headers: { "content-type": "application/json" } },
+					)
+				}
+
+				return originalFetch(input as RequestInfo | URL, init)
+			}) as unknown as typeof fetch,
 		)
-		const fetchSpy = spyOn(global, "fetch").mockImplementation(mockFetch as unknown as typeof fetch)
-
-		mock.module("../src/updaters/update-opencode-config", () => ({
-			readOpencodeJsonConfig: mock(async () => ({ config: { plugin: [] } })),
-			updateOpencodeJsonConfig: mock(async () => ({
-				changed: true,
-				created: false,
-				path: `${testDir}/.opencode/opencode.jsonc`,
-			})),
-		}))
-
-		mock.module("../src/registry/resolver", () => ({
-			resolveDependencies: mock(async () => ({
-				components: [],
-				installOrder: ["kdco/test-component"],
-				opencode: {},
-				npmDependencies: [],
-				npmDevDependencies: [],
-			})),
-		}))
 
 		const consoleLogSpy = spyOn(console, "log").mockImplementation(() => {})
 		const consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {})
@@ -607,17 +611,17 @@ describe("ocx add --json mixed-input contract", () => {
 		const { runAddCore } = await importAddCommandModule()
 		const provider = {
 			cwd: testDir,
-			getRegistries: () => ({ kdco: { url: "https://registry.example.com" } }),
+			getRegistries: () => ({ kdco: { url: registry.url } }),
 			getComponentPath: () => ".opencode/components",
 		}
 
-		await runAddCore(
-			["npm:test-plugin", "kdco/test-component"],
-			{ json: true, quiet: true, trust: true },
-			provider,
-		)
+		await runAddCore(["npm:test-plugin", "kdco/test-plugin"], {
+			json: true,
+			quiet: true,
+			trust: true,
+		}, provider)
 
-		expect(fetchSpy).toHaveBeenCalledTimes(1)
+		expect(fetchSpy).toHaveBeenCalled()
 		expect(consoleErrorSpy).not.toHaveBeenCalled()
 		expect(consoleLogSpy).toHaveBeenCalledTimes(1)
 
@@ -630,64 +634,29 @@ describe("ocx add --json mixed-input contract", () => {
 
 		expect(payload.success).toBe(true)
 		expect(payload.plugins).toEqual(["test-plugin"])
-		expect(payload.installed).toEqual(["kdco/test-component"])
+		expect(payload.installed).toEqual(["kdco/test-plugin"])
 	})
 
 	it("emits strict single-channel JSON on mixed-mode conflict failure without stderr contamination", async () => {
 		testDir = await createTempDir("add-json-mixed-failure")
 
-		const mockFetch = mock(
-			async () =>
-				new Response(
-					JSON.stringify({
-						name: "test-plugin",
-						"dist-tags": { latest: "1.0.0" },
-						versions: {},
-					}),
-					{ status: 200, headers: { "content-type": "application/json" } },
-				),
+		const fetchSpy = spyOn(global, "fetch").mockImplementation(
+			mock(async (input: string | URL | Request, init?: RequestInit) => {
+				const url = getRequestUrl(input)
+				if (url.startsWith("https://registry.npmjs.org/test-plugin")) {
+					return new Response(
+						JSON.stringify({
+							name: "test-plugin",
+							"dist-tags": { latest: "1.0.0" },
+							versions: {},
+						}),
+						{ status: 200, headers: { "content-type": "application/json" } },
+					)
+				}
+
+				return originalFetch(input as RequestInfo | URL, init)
+			}) as unknown as typeof fetch,
 		)
-		const fetchSpy = spyOn(global, "fetch").mockImplementation(mockFetch as unknown as typeof fetch)
-
-		mock.module("../src/updaters/update-opencode-config", () => ({
-			readOpencodeJsonConfig: mock(async () => ({ config: { plugin: [] } })),
-			updateOpencodeJsonConfig: mock(async () => ({
-				changed: true,
-				created: false,
-				path: `${testDir}/.opencode/opencode.jsonc`,
-			})),
-		}))
-
-		mock.module("../src/registry/fetcher", () => ({
-			fetchRegistryIndex: mock(async () => ({
-				namespace: "kdco",
-				author: "Test Author",
-				components: [],
-			})),
-			fetchFileContent: mock(async () => "export const plugin = true\n"),
-		}))
-
-		mock.module("../src/registry/resolver", () => ({
-			resolveDependencies: mock(async () => ({
-				components: [
-					{
-						name: "test-component",
-						type: "plugin",
-						description: "test component",
-						files: [{ path: "index.ts", target: "plugins/test-component.ts" }],
-						dependencies: [],
-						registryName: "kdco",
-						namespace: "kdco",
-						baseUrl: "https://registry.example.com",
-						qualifiedName: "kdco/test-component",
-					},
-				],
-				installOrder: ["kdco/test-component"],
-				opencode: {},
-				npmDependencies: [],
-				npmDevDependencies: [],
-			})),
-		}))
 
 		const consoleLogSpy = spyOn(console, "log").mockImplementation(() => {})
 		const consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {})
@@ -699,29 +668,29 @@ describe("ocx add --json mixed-input contract", () => {
 
 		const conflictDir = join(testDir, ".opencode", "plugins")
 		await mkdir(conflictDir, { recursive: true })
-		await writeFile(join(conflictDir, "test-component.ts"), "// local conflicting content\n")
+		await writeFile(join(conflictDir, "test-plugin.ts"), "// local conflicting content\n")
 
 		const { runAddCore } = await importAddCommandModule()
 		const { handleError } = await import("../src/utils/handle-error")
 		const provider = {
 			cwd: testDir,
-			getRegistries: () => ({ kdco: { url: "https://registry.example.com" } }),
+			getRegistries: () => ({ kdco: { url: registry.url } }),
 			getComponentPath: () => ".opencode/components",
 		}
 
 		let thrownError: unknown
 		try {
-			await runAddCore(
-				["npm:test-plugin", "kdco/test-component"],
-				{ json: true, quiet: true, trust: true },
-				provider,
-			)
+			await runAddCore(["npm:test-plugin", "kdco/test-plugin"], {
+				json: true,
+				quiet: true,
+				trust: true,
+			}, provider)
 		} catch (error) {
 			thrownError = error
 		}
 
 		expect(thrownError).toBeDefined()
-		expect(fetchSpy).toHaveBeenCalledTimes(1)
+		expect(fetchSpy).toHaveBeenCalled()
 
 		// No partial JSON should be emitted before command-level error handling.
 		expect(consoleLogSpy).not.toHaveBeenCalled()

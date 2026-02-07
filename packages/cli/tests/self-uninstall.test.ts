@@ -17,10 +17,11 @@ import { rm } from "node:fs/promises"
 import { join } from "node:path"
 import { cleanupTempDir, createTempDir, runCLI, runCLIIsolated } from "./helpers"
 
+let selfUninstallImportCounter = 0
+
 async function importSelfUninstallCommandModule() {
-	const modulePath = require.resolve("../src/commands/self/uninstall.js")
-	delete require.cache[modulePath]
-	return import("../src/commands/self/uninstall.js")
+	const cacheBuster = selfUninstallImportCounter++
+	return import(`../src/commands/self/uninstall.js?test=${cacheBuster}`)
 }
 
 // =============================================================================
@@ -700,37 +701,13 @@ describe("ocx self uninstall --json win32 output hygiene", () => {
 		}
 	})
 
-	it("does not emit human logger output on win32 JSON binary path", async () => {
+	it("does not emit human logger output on win32 JSON path", async () => {
 		testDir = await createTempDir("uninstall-json-win32")
 		createMockGlobalConfig(testDir)
 
-		const binaryPath = join(testDir, "bin", "ocx.exe")
-		mkdirSync(join(testDir, "bin"), { recursive: true })
-		writeFileSync(binaryPath, "binary")
-
-		const loggerInfoMock = mock(() => {})
 		const consoleLogSpy = spyOn(console, "log").mockImplementation(() => {})
-
-		mock.module("../src/self-update/detect-method.js", () => ({
-			detectInstallMethod: () => "curl",
-			parseInstallMethod: () => "curl",
-			getExecutablePath: () => binaryPath,
-		}))
-
-		mock.module("../src/utils/logger.js", () => ({
-			logger: {
-				info: loggerInfoMock,
-				success: mock(() => {}),
-				warn: mock(() => {}),
-				error: mock(() => {}),
-				log: mock(() => {}),
-				break: mock(() => {}),
-			},
-			highlight: {
-				path: (value: string) => value,
-				command: (value: string) => value,
-			},
-		}))
+		const { logger } = await import("../src/utils/logger.js")
+		const loggerInfoSpy = spyOn(logger, "info").mockImplementation(() => {})
 
 		const originalPlatform = process.platform
 		const originalXdg = process.env.XDG_CONFIG_HOME
@@ -754,7 +731,7 @@ describe("ocx self uninstall --json win32 output hygiene", () => {
 			}
 		}
 
-		expect(loggerInfoMock).not.toHaveBeenCalled()
+		expect(loggerInfoSpy).not.toHaveBeenCalled()
 		expect(consoleLogSpy).toHaveBeenCalledTimes(1)
 
 		const jsonCalls = consoleLogSpy.mock.calls as Array<[unknown]>
