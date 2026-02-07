@@ -748,6 +748,182 @@ describe("ocx profile add --clone (profile cloning)", () => {
 		expect(clonedConfig.exclude).toContain("**/LOCAL.md")
 	})
 
+	it("preserves raw ocx.jsonc bytes exactly when cloning global profile to global profile", async () => {
+		// Setup global config
+		const globalConfigDir = join(testDir, "opencode")
+		const profilesDir = join(globalConfigDir, "profiles")
+		await mkdir(profilesDir, { recursive: true })
+		await writeFile(join(globalConfigDir, "ocx.jsonc"), JSON.stringify({ registries: {} }, null, 2))
+
+		// Create source profile with non-trivial JSONC formatting/comments/newline
+		const sourceProfileDir = join(profilesDir, "byte-source-global")
+		await mkdir(sourceProfileDir, { recursive: true })
+		const sourcePath = join(sourceProfileDir, "ocx.jsonc")
+		const sourceBytes = `{
+  // byte-preservation sentinel comment
+  "$schema": "https://ocx.kdco.dev/schemas/ocx.json",
+  "registries": { "custom": { "url": "https://custom.registry.com" } },
+  "exclude": [
+    "**/SECRET.md",
+    // keep this comment exactly
+    "**/PRIVATE.md"
+  ],
+  "include": []
+}
+`
+		await writeFile(sourcePath, sourceBytes)
+		const sourceRawBeforeClone = await readFile(sourcePath, "utf-8")
+
+		// Create default profile
+		await mkdir(join(profilesDir, "default"), { recursive: true })
+		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
+
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode } = await runCLI(
+			["profile", "add", "byte-cloned-global", "--clone", "byte-source-global", "--global"],
+			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
+		)
+
+		expect(exitCode).toBe(0)
+
+		const sourceRawAfterClone = await readFile(sourcePath, "utf-8")
+		const clonedPath = join(profilesDir, "byte-cloned-global", "ocx.jsonc")
+		const clonedRaw = await readFile(clonedPath, "utf-8")
+
+		expect(sourceRawAfterClone).toBe(sourceRawBeforeClone)
+		// RED contract: preserve exact bytes (comments/format/newline)
+		expect(clonedRaw).toBe(sourceRawBeforeClone)
+
+		// Keep semantic clone assertions intact
+		const clonedConfig = parseJsonc(clonedRaw) as {
+			registries?: { custom?: { url?: string } }
+			exclude?: string[]
+		}
+		expect(clonedConfig.registries?.custom?.url).toBe("https://custom.registry.com")
+		expect(clonedConfig.exclude).toContain("**/SECRET.md")
+	})
+
+	it("preserves raw ocx.jsonc bytes exactly when cloning local profile to local profile", async () => {
+		// Setup global config
+		const globalConfigDir = join(testDir, "opencode")
+		const profilesDir = join(globalConfigDir, "profiles")
+		await mkdir(profilesDir, { recursive: true })
+		await writeFile(join(globalConfigDir, "ocx.jsonc"), JSON.stringify({ registries: {} }, null, 2))
+
+		// Create default profile
+		await mkdir(join(profilesDir, "default"), { recursive: true })
+		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
+
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		// Create local source profile with non-trivial JSONC formatting/comments/newline
+		const localProfilesDir = join(workDir, ".opencode", "profiles")
+		const sourceProfileDir = join(localProfilesDir, "byte-source-local")
+		await mkdir(sourceProfileDir, { recursive: true })
+		const sourcePath = join(sourceProfileDir, "ocx.jsonc")
+		const sourceBytes = `{
+	"registries": {
+		"local": { "url": "https://local.registry.com" }
+	},
+	"exclude": [
+		"**/LOCAL.md"
+	],
+	// trailing comment and newline must survive clone
+	"include": []
+}
+`
+		await writeFile(sourcePath, sourceBytes)
+		const sourceRawBeforeClone = await readFile(sourcePath, "utf-8")
+
+		const { exitCode } = await runCLI(
+			["profile", "add", "byte-cloned-local", "--clone", "byte-source-local"],
+			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
+		)
+
+		expect(exitCode).toBe(0)
+
+		const sourceRawAfterClone = await readFile(sourcePath, "utf-8")
+		const clonedPath = join(localProfilesDir, "byte-cloned-local", "ocx.jsonc")
+		const clonedRaw = await readFile(clonedPath, "utf-8")
+
+		expect(sourceRawAfterClone).toBe(sourceRawBeforeClone)
+		// RED contract: preserve exact bytes (comments/format/newline)
+		expect(clonedRaw).toBe(sourceRawBeforeClone)
+
+		// Keep semantic clone assertions intact
+		const clonedConfig = parseJsonc(clonedRaw) as {
+			registries?: { local?: { url?: string } }
+			exclude?: string[]
+		}
+		expect(clonedConfig.registries?.local?.url).toBe("https://local.registry.com")
+		expect(clonedConfig.exclude).toContain("**/LOCAL.md")
+	})
+
+	it("preserves default profile AGENTS.md comment line when cloning", async () => {
+		// Setup global config
+		const globalConfigDir = join(testDir, "opencode")
+		const profilesDir = join(globalConfigDir, "profiles")
+		await mkdir(profilesDir, { recursive: true })
+		await writeFile(join(globalConfigDir, "ocx.jsonc"), JSON.stringify({ registries: {} }, null, 2))
+
+		// Create default profile with the canonical commented AGENTS.md exclude line
+		const defaultProfileDir = join(profilesDir, "default")
+		await mkdir(defaultProfileDir, { recursive: true })
+		const defaultPath = join(defaultProfileDir, "ocx.jsonc")
+		const defaultBytes = `{
+  "$schema": "https://ocx.kdco.dev/schemas/ocx.json",
+  "registries": {},
+  "renameWindow": true,
+  "exclude": [
+    // "**/AGENTS.md",
+    "**/CLAUDE.md",
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
+  ],
+  "include": []
+}
+`
+		await writeFile(defaultPath, defaultBytes)
+		const sourceRawBeforeClone = await readFile(defaultPath, "utf-8")
+
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode } = await runCLI(
+			["profile", "add", "default-clone", "--clone", "default", "--global"],
+			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
+		)
+
+		expect(exitCode).toBe(0)
+
+		const sourceRawAfterClone = await readFile(defaultPath, "utf-8")
+		const clonedPath = join(profilesDir, "default-clone", "ocx.jsonc")
+		const clonedRaw = await readFile(clonedPath, "utf-8")
+
+		expect(sourceRawBeforeClone).toContain('// "**/AGENTS.md",')
+		expect(sourceRawAfterClone).toBe(sourceRawBeforeClone)
+		// RED contract: commented AGENTS.md line (and full raw bytes) must be preserved
+		expect(clonedRaw).toContain('// "**/AGENTS.md",')
+		expect(clonedRaw).toBe(sourceRawBeforeClone)
+	})
+
 	it("fails when source profile exists only in wrong scope", async () => {
 		// Setup global config
 		const globalConfigDir = join(testDir, "opencode")

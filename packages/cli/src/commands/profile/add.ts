@@ -13,10 +13,9 @@
 
 import type { Command } from "commander"
 import { parse as parseJsonc } from "jsonc-parser"
-import { atomicWrite } from "../../profile/atomic"
+import { atomicCopy } from "../../profile/atomic"
 import { ProfileManager } from "../../profile/manager"
 import { getGlobalConfig, getLocalProfileOcxConfig, getProfileOcxConfig } from "../../profile/paths"
-import type { Profile } from "../../profile/schema"
 import type { ProfileOcxConfig } from "../../schemas/ocx"
 import { profileOcxConfigSchema } from "../../schemas/ocx"
 import {
@@ -429,9 +428,8 @@ async function cloneFromLocalProfile(
 	}
 
 	// Load source from same scope as target
-	let source: Profile
 	try {
-		source = await manager.get(sourceName, global)
+		await manager.get(sourceName, global)
 	} catch (error) {
 		// Re-throw known errors with enhanced scope context
 		if (error instanceof ProfileNotFoundError) {
@@ -451,9 +449,12 @@ async function cloneFromLocalProfile(
 
 	await manager.add(name, global)
 
-	// Copy OCX config from source
+	// Copy OCX config from source (byte-for-byte)
+	const sourceOcxPath = global
+		? getProfileOcxConfig(sourceName)
+		: getLocalProfileOcxConfig(sourceName)
 	const targetOcxPath = global ? getProfileOcxConfig(name) : getLocalProfileOcxConfig(name)
-	await atomicWrite(targetOcxPath, source.ocx)
+	await atomicCopy(sourceOcxPath, targetOcxPath)
 
 	const scope = global ? "global" : "local"
 	if (!quiet) {

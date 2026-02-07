@@ -27,6 +27,32 @@ export async function atomicWrite(filePath: string, data: unknown): Promise<void
 }
 
 /**
+ * Atomically copy file bytes from source to target.
+ * Uses temp file + rename pattern so readers never observe partial writes.
+ * Target file is created with 0o600 permissions.
+ *
+ * @param sourcePath - Source file path
+ * @param targetPath - Target file path
+ */
+export async function atomicCopy(sourcePath: string, targetPath: string): Promise<void> {
+	const tempPath = `${targetPath}.tmp.${process.pid}`
+	try {
+		const sourceFile = Bun.file(sourcePath)
+		const sourceBytes = await sourceFile.arrayBuffer()
+		await Bun.write(tempPath, sourceBytes, { mode: 0o600 })
+		await rename(tempPath, targetPath)
+	} catch (error) {
+		// Cleanup temp file on failure
+		try {
+			await unlink(tempPath)
+		} catch {
+			// Ignore cleanup errors
+		}
+		throw error
+	}
+}
+
+/**
  * Atomically swap a symlink to point to a new target.
  * Uses temp symlink + rename pattern (POSIX atomic).
  *
