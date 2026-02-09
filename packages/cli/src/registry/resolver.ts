@@ -18,7 +18,7 @@ import { fetchComponent } from "./fetcher"
 import { mergeOpencodeConfig } from "./merge"
 
 /**
- * Parse a component reference into namespace and component name.
+ * Parse a component reference into registry alias and component name.
  * - "kdco/researcher" -> { namespace: "kdco", component: "researcher" }
  * - "researcher" (with defaultNamespace) -> { namespace: defaultNamespace, component: "researcher" }
  * - "researcher" (without defaultNamespace) -> throws error
@@ -37,7 +37,9 @@ export function parseComponentRef(
 		return { namespace: defaultNamespace, component: ref }
 	}
 
-	throw new ValidationError(`Component '${ref}' must include a namespace (e.g., 'kdco/${ref}')`)
+	throw new ValidationError(
+		`Component '${ref}' must include a registry alias (e.g., 'kdco/${ref}')`,
+	)
 }
 
 export interface ResolvedComponent extends NormalizedComponentManifest {
@@ -97,11 +99,11 @@ export async function resolveDependencies(
 
 		visiting.add(qualifiedName)
 
-		// Look up the registry for this namespace
+		// Look up the registry for this alias
 		const regConfig = registries[componentNamespace]
 		if (!regConfig) {
 			throw new NotFoundError(
-				`Registry '${componentNamespace}' not found. Add it with 'ocx registry add <url> --name ${componentNamespace}'.`,
+				`Registry alias '${componentNamespace}' not found. Add it with 'ocx registry add <url> --name ${componentNamespace}'.`,
 			)
 		}
 

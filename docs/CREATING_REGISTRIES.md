@@ -289,12 +289,12 @@ Users can add your registry using:
 ocx registry add https://example.com/registry --name my
 ```
 
-> **Tip:** Use `--global` to add the registry to your global config for profile management (e.g., `ocx profile add <name> --source registry/profile --global`). For project work, configure registries in your profile or local config:
+> **Tip:** Use `--global` to add the registry to your global config for profile management (e.g., `ocx profile add <name> --source my/profile --global`). For project work, configure registries in your profile or local config:
 > ```bash
 > ocx registry add https://example.com --name my --global
 > ```
 
-After adding the registry, users install components with:
+After adding the registry, users install components using the alias:
 ```bash
 ocx add my/cool-plugin
 ```

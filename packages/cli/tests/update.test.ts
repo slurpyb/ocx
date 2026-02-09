@@ -317,7 +317,7 @@ describe("ocx update", () => {
 		expect(output).toContain("kdco/test-plugin")
 	})
 
-	it("should fail when component name lacks registry prefix and is not found", async () => {
+	it("should fail when component name lacks registry alias and is not found", async () => {
 		testDir = await setupProject("update-no-prefix")
 
 		// Install component
@@ -327,7 +327,7 @@ describe("ocx update", () => {
 		const { exitCode, output } = await runCLI(["update", "nonexistent"], testDir)
 
 		expect(exitCode).not.toBe(0)
-		expect(output).toContain("must include a registry prefix")
+		expect(output).toContain("must include a registry alias")
 	})
 
 	// =========================================================================

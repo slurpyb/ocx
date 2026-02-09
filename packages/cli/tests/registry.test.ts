@@ -98,10 +98,20 @@ describe("ocx registry", () => {
 		config.lockRegistries = true
 		await Bun.write(configPath, JSON.stringify(config, null, 2))
 
-		const { exitCode, output } = await runCLI(["registry", "add", "http://example.com"], testDir)
+		const { exitCode, output } = await runCLI(
+			["registry", "add", "http://example.com", "--name", "test"],
+			testDir,
+		)
 
 		expect(exitCode).not.toBe(0)
 		expect(output).toContain("Registries are locked")
+	})
+
+	it("should error when --name is not provided", async () => {
+		const { exitCode, output } = await runCLI(["registry", "add", registry.url], testDir)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("--name is required")
 	})
 })
 
@@ -199,13 +209,13 @@ describe("registry add --force", () => {
 	})
 
 	it("should error for empty URL", async () => {
-		const result = await runCLI(["registry", "add", ""], testDir)
+		const result = await runCLI(["registry", "add", "", "--name", "test"], testDir)
 		expect(result.exitCode).not.toBe(0)
 		expect(result.stderr).toContain("Registry URL is required")
 	})
 
 	it("should error for whitespace-only URL", async () => {
-		const result = await runCLI(["registry", "add", "   "], testDir)
+		const result = await runCLI(["registry", "add", "   ", "--name", "test"], testDir)
 		expect(result.exitCode).not.toBe(0)
 		expect(result.stderr).toContain("Registry URL is required")
 	})
@@ -422,7 +432,7 @@ describe("ocx registry --global", () => {
 		const originalGlobalConfig = await Bun.file(join(globalConfigDir, "ocx.jsonc")).text()
 
 		const result = await runCLI(
-			["registry", "add", "--global", "--cwd", cwdTarget, registry.url],
+			["registry", "add", "--global", "--cwd", cwdTarget, registry.url, "--name", "test"],
 			testDir,
 			{ env },
 		)
@@ -444,7 +454,11 @@ describe("ocx registry --global", () => {
 		// Remove global config
 		await rm(join(globalConfigDir, "ocx.jsonc"))
 
-		const result = await runCLI(["registry", "add", "--global", registry.url], testDir, { env })
+		const result = await runCLI(
+			["registry", "add", "--global", registry.url, "--name", "test"],
+			testDir,
+			{ env },
+		)
 		expect(result.exitCode).toBe(1)
 		expect(result.stderr).toContain("global config not found")
 
@@ -525,8 +539,13 @@ describe("ocx registry --global", () => {
 		await assertFileNotExists(join(testDir, "ocx.jsonc"))
 	})
 
-	it("should auto-generate name from URL for global registry", async () => {
-		// Auto-generated name from hostname is always accepted (no namespace constraint)
+	it("should require --name for global registry (no default alias)", async () => {
+		// Without --name, should fail with validation error
+		const failResult = await runCLI(["registry", "add", "--global", registry.url], testDir, { env })
+		expect(failResult.exitCode).not.toBe(0)
+		expect(failResult.stderr).toContain("--name is required")
+
+		// With --name, should succeed
 		const result = await runCLI(
 			["registry", "add", "--global", registry.url, "--name", "kdco"],
 			testDir,
@@ -542,7 +561,6 @@ describe("ocx registry --global", () => {
 
 		// Verify local config was NOT created as side effect
 		await assertFileNotExists(join(testDir, ".opencode", "ocx.jsonc"))
-		await assertFileNotExists(join(testDir, "ocx.jsonc"))
 	})
 })
 

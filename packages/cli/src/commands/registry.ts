@@ -37,7 +37,7 @@ export interface RegistryOptions {
 }
 
 export interface RegistryAddOptions extends RegistryOptions {
-	name?: string
+	name: string
 	force?: boolean
 	dryRun?: boolean
 }
@@ -62,6 +62,15 @@ export async function runRegistryAddCore(
 		targetLabel?: string // For dry-run summary
 	},
 ): Promise<{ name: string; url: string; updated: boolean } | DryRunResult> {
+	// Guard: --name is required (alias-first model, no defaults from hostname)
+	if (!options.name) {
+		throw new ValidationError(
+			"--name is required. Provide an alias for this registry.\n\n" +
+				"Example:\n" +
+				"  ocx registry add https://registry.example.com --name my-registry",
+		)
+	}
+
 	// Guard: Check registries aren't locked
 	if (callbacks.isLocked?.()) {
 		throw new Error("Registries are locked. Cannot add.")
@@ -72,13 +81,11 @@ export async function runRegistryAddCore(
 	if (!trimmedUrl) {
 		throw new ValidationError("Registry URL is required")
 	}
-	let derivedName: string
 	try {
 		const parsed = new URL(trimmedUrl)
 		if (!["http:", "https:"].includes(parsed.protocol)) {
 			throw new ValidationError(`Invalid registry URL: ${trimmedUrl} (must use http or https)`)
 		}
-		derivedName = options.name || parsed.hostname.replace(/\./g, "-")
 	} catch (error) {
 		if (error instanceof ValidationError) throw error
 		throw new ValidationError(`Invalid registry URL: ${trimmedUrl}`)
@@ -86,7 +93,7 @@ export async function runRegistryAddCore(
 
 	const normalizedUrl = normalizeRegistryUrl(trimmedUrl)
 
-	const name = derivedName
+	const name = options.name
 	const registries = callbacks.getRegistries()
 	const existingRegistry = registries[name]
 	const isUpdate = name in registries
@@ -275,12 +282,15 @@ async function resolveRegistryTarget(
 export function registerRegistryCommand(program: Command): void {
 	const registry = program.command("registry").description("Manage registries")
 
-	// registry add <url> [--name <name>]
+	// registry add <url> --name <name>
 	const addCmd = registry
 		.command("add")
 		.description("Add a registry")
 		.argument("<url>", "Registry URL")
-		.option("--name <name>", "Registry alias (defaults to hostname)")
+		.option(
+			"--name <name>",
+			"Registry alias (required, used as lookup key for alias/component refs)",
+		)
 		.option("-f, --force", "Overwrite existing registry")
 		.option("--dry-run", "Validate registry without adding to config")
 

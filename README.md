@@ -81,7 +81,11 @@ Add individual components to projects (copied to `.opencode/`, not `node_modules
 # One-time local setup
 ocx init
 
-ocx add kdco/workspace --from https://registry.kdco.dev
+# Add a registry with a custom alias
+ocx registry add https://registry.kdco.dev --name kdco
+
+# Install components using alias/component syntax
+ocx add kdco/workspace
 ```
 
 See [Components & Registries](./docs/REGISTRIES.md) for more.

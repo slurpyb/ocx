@@ -46,7 +46,7 @@ Your `registry.jsonc` defines a namespace for all components:
 }
 ```
 
-**Note:** Component names are clean (no prefix). The namespace is used for CLI references: `ocx add my/component`
+**Note:** Component names are clean (no prefix). The alias you choose when adding the registry determines CLI references: `ocx add my/component`
 
 ### 3. Building the Registry
 
@@ -225,7 +225,7 @@ cd packages/cli && bun run build && cd ../..
 # 5. Add local registry (MUST use absolute path with file://)
 ./packages/cli/dist/index.js registry add "file://$(pwd)/workers/kdco-registry/dist" --name kdco
 
-# 6. Install components (using namespace/component syntax)
+# 6. Install components (using alias/component syntax)
 ./packages/cli/dist/index.js add kdco/workspace
 
 # 7. Verify the result

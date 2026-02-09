@@ -47,11 +47,15 @@ bun run deploy
 Once deployed, users can add components from your registry:
 
 ```bash
-# Add a component directly
-ocx add your-namespace/hello-world --from https://your-registry.workers.dev
+# Add a component directly (using --from for ephemeral access)
+ocx add hello-world --from https://your-registry.workers.dev
+
+# Or add the registry permanently with a custom alias
+ocx registry add https://your-registry.workers.dev --name myreg
+ocx add myreg/hello-world
 
 # Or install a profile
-ocx profile add my-profile --source your-namespace/my-profile --from https://your-registry.workers.dev --global
+ocx profile add my-profile --source myreg/my-profile --from https://your-registry.workers.dev --global
 ```
 
 ## Project Structure

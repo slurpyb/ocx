@@ -836,7 +836,7 @@ All subcommands from CLI.md lines 519-705.
 > **Section Setup:** Run cleanup (Section 1.2) before starting this section to ensure
 > no existing `kdco` registry from earlier sections interferes with these tests.
 
-### 8.1 `ocx registry add` (Local, Name from Hostname)
+### 8.1 `ocx registry add` (Local)
 
 > **Note:** If you ran Sections 3.4 or 5.1 earlier, the `kdco` registry already exists.
 > Either run Section 1.2 cleanup first, or remove the existing registry:
@@ -846,7 +846,7 @@ All subcommands from CLI.md lines 519-705.
 
 - [ ] **Setup:** Local config initialized, `kdco` registry does NOT exist
 - [ ] **Command:** `$OCX_BIN registry add http://localhost:8787 --name kdco`
-- [ ] **Expected:** Registry added with custom name "kdco"
+- [ ] **Expected:** Registry added with alias "kdco"
 - [ ] **Verify:**
   ```bash
   $OCX_BIN registry list  # Should show kdco
@@ -854,24 +854,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.2 `ocx registry add` with Custom Name
-
-> **Note:** Alternative to Section 8.1. If 8.1 already ran, `kdco` registry already exists.
-> Either skip this test, or remove the existing registry first:
-> ```bash
-> $OCX_BIN registry remove kdco
-> ```
-
-- [ ] **Setup:** Local config initialized, `kdco` registry does NOT exist
-- [ ] **Command:** `$OCX_BIN registry add http://localhost:8787 --name kdco`
-- [ ] **Expected:** Registry added with custom name "kdco"
-- [ ] **Verify:**
-  ```bash
-  $OCX_BIN registry list  # Should show kdco
-  ```
-- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
-
-### 8.3 `ocx registry add --global`
+### 8.2 `ocx registry add --global`
 
 - [ ] **Setup:** Global profiles initialized
 - [ ] **Command:** `$OCX_BIN registry add http://localhost:8787 --name kdco --global`
@@ -883,7 +866,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.4 `ocx registry add --force` (Update Existing)
+### 8.3 `ocx registry add --force` (Update Existing)
 
 - [ ] **Setup:** Registry already configured (run Section 8.1 first to add `kdco` registry)
 - [ ] **Command:** `$OCX_BIN registry add http://localhost:8787 --name kdco --force`
@@ -895,9 +878,9 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.5 `ocx registry add` with `--json` Output
+### 8.4 `ocx registry add` with `--json` Output
 
-> **Note:** Alternative to Sections 8.1/8.2. If those already ran, `kdco` registry
+> **Note:** Alternative to Section 8.1. If that already ran, `kdco` registry
 > already exists. Either skip this test, remove the registry first
 > (`$OCX_BIN registry remove kdco`), or use a different name.
 
@@ -907,7 +890,7 @@ All subcommands from CLI.md lines 519-705.
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.6 `ocx registry remove` (Local)
+### 8.5 `ocx registry remove` (Local)
 
 - [ ] **Setup:** Registry configured locally
 - [ ] **Command:** `$OCX_BIN registry remove kdco`
@@ -919,7 +902,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.7 `ocx registry remove --global`
+### 8.6 `ocx registry remove --global`
 
 - [ ] **Setup:** Registry configured globally
 - [ ] **Command:** `$OCX_BIN registry remove kdco --global`
@@ -930,7 +913,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.8 `ocx registry list` (Local)
+### 8.7 `ocx registry list` (Local)
 
 - [ ] **Setup:** Registries configured locally
 - [ ] **Command:** `$OCX_BIN registry list`
@@ -938,7 +921,7 @@ All subcommands from CLI.md lines 519-705.
 - [ ] **Verify:** Output matches `.opencode/ocx.jsonc` content
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.9 `ocx registry list --global`
+### 8.8 `ocx registry list --global`
 
 - [ ] **Setup:** Registries configured globally
 - [ ] **Command:** `$OCX_BIN registry list --global`
@@ -946,7 +929,7 @@ All subcommands from CLI.md lines 519-705.
 - [ ] **Verify:** Output matches global config
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.10 `ocx registry list --json`
+### 8.9 `ocx registry list --json`
 
 - [ ] **Setup:** Registries configured
 - [ ] **Command:** `$OCX_BIN registry list --json`

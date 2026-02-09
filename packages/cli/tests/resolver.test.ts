@@ -25,7 +25,7 @@ describe("resolver", () => {
 
 		it("should throw ValidationError for bare name without default namespace", () => {
 			expect(() => parseComponentRef("researcher")).toThrow(
-				"Component 'researcher' must include a namespace",
+				"Component 'researcher' must include a registry alias",
 			)
 		})
 

@@ -125,9 +125,9 @@ export async function runUpdateCore(
 		throw new ValidationError(
 			"Specify components, use --all, or use --registry <name>.\n\n" +
 				"Examples:\n" +
-				"  ocx update kdco/agents           # Update specific component\n" +
-				"  ocx update --all                 # Update all installed components\n" +
-				"  ocx update --registry kdco       # Update all from a registry",
+				"  ocx update alias/component        # Update specific component\n" +
+				"  ocx update --all                   # Update all installed components\n" +
+				"  ocx update --registry my-alias     # Update all from a registry",
 		)
 	}
 
@@ -200,11 +200,11 @@ export async function runUpdateCore(
 			const namespace = entry.namespace
 			const componentName = entry.name
 
-			// Get registry config
+			// Get registry config by alias
 			const regConfig = registries[namespace]
 			if (!regConfig) {
 				throw new ConfigError(
-					`Registry '${namespace}' not configured. Component '${canonicalId}' cannot be updated.`,
+					`Registry alias '${namespace}' not configured. Component '${canonicalId}' cannot be updated.`,
 				)
 			}
 
@@ -428,7 +428,7 @@ function resolveComponentsToUpdate(
 		return installedComponents.map((c) => ({ component: c }))
 	}
 
-	// --registry: filter by registry namespace (no version override)
+	// --registry: filter by registry alias (no version override)
 	if (options.registry) {
 		return installedComponents
 			.filter((canonicalId) => {
@@ -439,7 +439,7 @@ function resolveComponentsToUpdate(
 	}
 
 	// Specific components: validate they exist
-	// User provides qualified names like "kdco/agents"
+	// User provides qualified names like "alias/component"
 	// We need to find the matching canonical ID in the receipt
 	const result: ComponentSpec[] = []
 	for (const spec of parsedComponents) {
@@ -461,11 +461,11 @@ function resolveComponentsToUpdate(
 				throw new ValidationError(
 					`Ambiguous component '${name}'. Found in multiple registries:\n` +
 						suggestions.map((s) => `  - ${s}`).join("\n") +
-						"\n\nPlease use a fully qualified name (registry/component).",
+						"\n\nPlease use a fully qualified name (alias/component).",
 				)
 			}
 			throw new ValidationError(
-				`Component '${name}' must include a registry prefix (e.g., 'kdco/${name}').`,
+				`Component '${name}' must include a registry alias (e.g., 'kdco/${name}').`,
 			)
 		}
 

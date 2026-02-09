@@ -390,7 +390,7 @@ ocx registry add <url> [options]
 
 | Option | Description |
 |--------|-------------|
-| `--name <name>` | Registry alias (defaults to hostname) |
+| `--name <name>` | Registry alias (required) |
 | `--dry-run` | Validate registry without adding to config |
 | `-f, --force` | Overwrite existing registry |
 | `-g, --global` | Add to global config (~/.config/opencode) |
@@ -402,17 +402,14 @@ ocx registry add <url> [options]
 #### Examples
 
 ```bash
-# Add a registry (name derived from hostname)
-ocx registry add https://registry.example.com
-
-# Add with custom name
+# Add a registry with a custom alias
 ocx registry add https://registry.example.com --name myregistry
 
 # Validate registry without adding
-ocx registry add https://registry.example.com --dry-run
+ocx registry add https://registry.example.com --name myregistry --dry-run
 
 # Get machine-readable output
-ocx registry add https://registry.example.com --json
+ocx registry add https://registry.example.com --name myregistry --json
 
 # Update existing registry (requires --force)
 ocx registry add https://new-url.example.com --name myregistry --force
@@ -428,6 +425,9 @@ ocx registry add https://registry.example.com --name myregistry
 
 # Add to global config
 ocx registry add https://registry.example.com --name myregistry --global
+
+# Use the alias to install components
+ocx add myregistry/component-name
 ```
 
 **Note:** `--global` and `--cwd` are mutually exclusive.
