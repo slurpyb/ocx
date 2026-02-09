@@ -3,14 +3,124 @@
  *
  * These tests verify that mergeOpencodeConfig correctly handles:
  * - MCP server merging (regression test for the undefined overwrite bug)
- * - Plugin array concatenation and deduplication
+ * - Plugin array concatenation and canonical-name deduplication
  * - Instructions array concatenation and deduplication
  * - Tools object merging
+ * - Non-special array replacement (OpenCode parity)
  */
 
 import { describe, expect, it } from "bun:test"
-import { mergeOpencodeConfig } from "../src/registry/merge"
+import {
+	dedupePluginsByCanonicalName,
+	extractCanonicalPluginName,
+	mergeOpencodeConfig,
+} from "../src/registry/merge"
 import type { NormalizedOpencodeConfig } from "../src/schemas/registry"
+
+// =============================================================================
+// extractCanonicalPluginName
+// =============================================================================
+
+describe("extractCanonicalPluginName", () => {
+	it("returns bare name unchanged", () => {
+		expect(extractCanonicalPluginName("chalk")).toBe("chalk")
+	})
+
+	it("strips version from unscoped package", () => {
+		expect(extractCanonicalPluginName("chalk@5.0.0")).toBe("chalk")
+	})
+
+	it("strips version from npm: unscoped", () => {
+		expect(extractCanonicalPluginName("npm:chalk@5.0.0")).toBe("npm:chalk")
+	})
+
+	it("returns npm: bare name unchanged", () => {
+		expect(extractCanonicalPluginName("npm:chalk")).toBe("npm:chalk")
+	})
+
+	it("strips version from scoped package", () => {
+		expect(extractCanonicalPluginName("@scope/pkg@1.0.0")).toBe("@scope/pkg")
+	})
+
+	it("returns scoped package without version unchanged", () => {
+		expect(extractCanonicalPluginName("@scope/pkg")).toBe("@scope/pkg")
+	})
+
+	it("strips version from npm: scoped package", () => {
+		expect(extractCanonicalPluginName("npm:@scope/pkg@1.0.0")).toBe("npm:@scope/pkg")
+	})
+
+	it("returns npm: scoped package without version unchanged", () => {
+		expect(extractCanonicalPluginName("npm:@scope/pkg")).toBe("npm:@scope/pkg")
+	})
+
+	it("handles prerelease version suffix", () => {
+		expect(extractCanonicalPluginName("npm:@scope/pkg@1.0.0-beta.1")).toBe("npm:@scope/pkg")
+	})
+
+	it("handles malformed scope without slash", () => {
+		// Edge case: @scope without /pkg — returned as-is
+		expect(extractCanonicalPluginName("@scope")).toBe("@scope")
+	})
+
+	it("handles empty string", () => {
+		expect(extractCanonicalPluginName("")).toBe("")
+	})
+
+	it("handles npm: with empty remainder", () => {
+		expect(extractCanonicalPluginName("npm:")).toBe("npm:")
+	})
+})
+
+// =============================================================================
+// dedupePluginsByCanonicalName
+// =============================================================================
+
+describe("dedupePluginsByCanonicalName", () => {
+	it("removes earlier entry when same canonical name appears later", () => {
+		const result = dedupePluginsByCanonicalName(["npm:pkg@1.0", "other", "npm:pkg@2.0"])
+		// Last "npm:pkg" (version 2.0) wins
+		expect(result).toEqual(["other", "npm:pkg@2.0"])
+	})
+
+	it("preserves order of non-duplicate entries", () => {
+		const result = dedupePluginsByCanonicalName(["npm:a", "npm:b", "npm:c"])
+		expect(result).toEqual(["npm:a", "npm:b", "npm:c"])
+	})
+
+	it("deduplicates scoped packages by canonical name", () => {
+		const result = dedupePluginsByCanonicalName([
+			"npm:@scope/foo@1.0",
+			"npm:@scope/bar",
+			"npm:@scope/foo@2.0",
+		])
+		expect(result).toEqual(["npm:@scope/bar", "npm:@scope/foo@2.0"])
+	})
+
+	it("deduplicates exact string duplicates", () => {
+		const result = dedupePluginsByCanonicalName(["npm:a", "npm:b", "npm:a"])
+		expect(result).toEqual(["npm:b", "npm:a"])
+	})
+
+	it("handles empty array", () => {
+		expect(dedupePluginsByCanonicalName([])).toEqual([])
+	})
+
+	it("handles single entry", () => {
+		expect(dedupePluginsByCanonicalName(["npm:a"])).toEqual(["npm:a"])
+	})
+
+	it("higher-priority source wins over lower-priority target for same package", () => {
+		// Real-world: profile has pkg@1.0, local overlay has pkg@2.0
+		const combined = ["npm:@franlol/formatter@0.0.2", "npm:@franlol/formatter@0.0.3"]
+		const result = dedupePluginsByCanonicalName(combined)
+		expect(result).toEqual(["npm:@franlol/formatter@0.0.3"])
+	})
+})
+
+// =============================================================================
+// mergeOpencodeConfig
+// =============================================================================
 
 describe("mergeOpencodeConfig", () => {
 	describe("mcp", () => {
@@ -74,7 +184,7 @@ describe("mergeOpencodeConfig", () => {
 		})
 	})
 
-	describe("plugin array", () => {
+	describe("plugin array — canonical dedupe", () => {
 		it("concatenates plugins from multiple components", () => {
 			const target: NormalizedOpencodeConfig = {
 				plugin: ["plugin-a", "plugin-b"],
@@ -99,6 +209,33 @@ describe("mergeOpencodeConfig", () => {
 			const result = mergeOpencodeConfig(target, source)
 
 			expect(result.plugin).toEqual(["plugin-a", "plugin-b", "plugin-c"])
+		})
+
+		it("deduplicates by canonical name — later version wins", () => {
+			const target: NormalizedOpencodeConfig = {
+				plugin: ["npm:@scope/pkg@1.0.0", "npm:other"],
+			}
+			const source: NormalizedOpencodeConfig = {
+				plugin: ["npm:@scope/pkg@2.0.0"],
+			}
+
+			const result = mergeOpencodeConfig(target, source)
+
+			// npm:@scope/pkg@2.0.0 replaces npm:@scope/pkg@1.0.0 (same canonical name)
+			expect(result.plugin).toEqual(["npm:other", "npm:@scope/pkg@2.0.0"])
+		})
+
+		it("deduplicates unscoped versioned plugins — later wins", () => {
+			const target: NormalizedOpencodeConfig = {
+				plugin: ["npm:chalk@4.0.0"],
+			}
+			const source: NormalizedOpencodeConfig = {
+				plugin: ["npm:chalk@5.0.0"],
+			}
+
+			const result = mergeOpencodeConfig(target, source)
+
+			expect(result.plugin).toEqual(["npm:chalk@5.0.0"])
 		})
 
 		it("preserves plugins when later component has none", () => {
@@ -153,6 +290,39 @@ describe("mergeOpencodeConfig", () => {
 			const result = mergeOpencodeConfig(target, source)
 
 			expect(result.instructions).toEqual(["CONTRIBUTING.md"])
+		})
+	})
+
+	describe("non-special arrays — replacement behavior (OpenCode parity)", () => {
+		it("source replaces target for non-special arrays via mergeDeep", () => {
+			// Cast to bypass strict typing — OpenCode configs are passthrough
+			const target = { customArray: ["a", "b"] } as unknown as NormalizedOpencodeConfig
+			const source = { customArray: ["c"] } as unknown as NormalizedOpencodeConfig
+
+			const result = mergeOpencodeConfig(target, source) as Record<string, unknown>
+
+			// mergeDeep replaces arrays (source wins), no concatenation
+			expect(result.customArray).toEqual(["c"])
+		})
+
+		it("agent object merges deeply but agent-level arrays would be replaced", () => {
+			// The agent object is deep-merged, but any array values within follow mergeDeep default
+			const target: NormalizedOpencodeConfig = {
+				agent: {
+					myagent: { temperature: 0.3, prompt: "old" },
+				},
+			}
+			const source: NormalizedOpencodeConfig = {
+				agent: {
+					myagent: { temperature: 0.5 },
+				},
+			}
+
+			const result = mergeOpencodeConfig(target, source)
+
+			// Deep merge: temperature overwritten, prompt preserved
+			expect(result.agent?.myagent?.temperature).toBe(0.5)
+			expect(result.agent?.myagent?.prompt).toBe("old")
 		})
 	})
 

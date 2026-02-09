@@ -413,8 +413,10 @@ describe.serial("Profile Layering - getLayered()", () => {
 			// Get layered profile
 			const profile = await manager.getLayered("default", projectDir)
 
-			// Plugins should be deduplicated
-			expect(profile.opencode?.plugin).toEqual(["shared-plugin", "global-only", "local-only"])
+			// Plugins should be deduplicated by canonical name (last-wins)
+			// "shared-plugin" appears in both global and local; local (later) wins,
+			// so the global occurrence is removed and replaced by the local one.
+			expect(profile.opencode?.plugin).toEqual(["global-only", "shared-plugin", "local-only"])
 		})
 
 		it("should concatenate instructions arrays from global and local", async () => {

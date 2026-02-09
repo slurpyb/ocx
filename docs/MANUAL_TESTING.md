@@ -262,7 +262,7 @@ Test cases from README.md lines 38-54.
 - [ ] **Expected:** Creates new profile `work` with template files and model pins
 - [ ] **Verify:**
   ```bash
-  $OCX_BIN profile list  # Should show: default, work
+   $OCX_BIN profile list --global  # Should show: default, work
   ls -la $XDG_CONFIG_HOME/opencode/profiles/work/
   cat $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc  # Should contain model pins
   ```
@@ -298,9 +298,9 @@ Test cases from README.md lines 38-54.
 - [ ] **Expected:** Downloads and installs profile from registry with model pins
 - [ ] **Verify:**
   ```bash
-  $OCX_BIN profile show work
-  ls -la $XDG_CONFIG_HOME/opencode/profiles/work/
-  cat $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc  # Should contain model pins
+   $OCX_BIN profile show work --global
+   ls -la $XDG_CONFIG_HOME/opencode/profiles/work/
+   cat $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc  # Should contain model pins
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -392,7 +392,7 @@ Test cases from README.md lines 66-86.
 - [ ] **Expected:** Plugin is registered in `.opencode/opencode.jsonc`; actual installation is handled by OpenCode runtime
 - [ ] **Verify:**
   ```bash
-  cat .opencode/opencode.jsonc  # Should contain plugin in "plugins" array
+  cat .opencode/opencode.jsonc  # Should contain plugin in "plugin" array
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -582,7 +582,7 @@ All variations from CLI.md lines 129-253.
 - [ ] **Expected:** Plugin entry added to `.opencode/opencode.jsonc` plugins array; runtime installation handled by OpenCode
 - [ ] **Verify:**
   ```bash
-  cat .opencode/opencode.jsonc  # Should contain "chalk" in "plugins" array
+  cat .opencode/opencode.jsonc  # Should contain "chalk" in "plugin" array
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -593,7 +593,7 @@ All variations from CLI.md lines 129-253.
 - [ ] **Expected:** Plugin entry added to `.opencode/opencode.jsonc` plugins array; runtime installation handled by OpenCode
 - [ ] **Verify:**
   ```bash
-  cat .opencode/opencode.jsonc  # Should contain plugin in "plugins" array
+  cat .opencode/opencode.jsonc  # Should contain plugin in "plugin" array
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -1035,7 +1035,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 10.1 `ocx profile list`
 
 - [ ] **Setup:** Global profiles initialized
-- [ ] **Command:** `$OCX_BIN profile list`
+- [ ] **Command:** `$OCX_BIN profile list --global`
 - [ ] **Expected:** Lists all profiles (no active indicator)
 - [ ] **Verify:**
   ```bash
@@ -1046,7 +1046,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 10.2 `ocx p ls` (Alias)
 
 - [ ] **Setup:** Global profiles initialized
-- [ ] **Command:** `$OCX_BIN p ls`
+- [ ] **Command:** `$OCX_BIN p ls --global`
 - [ ] **Expected:** Same output as `ocx profile list`
 - [ ] **Verify:** Lists profiles
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1054,7 +1054,7 @@ All subcommands from CLI.md lines 1024-1273.
 ### 10.3 `ocx profile list --json`
 
 - [ ] **Setup:** Global profiles initialized
-- [ ] **Command:** `$OCX_BIN profile list --json`
+- [ ] **Command:** `$OCX_BIN profile list --global --json`
 - [ ] **Expected:** Machine-readable JSON with profile list
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1093,11 +1093,11 @@ All subcommands from CLI.md lines 1024-1273.
 ### 10.6 `ocx profile add` Install from Registry (Shorthand)
 
 - [ ] **Setup:** Local registry configured
-- [ ] **Command:** `$OCX_BIN profile add ws --source kit/ws`
+- [ ] **Command:** `$OCX_BIN profile add ws --source kit/ws --global`
 - [ ] **Expected:** Downloads profile from kit registry
 - [ ] **Verify:**
   ```bash
-  $OCX_BIN p show ws
+  $OCX_BIN p show ws --global
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -1107,11 +1107,11 @@ All subcommands from CLI.md lines 1024-1273.
 > tests can run sequentially without conflict.
 
 - [ ] **Setup:** None required
-- [ ] **Command:** `$OCX_BIN profile add ws-alt --source kit/ws --from http://localhost:8788`
+- [ ] **Command:** `$OCX_BIN profile add ws-alt --source kit/ws --from http://localhost:8788 --global`
 - [ ] **Expected:** Downloads profile from ephemeral registry URL
 - [ ] **Verify:**
   ```bash
-  $OCX_BIN p show ws-alt
+  $OCX_BIN p show ws-alt --global
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -1120,13 +1120,13 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Setup:** Profile "ws" already exists
 - [ ] **Commands:**
   ```bash
-  $OCX_BIN profile remove ws
-  $OCX_BIN profile add ws --source kit/ws
+  $OCX_BIN profile remove ws --global
+  $OCX_BIN profile add ws --source kit/ws --global
   ```
 - [ ] **Expected:** Removes and reinstalls profile
 - [ ] **Verify:**
   ```bash
-  $OCX_BIN p show ws  # Should show fresh content
+  $OCX_BIN p show ws --global  # Should show fresh content
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -1167,7 +1167,7 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Expected:** Deletes global profile (no confirmation)
 - [ ] **Verify:**
   ```bash
-  $OCX_BIN p ls  # Should NOT show old-profile
+  $OCX_BIN p ls --global  # Should NOT show old-profile
   ls $XDG_CONFIG_HOME/opencode/profiles/  # old-profile/ should be gone
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1183,7 +1183,7 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Expected:** Deletes profile (same as `profile remove`)
 - [ ] **Verify:**
   ```bash
-  $OCX_BIN p ls  # Should NOT show temp-profile
+  $OCX_BIN p ls --global  # Should NOT show temp-profile
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
@@ -1217,7 +1217,7 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Expected:** Renames global profile from work to client-work
 - [ ] **Verify:**
   ```bash
-  $OCX_BIN p ls  # Should show client-work, NOT work
+  $OCX_BIN p ls --global  # Should show client-work, NOT work
   ls $XDG_CONFIG_HOME/opencode/profiles/  # client-work/ exists, work/ gone
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1237,7 +1237,7 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Expected:** Renames profile (same as `profile move`)
 - [ ] **Verify:**
   ```bash
-  $OCX_BIN p ls  # Should show home, NOT personal
+  $OCX_BIN p ls --global  # Should show home, NOT personal
   ls $XDG_CONFIG_HOME/opencode/profiles/  # home/ exists, personal/ gone
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
@@ -1248,7 +1248,7 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Commands:**
   ```bash
   $OCX_BIN profile add work --global  # Ensure work profile exists
-  OCX_PROFILE=work $OCX_BIN profile show
+  OCX_PROFILE=work $OCX_BIN profile show --global
   ```
 - [ ] **Expected:** Shows currently resolved profile details
 - [ ] **Verify:** Output displays work profile info
@@ -1262,7 +1262,7 @@ All subcommands from CLI.md lines 1024-1273.
   # Idempotent: remove if exists, then add to ensure clean state
   $OCX_BIN profile rm work --global 2>/dev/null || true
   $OCX_BIN profile add work --global
-  $OCX_BIN profile show work
+  $OCX_BIN profile show work --global
   ```
 - [ ] **Expected:** Shows work profile config and files
 - [ ] **Verify:**
@@ -1276,7 +1276,7 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Setup:** Profile "work" exists (from Section 10.17)
 - [ ] **Commands:**
   ```bash
-  $OCX_BIN p show work
+  $OCX_BIN p show work --global
   ```
 - [ ] **Expected:** Same output as `profile show work`
 - [ ] **Verify:** Profile details displayed
@@ -1287,7 +1287,7 @@ All subcommands from CLI.md lines 1024-1273.
 - [ ] **Setup:** Profile "work" exists (from Section 10.17)
 - [ ] **Commands:**
   ```bash
-  $OCX_BIN profile show work --json
+  $OCX_BIN profile show work --global --json
   ```
 - [ ] **Expected:** Machine-readable JSON with profile details
 - [ ] **Verify:** Output is valid JSON
@@ -1644,8 +1644,8 @@ From PROFILES.md - advanced profile behaviors.
   echo '{"agents": ["researcher"]}' > .opencode/opencode.jsonc
   $OCX_BIN config show -p work
   ```
-- [ ] **Expected:** Configs merge (profile → local)
-- [ ] **Verify:** Both agent sets visible
+- [ ] **Expected:** Non-special arrays (like `agents`) follow mergeDeep default: local replaces profile (source wins). Only `plugin` and `instructions` arrays are concatenated and deduped per OpenCode semantics.
+- [ ] **Verify:** `agents` shows `["researcher"]` (local wins), not both arrays merged
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 13.7 Instruction File Discovery (Deepest-First)
@@ -1769,7 +1769,7 @@ From PROFILES.md - advanced profile behaviors.
 
 #### Test: ocx profile list shows only global profiles
 - [ ] **Setup:** Both local and global profiles exist
-- [ ] **Command:** `$OCX_BIN profile list`
+- [ ] **Command:** `$OCX_BIN profile list --global`
 - [ ] **Expected:** Shows only global profiles, not local ones
 - [ ] **Verify:** Local profile name should NOT appear in list
 
