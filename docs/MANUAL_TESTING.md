@@ -579,7 +579,7 @@ All variations from CLI.md lines 129-253.
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `$OCX_BIN add npm:chalk`
-- [ ] **Expected:** Plugin entry added to `.opencode/opencode.jsonc` plugins array; runtime installation handled by OpenCode
+- [ ] **Expected:** Plugin entry added to `.opencode/opencode.jsonc` plugin array; runtime installation handled by OpenCode
 - [ ] **Verify:**
   ```bash
   cat .opencode/opencode.jsonc  # Should contain "chalk" in "plugin" array
@@ -590,7 +590,7 @@ All variations from CLI.md lines 129-253.
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `$OCX_BIN add npm:@franlol/opencode-md-table-formatter`
-- [ ] **Expected:** Plugin entry added to `.opencode/opencode.jsonc` plugins array; runtime installation handled by OpenCode
+- [ ] **Expected:** Plugin entry added to `.opencode/opencode.jsonc` plugin array; runtime installation handled by OpenCode
 - [ ] **Verify:**
   ```bash
   cat .opencode/opencode.jsonc  # Should contain plugin in "plugin" array
