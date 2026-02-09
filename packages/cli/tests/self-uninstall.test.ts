@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:te
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs"
 import { rm } from "node:fs/promises"
 import { join } from "node:path"
+import { logger } from "../src/utils/logger.js"
 import { cleanupTempDir, createTempDir, runCLI, runCLIIsolated } from "./helpers"
 
 let selfUninstallImportCounter = 0
@@ -706,7 +707,6 @@ describe("ocx self uninstall --json win32 output hygiene", () => {
 		createMockGlobalConfig(testDir)
 
 		const consoleLogSpy = spyOn(console, "log").mockImplementation(() => {})
-		const { logger } = await import("../src/utils/logger.js")
 		const loggerInfoSpy = spyOn(logger, "info").mockImplementation(() => {})
 
 		const originalPlatform = process.platform

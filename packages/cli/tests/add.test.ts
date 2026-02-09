@@ -12,6 +12,7 @@ import {
 import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
+import { handleError } from "../src/utils/handle-error"
 import { cleanupTempDir, createTempDir, parseJsonc, runCLI } from "./helpers"
 import { type MockRegistry, startMockRegistry } from "./mock-registry"
 
@@ -675,7 +676,6 @@ describe("ocx add --json mixed-input contract", () => {
 		await writeFile(join(conflictDir, "test-plugin.ts"), "// local conflicting content\n")
 
 		const { runAddCore } = await importAddCommandModule()
-		const { handleError } = await import("../src/utils/handle-error")
 		const provider = {
 			cwd: testDir,
 			getRegistries: () => ({ kdco: { url: registry.url } }),
