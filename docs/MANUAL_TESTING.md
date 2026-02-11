@@ -588,7 +588,7 @@ All variations from CLI.md lines 129-253.
 - [ ] **Verify:**
   ```bash
   ls $XDG_CONFIG_HOME/opencode/profiles/work/  # Should contain installed component files
-  cat $XDG_CONFIG_HOME/opencode/profiles/work/.ocx/receipt.jsonc  # Should list kdco/researcher
+  cat $XDG_CONFIG_HOME/opencode/profiles/work/.ocx/receipt.jsonc  # V1 receipt: Should list kdco/researcher
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 

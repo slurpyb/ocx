@@ -143,10 +143,10 @@ export type Receipt = z.infer<typeof receiptSchema>
 
 /**
  * LEGACY V1: Installed component entry in lockfile
- * Key format: "namespace/component" (e.g., "kdco/researcher")
+ * Key format: "alias/component" (e.g., "kdco/researcher")
  */
 export const legacyInstalledComponentSchema = z.object({
-	/** Registry namespace this was installed from */
+	/** Registry alias this was installed from */
 	registry: z.string(),
 
 	/** Version at time of install */
@@ -155,7 +155,7 @@ export const legacyInstalledComponentSchema = z.object({
 	/** SHA-256 hash of installed files for integrity */
 	hash: z.string(),
 
-	/** Target files where installed (clean paths, no namespace prefix) */
+	/** Target files where installed (clean paths, no alias prefix) */
 	files: z.array(z.string()),
 
 	/** ISO timestamp of installation */
@@ -172,7 +172,7 @@ export type LegacyInstalledComponent = z.infer<typeof legacyInstalledComponentSc
  * Optional field in OcxLock - only present for profile installs.
  */
 export const installedFromSchema = z.object({
-	/** Registry namespace this profile was installed from */
+	/** Registry alias this profile was installed from */
 	registry: z.string(),
 
 	/** Component name in the registry */
@@ -192,7 +192,7 @@ export type InstalledFrom = z.infer<typeof installedFromSchema>
 
 /**
  * OCX lockfile schema (ocx.lock)
- * Keys are qualified component refs: "namespace/component"
+ * Keys are qualified component refs: "alias/component"
  */
 export const ocxLockSchema = z.object({
 	/** Lockfile format version */
@@ -201,7 +201,7 @@ export const ocxLockSchema = z.object({
 	/** Profile source info (only present for profiles installed from registry) */
 	installedFrom: installedFromSchema.optional(),
 
-	/** Installed components, keyed by "namespace/component" */
+	/** Installed components, keyed by "alias/component" */
 	installed: z.record(qualifiedComponentSchema, legacyInstalledComponentSchema).default({}),
 })
 

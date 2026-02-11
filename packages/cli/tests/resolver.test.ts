@@ -1,6 +1,6 @@
 /**
  * Tests for the resolver module
- * Tests cycle detection, cross-namespace resolution, topological sort, and error handling
+ * Tests cycle detection, cross-registry resolution, topological sort, and error handling
  */
 
 import { describe, expect, it } from "bun:test"
@@ -18,18 +18,18 @@ describe("resolver", () => {
 			expect(result).toEqual({ namespace: "my-namespace", component: "my-component" })
 		})
 
-		it("should use default namespace for bare component name", () => {
+		it("should use default alias for bare component name", () => {
 			const result = parseComponentRef("researcher", "kdco")
 			expect(result).toEqual({ namespace: "kdco", component: "researcher" })
 		})
 
-		it("should throw ValidationError for bare name without default namespace", () => {
+		it("should throw ValidationError for bare name without default alias", () => {
 			expect(() => parseComponentRef("researcher")).toThrow(
 				"Component 'researcher' must include a registry alias",
 			)
 		})
 
-		it("should prefer explicit namespace over default", () => {
+		it("should prefer explicit alias over default", () => {
 			const result = parseComponentRef("other/utils", "kdco")
 			expect(result).toEqual({ namespace: "other", component: "utils" })
 		})
@@ -124,7 +124,7 @@ describe("resolver", () => {
 			expect(order.indexOf("Y")).toBeLessThan(order.indexOf("X"))
 		})
 
-		it("should handle cross-namespace dependencies", () => {
+		it("should handle cross-registry dependencies", () => {
 			// Pattern: kdco/A -> other/B
 			// This is tested via parseComponentRef with qualified names
 			const dep = "other/utils"

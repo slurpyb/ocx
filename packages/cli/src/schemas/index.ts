@@ -38,6 +38,7 @@ export { type ProfileOcxConfig, profileOcxConfigSchema } from "./ocx"
 export {
 	type AgentConfig,
 	agentConfigSchema,
+	aliasSchema,
 	type ComponentFile,
 	type ComponentFileObject,
 	type ComponentManifest,

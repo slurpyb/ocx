@@ -68,47 +68,54 @@ export const openCodeNameSchema = z
 	})
 
 /**
- * Namespace schema - valid identifier for registry namespace
- * Same rules as openCodeNameSchema
+ * Alias schema — validates a user-chosen registry alias token.
+ * An alias is the left-hand side of an `alias/component` qualified reference
+ * (e.g. "kdco" in "kdco/researcher"). Same naming rules as openCodeNameSchema.
  */
-export const namespaceSchema = openCodeNameSchema
+export const aliasSchema = openCodeNameSchema
+
+/** @deprecated Use `aliasSchema` instead. Kept for backward compatibility. */
+export const namespaceSchema = aliasSchema
 
 /**
- * Qualified component reference: namespace/component
+ * Qualified component reference: alias/component
  * Used in CLI commands and lockfile keys
  */
 export const qualifiedComponentSchema = z
 	.string()
 	.regex(/^[a-z0-9]+(-[a-z0-9]+)*\/[a-z0-9]+(-[a-z0-9]+)*$/, {
 		message:
-			'Must be in format "namespace/component" (e.g., "kdco/researcher"). Both parts must be lowercase alphanumeric with hyphens.',
+			'Must be in format "alias/component" (e.g., "kdco/researcher"). Both parts must be lowercase alphanumeric with hyphens.',
 	})
 
 /**
- * Parse a qualified component reference into namespace and component.
- * Throws Error if format is invalid (Law 4: Fail Fast, Fail Loud).
+ * Parse a qualified component reference into its alias and component tokens.
+ *
+ * The returned `namespace` field is the user-chosen registry **alias** token
+ * from the `alias/component` syntax — it is NOT a registry index authority.
+ * The alias is resolved to a concrete registry URL at install time via ocx.jsonc.
+ *
+ * @throws Error if format is invalid (Law 4: Fail Fast, Fail Loud).
  */
 export function parseQualifiedComponent(ref: string): { namespace: string; component: string } {
 	if (!ref.includes("/")) {
-		throw new Error(`Invalid component reference: "${ref}". Use format: namespace/component`)
+		throw new Error(`Invalid component reference: "${ref}". Use format: alias/component`)
 	}
 	const parts = ref.split("/")
 	if (parts.length > 2) {
 		throw new Error(
-			`Invalid component reference: "${ref}". Too many "/" separators. Use format: namespace/component`,
+			`Invalid component reference: "${ref}". Too many "/" separators. Use format: alias/component`,
 		)
 	}
 	const [namespace, component] = parts
 	if (!namespace || !component) {
-		throw new Error(
-			`Invalid component reference: "${ref}". Both namespace and component are required.`,
-		)
+		throw new Error(`Invalid component reference: "${ref}". Both alias and component are required.`)
 	}
 	return { namespace, component }
 }
 
 /**
- * Create a qualified component reference from namespace and component
+ * Create a qualified component reference from alias and component name.
  */
 export function createQualifiedComponent(namespace: string, component: string): string {
 	return `${namespace}/${component}`
@@ -116,12 +123,12 @@ export function createQualifiedComponent(namespace: string, component: string): 
 
 /**
  * Dependency reference schema (Cargo-style):
- * - Bare string: "utils" -> same namespace (implicit)
- * - Qualified: "acme/utils" -> cross-namespace (explicit)
+ * - Bare string: "utils" -> same registry alias (implicit)
+ * - Qualified: "acme/utils" -> cross-registry (explicit)
  */
 export const dependencyRefSchema = z.string().refine(
 	(dep) => {
-		// Either a bare component name or a qualified namespace/component
+		// Either a bare component name or a qualified alias/component
 		const barePattern = /^[a-z0-9]+(-[a-z0-9]+)*$/
 		const qualifiedPattern = /^[a-z0-9]+(-[a-z0-9]+)*\/[a-z0-9]+(-[a-z0-9]+)*$/
 		return barePattern.test(dep) || qualifiedPattern.test(dep)
@@ -592,7 +599,7 @@ export type OpencodeConfig = z.infer<typeof opencodeConfigSchema>
 // =============================================================================
 
 export const componentManifestSchema = z.object({
-	/** Component name (clean, no namespace prefix) */
+	/** Component name (clean, no alias prefix) */
 	name: openCodeNameSchema,
 
 	/** Component type */
@@ -611,8 +618,8 @@ export const componentManifestSchema = z.object({
 
 	/**
 	 * Dependencies on other components (Cargo-style)
-	 * - Bare string: "utils" -> same namespace (implicit)
-	 * - Qualified: "acme/utils" -> cross-namespace (explicit)
+	 * - Bare string: "utils" -> same registry alias (implicit)
+	 * - Qualified: "acme/utils" -> cross-registry (explicit)
 	 */
 	dependencies: z.array(dependencyRefSchema).default([]),
 
@@ -801,18 +808,27 @@ export function normalizeComponentManifest(
  */
 const semverRegex = /^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$/
 
+/**
+ * Registry manifest schema.
+ *
+ * `name`, `version`, and `author` are **required** metadata.
+ * This is intentional — every published registry must be identifiable and
+ * versioned so that OCX can resolve, cache, and diff registries reliably.
+ * Omitting `name` or `version` is a validation error at parse time
+ * (Law 4: Fail Fast, Fail Loud).
+ */
 export const registrySchema = z
 	.object({
 		/** JSON Schema URL for IDE support */
 		$schema: z.string().optional(),
 
-		/** Registry display name */
+		/** Registry display name (required — identifies the registry to users and tooling) */
 		name: z.string().min(1, "Registry name cannot be empty"),
 
-		/** Registry version (semver) */
+		/** Registry version, semver (required — enables deterministic resolution and caching) */
 		version: z.string().regex(semverRegex, { message: "Version must be valid semver" }),
 
-		/** Registry author */
+		/** Registry author (required) */
 		author: z.string().min(1, "Author cannot be empty"),
 
 		/** Minimum OpenCode version required (semver, e.g., "1.0.0") */
@@ -838,11 +854,11 @@ export const registrySchema = z
 		(data) => {
 			// All dependencies must either:
 			// 1. Be a bare name that exists in this registry
-			// 2. Be a qualified cross-namespace reference (validated at install time)
+			// 2. Be a qualified cross-registry reference (validated at install time)
 			const componentNames = new Set(data.components.map((c) => c.name))
 			for (const component of data.components) {
 				for (const dep of component.dependencies) {
-					// Only validate bare (same-namespace) dependencies
+					// Only validate bare (same-registry) dependencies
 					if (!dep.includes("/") && !componentNames.has(dep)) {
 						return false
 					}
@@ -852,7 +868,7 @@ export const registrySchema = z
 		},
 		{
 			message:
-				"Bare dependencies must reference components that exist in the registry. Use qualified references (e.g., 'other-registry/component') for cross-namespace dependencies.",
+				"Bare dependencies must reference components that exist in the registry. Use qualified references (e.g., 'other-registry/component') for cross-registry dependencies.",
 		},
 	)
 

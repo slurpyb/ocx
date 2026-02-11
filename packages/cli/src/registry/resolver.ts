@@ -22,6 +22,9 @@ import { mergeOpencodeConfig } from "./merge"
  * - "kdco/researcher" -> { namespace: "kdco", component: "researcher" }
  * - "researcher" (with defaultNamespace) -> { namespace: defaultNamespace, component: "researcher" }
  * - "researcher" (without defaultNamespace) -> throws error
+ *
+ * Note: The `namespace` field is the user-chosen registry alias, NOT a
+ * registry-declared namespace.  Component refs use `<alias>/<component>`.
  */
 export function parseComponentRef(
 	ref: string,
@@ -32,7 +35,7 @@ export function parseComponentRef(
 		return parseQualifiedComponent(ref)
 	}
 
-	// Bare name - use default namespace if provided
+	// Bare name - use default alias if provided
 	if (defaultNamespace) {
 		return { namespace: defaultNamespace, component: ref }
 	}
@@ -133,7 +136,7 @@ export async function resolveDependencies(
 
 		// Resolve dependencies first (depth-first)
 		for (const dep of component.dependencies) {
-			// Parse dependency: bare name = same namespace, "foo/bar" = cross-namespace
+			// Parse dependency: bare name = same registry alias, "foo/bar" = cross-registry
 			const depRef = parseComponentRef(dep, componentNamespace)
 			await resolve(depRef.namespace, depRef.component, [...path, qualifiedName])
 		}
@@ -174,7 +177,7 @@ export async function resolveDependencies(
 
 	// Resolve all requested components
 	for (const name of componentNames) {
-		// Parse qualified component name (must include namespace)
+		// Parse qualified component name (must include registry alias)
 		const ref = parseComponentRef(name)
 		await resolve(ref.namespace, ref.component)
 	}

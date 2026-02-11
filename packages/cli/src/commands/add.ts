@@ -77,17 +77,17 @@ function findOwningComponent(receipt: Receipt | null, filePath: string): string 
 
 /**
  * Extract a human-readable component name from a canonical ID.
- * Canonical ID format: "registryUrl::namespace/component@revision"
+ * Canonical ID format: "registryUrl::alias/component@revision"
  *
  * @param canonicalId - The canonical ID to parse
- * @returns Component name in "namespace/component" format
+ * @returns Component name in "alias/component" format
  */
 function extractComponentName(canonicalId: string): string {
-	// Parse canonical ID: registryUrl::namespace/component@revision
+	// Parse canonical ID: registryUrl::alias/component@revision
 	const afterDelimiter = canonicalId.split("::")[1]
 	if (!afterDelimiter) return canonicalId // Fallback to full ID
 
-	// Extract namespace/component (before @)
+	// Extract alias/component (before @)
 	const beforeVersion = afterDelimiter.split("@")[0]
 	return beforeVersion || canonicalId // Fallback to full ID
 }
@@ -125,15 +125,15 @@ export function parseAddInput(input: string): AddInput {
 	}
 
 	// Route registry components
-	// Check if it's a qualified reference (namespace/component)
+	// Check if it's a qualified reference (alias/component)
 	if (trimmed.includes("/")) {
 		const { namespace, component } = parseQualifiedComponent(trimmed)
 		return { type: "registry", namespace, component }
 	}
 
 	// Bare component name - needs registry resolution
-	// For now, treat as registry component without namespace
-	// The resolver will handle namespace inference from config
+	// For now, treat as registry component without alias
+	// The resolver will handle alias inference from config
 	return { type: "registry", namespace: "", component: trimmed }
 }
 
@@ -166,13 +166,10 @@ export function registerAddCommand(program: Command): void {
 		.command("add")
 		.description(
 			"Add components or npm plugins to your project.\n\n" +
-				"  Registry components:  ocx add namespace/component\n" +
+				"  Registry components:  ocx add alias/component\n" +
 				"  npm plugins:          ocx add npm:package-name[@version]",
 		)
-		.argument(
-			"<components...>",
-			"Components to install (namespace/component or npm:package[@version])",
-		)
+		.argument("<components...>", "Components to install (alias/component or npm:package[@version])")
 		.option("--dry-run", "Show what would be installed without making changes")
 		.option("--skip-compat-check", "Skip version compatibility checks")
 		.option("--trust", "Skip npm plugin validation (for packages that don't follow conventions)")
@@ -476,7 +473,7 @@ async function runRegistryAddCore(
 			throw new ValidationError("No valid component references provided")
 		}
 
-		// Fetch registry index to validate the URL serves a valid registry (but ignore its namespace)
+		// Fetch registry index to validate the URL serves a valid registry (alias-first: ignore its namespace)
 		await fetchRegistryIndex(fromUrl)
 
 		// Create ephemeral registry config (does not persist)
@@ -511,7 +508,7 @@ async function runRegistryAddCore(
 
 		// Fetch registry indexes once (Law 2: Parse at boundary)
 		const registryIndexes = new Map<string, RegistryIndex>()
-		const uniqueBaseUrls = new Map<string, string>() // namespace -> baseUrl
+		const uniqueBaseUrls = new Map<string, string>() // alias -> baseUrl
 
 		for (const component of resolved.components) {
 			if (!uniqueBaseUrls.has(component.registryName)) {

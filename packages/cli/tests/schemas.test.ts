@@ -7,6 +7,7 @@ import { describe, expect, it } from "bun:test"
 import { parseCanonicalId } from "../src/schemas/config"
 import {
 	agentConfigSchema,
+	aliasSchema,
 	createQualifiedComponent,
 	dependencyRefSchema,
 	inferTargetPath,
@@ -78,8 +79,16 @@ describe("schemas", () => {
 		})
 	})
 
-	describe("namespaceSchema", () => {
-		it("should follow same rules as openCodeNameSchema", () => {
+	describe("aliasSchema", () => {
+		it("should validate registry alias tokens", () => {
+			expect(() => aliasSchema.parse("kdco")).not.toThrow()
+			expect(() => aliasSchema.parse("my-namespace")).not.toThrow()
+			expect(() => aliasSchema.parse("-invalid")).toThrow()
+		})
+	})
+
+	describe("namespaceSchema (deprecated compat)", () => {
+		it("should still work as backward-compatible alias", () => {
 			expect(() => namespaceSchema.parse("kdco")).not.toThrow()
 			expect(() => namespaceSchema.parse("my-namespace")).not.toThrow()
 			expect(() => namespaceSchema.parse("-invalid")).toThrow()
@@ -87,7 +96,7 @@ describe("schemas", () => {
 	})
 
 	describe("qualifiedComponentSchema", () => {
-		it("should accept valid namespace/component format", () => {
+		it("should accept valid alias/component format", () => {
 			expect(() => qualifiedComponentSchema.parse("kdco/researcher")).not.toThrow()
 			expect(() => qualifiedComponentSchema.parse("my-ns/my-comp")).not.toThrow()
 		})
@@ -96,7 +105,7 @@ describe("schemas", () => {
 			expect(() => qualifiedComponentSchema.parse("researcher")).toThrow()
 		})
 
-		it("should reject invalid namespace part", () => {
+		it("should reject invalid alias part", () => {
 			expect(() => qualifiedComponentSchema.parse("Invalid/component")).toThrow()
 			expect(() => qualifiedComponentSchema.parse("-ns/component")).toThrow()
 		})
@@ -230,22 +239,20 @@ describe("schemas", () => {
 			)
 		})
 
-		it("should throw for empty namespace", () => {
+		it("should throw for empty alias", () => {
 			expect(() => parseQualifiedComponent("/component")).toThrow(
-				"Both namespace and component are required",
+				"Both alias and component are required",
 			)
 		})
 
 		it("should throw for empty component", () => {
 			expect(() => parseQualifiedComponent("namespace/")).toThrow(
-				"Both namespace and component are required",
+				"Both alias and component are required",
 			)
 		})
 
 		it("should throw for just a slash", () => {
-			expect(() => parseQualifiedComponent("/")).toThrow(
-				"Both namespace and component are required",
-			)
+			expect(() => parseQualifiedComponent("/")).toThrow("Both alias and component are required")
 		})
 
 		it("should throw for multiple slash separators", () => {
@@ -468,24 +475,42 @@ describe("schemas", () => {
 			expect(() => registrySchema.parse(validRegistry)).not.toThrow()
 		})
 
-		it("should fail when name is missing", () => {
+		it("should require name (intentional — registries must be identifiable)", () => {
 			const { name: _, ...registryWithoutName } = validRegistry
 			const result = registrySchema.safeParse(registryWithoutName)
 			expect(result.success).toBe(false)
+			if (!result.success) {
+				const paths = result.error.issues.map((i) => i.path.join("."))
+				expect(paths).toContain("name")
+			}
 		})
 
-		it("should fail when version is missing", () => {
+		it("should require version (intentional — enables deterministic resolution)", () => {
 			const { version: _, ...registryWithoutVersion } = validRegistry
 			const result = registrySchema.safeParse(registryWithoutVersion)
 			expect(result.success).toBe(false)
+			if (!result.success) {
+				const paths = result.error.issues.map((i) => i.path.join("."))
+				expect(paths).toContain("version")
+			}
 		})
 
-		it("should fail when name is empty string", () => {
+		it("should require author", () => {
+			const { author: _, ...registryWithoutAuthor } = validRegistry
+			const result = registrySchema.safeParse(registryWithoutAuthor)
+			expect(result.success).toBe(false)
+			if (!result.success) {
+				const paths = result.error.issues.map((i) => i.path.join("."))
+				expect(paths).toContain("author")
+			}
+		})
+
+		it("should reject empty name string", () => {
 			const result = registrySchema.safeParse({ ...validRegistry, name: "" })
 			expect(result.success).toBe(false)
 		})
 
-		it("should fail when version is invalid semver", () => {
+		it("should reject invalid semver version", () => {
 			const result = registrySchema.safeParse({ ...validRegistry, version: "not-semver" })
 			expect(result.success).toBe(false)
 		})

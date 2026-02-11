@@ -416,7 +416,7 @@ describe("ocx add --from", () => {
 		// Init project (required for local mode)
 		await runCLI(["init"], testDir)
 
-		// Install from ephemeral registry (namespace must match registry's declared namespace)
+		// Install from ephemeral registry (prefix becomes the ephemeral registry alias)
 		const { exitCode, output } = await runCLI(
 			["add", "kdco/test-plugin", "--from", registry.url],
 			testDir,

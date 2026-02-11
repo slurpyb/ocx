@@ -433,7 +433,7 @@ describe("ocx registry --global", () => {
 
 		// Global registry should be present
 		expect(registries.find((r: { name: string }) => r.name === "kdco")).toBeDefined()
-		// Since the local dir also has kdco (same namespace), check count is exactly 1
+		// Since the local dir also has kdco (same alias), check count is exactly 1
 		expect(registries.filter((r: { name: string }) => r.name === "kdco")).toHaveLength(1)
 
 		// Cleanup

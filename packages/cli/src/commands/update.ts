@@ -482,7 +482,7 @@ function resolveComponentsToUpdate(
 			)
 		}
 
-		// Use the first matching canonical ID (there should only be one per namespace/name pair)
+		// Use the first matching canonical ID (there should only be one per alias/name pair)
 		const canonicalId = matchingIds[0]
 		if (!canonicalId) {
 			throw new Error(`Unexpected: matchingIds has length but first element is undefined`)
