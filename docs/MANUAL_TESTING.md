@@ -223,7 +223,7 @@ If the version does not match the current codebase, verify `$OCX_BIN` points to 
 
 ## 2. README: Quick Start Profiles
 
-Test cases from README.md lines 38-54.
+Test cases from README.md lines 34-53.
 
 ### 2.1 `ocx init --global`
 
@@ -336,7 +336,7 @@ Test cases from README.md lines 38-54.
 
 ## 3. README: Quick Start Components
 
-Test cases from README.md lines 66-86.
+Test cases from README.md lines 75-90.
 
 ### 3.1 `ocx init` (Local)
 
@@ -417,7 +417,7 @@ Test cases from README.md lines 66-86.
 
 ## 4. CLI Reference: ocx init
 
-All variations from CLI.md lines 33-126.
+All variations from CLI.md lines 53-91.
 
 ### 4.1 `ocx init` (Default Local)
 
@@ -514,7 +514,7 @@ All variations from CLI.md lines 33-126.
 
 ## 5. CLI Reference: ocx add
 
-All variations from CLI.md lines 129-253.
+All variations from CLI.md lines 94-147.
 
 > **Section Setup:** Run cleanup (Section 1.2) before starting this section to ensure
 > no existing local config or cwd state interferes with `init` commands.
@@ -697,7 +697,7 @@ All variations from CLI.md lines 129-253.
 
 ## 6. CLI Reference: ocx update
 
-All variations from CLI.md lines 256-361.
+All variations from CLI.md lines 195-244.
 
 ### 6.1 Update Specific Component
 
@@ -782,7 +782,7 @@ All variations from CLI.md lines 256-361.
 
 ## 7. CLI Reference: ocx search
 
-All variations from CLI.md lines 439-516.
+All variations from CLI.md lines 247-320.
 
 ### 7.1 Search All Available Components
 
@@ -848,7 +848,7 @@ All variations from CLI.md lines 439-516.
 
 ## 8. CLI Reference: ocx registry
 
-All subcommands from CLI.md lines 519-705.
+All subcommands from CLI.md lines 362-556.
 
 > **Section Setup:** Run cleanup (Section 1.2) before starting this section to ensure
 > no existing `kdco` registry from earlier sections interferes with these tests.
@@ -974,7 +974,7 @@ All subcommands from CLI.md lines 519-705.
 
 ## 9. CLI Reference: ocx build
 
-All variations from CLI.md lines 708-790.
+All variations from CLI.md lines 559-645.
 
 ### 9.1 Build Registry in Current Directory
 
@@ -1046,7 +1046,7 @@ All variations from CLI.md lines 708-790.
 
 ## 10. CLI Reference: ocx profile
 
-All subcommands from CLI.md lines 1024-1273.
+All subcommands from CLI.md lines 879-1153.
 
 ### 10.1 `ocx profile list`
 
@@ -1313,7 +1313,7 @@ All subcommands from CLI.md lines 1024-1273.
 
 ## 11. CLI Reference: ocx config
 
-All subcommands from CLI.md lines 1276-1381.
+All subcommands from CLI.md lines 1156-1260.
 
 ### 11.1 `ocx config show` (Current Scope)
 
@@ -1384,7 +1384,7 @@ All subcommands from CLI.md lines 1276-1381.
 
 ## 12. CLI Reference: ocx opencode
 
-All variations from CLI.md lines 1383-1509.
+All variations from CLI.md lines 1263-1397.
 
 ### 12.1 `ocx opencode` (Default Profile)
 
@@ -1949,17 +1949,17 @@ Master summary for full test sessions.
 
 - [ ] ocx init (Section 4): 8 test cases
 - [ ] ocx add (Section 5): 11 test cases
-- [ ] ocx update (Section 6): 9 test cases
+- [ ] ocx update (Section 6): 7 test cases
 - [ ] ocx search (Section 7): 7 test cases
-- [ ] ocx registry (Section 8): 11 test cases
+- [ ] ocx registry (Section 8): 10 test cases
 - [ ] ocx build (Section 9): 4 test cases
-- [ ] ocx profile (Section 10): 17 test cases
+- [ ] ocx profile (Section 10): 19 test cases
 - [ ] ocx config (Section 11): 7 test cases
 - [ ] ocx opencode (Section 12): 12 test cases
 
 ### 15.3 Profile System Verified
 
-- [ ] Profile Layering (Section 13): 8 test cases
+- [ ] Profile Layering (Section 13): 11 test cases
 
 ### 15.4 Error Paths Verified
 
@@ -1992,17 +1992,17 @@ For maintainability when commands change.
 
 | Section | Source Document | Lines |
 |---------|----------------|-------|
-| Section 2 | [README.md](../README.md) | 38-54 |
-| Section 3 | [README.md](../README.md) | 66-86 |
-| Section 4 | [CLI.md](./CLI.md) | 33-126 |
-| Section 5 | [CLI.md](./CLI.md) | 129-253 |
-| Section 6 | [CLI.md](./CLI.md) | 256-361 |
-| Section 7 | [CLI.md](./CLI.md) | 439-516 |
-| Section 8 | [CLI.md](./CLI.md) | 519-705 |
-| Section 9 | [CLI.md](./CLI.md) | 708-790 |
-| Section 10 | [CLI.md](./CLI.md) | 1024-1273 |
-| Section 11 | [CLI.md](./CLI.md) | 1276-1381 |
-| Section 12 | [CLI.md](./CLI.md) | 1383-1509 |
+| Section 2 | [README.md](../README.md) | 34-53 |
+| Section 3 | [README.md](../README.md) | 75-90 |
+| Section 4 | [CLI.md](./CLI.md) | 53-91 |
+| Section 5 | [CLI.md](./CLI.md) | 94-147 |
+| Section 6 | [CLI.md](./CLI.md) | 195-244 |
+| Section 7 | [CLI.md](./CLI.md) | 247-320 |
+| Section 8 | [CLI.md](./CLI.md) | 362-556 |
+| Section 9 | [CLI.md](./CLI.md) | 559-645 |
+| Section 10 | [CLI.md](./CLI.md) | 879-1153 |
+| Section 11 | [CLI.md](./CLI.md) | 1156-1260 |
+| Section 12 | [CLI.md](./CLI.md) | 1263-1397 |
 | Section 13 | [PROFILES.md](./PROFILES.md) | Full document |
 | Section 14 | [CLI.md](./CLI.md) | Error tables throughout |
 
@@ -2022,8 +2022,8 @@ For reference, automated tests exist in:
 | `packages/cli/tests/add.test.ts` | Component installation |
 | `packages/cli/tests/update.test.ts` | Component updates |
 | `packages/cli/tests/registry.test.ts` | Registry management |
-| `packages/cli/tests/profile.test.ts` | Profile management |
-| `packages/cli/tests/config.test.ts` | Config resolution |
+| `packages/cli/tests/profile-commands.test.ts` | Profile management |
+| `packages/cli/tests/config/config-resolver.test.ts` | Config resolution |
 
 Manual testing supplements automated tests with:
 - End-to-end workflows
