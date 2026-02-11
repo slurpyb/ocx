@@ -66,7 +66,8 @@ export function dedupePluginsByCanonicalName(plugins: string[]): string[] {
 	// Walk backwards: first seen (from end) wins
 	const seen = new Map<string, number>()
 	for (let i = plugins.length - 1; i >= 0; i--) {
-		const canonical = extractCanonicalPluginName(plugins[i]!)
+		const plugin = plugins[i] as string
+		const canonical = extractCanonicalPluginName(plugin)
 		if (!seen.has(canonical)) {
 			seen.set(canonical, i)
 		}
@@ -74,10 +75,10 @@ export function dedupePluginsByCanonicalName(plugins: string[]): string[] {
 
 	// Collect in original order, keeping only the last occurrence per canonical name
 	const result: string[] = []
-	for (let i = 0; i < plugins.length; i++) {
-		const canonical = extractCanonicalPluginName(plugins[i]!)
+	for (const [i, plugin] of plugins.entries()) {
+		const canonical = extractCanonicalPluginName(plugin)
 		if (seen.get(canonical) === i) {
-			result.push(plugins[i]!)
+			result.push(plugin)
 		}
 	}
 
