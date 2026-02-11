@@ -17,6 +17,7 @@ import {
 	parseQualifiedComponent,
 	permissionConfigSchema,
 	qualifiedComponentSchema,
+	registrySchema,
 	targetPathSchema,
 	validateFileTarget,
 } from "../src/schemas/registry"
@@ -452,6 +453,57 @@ describe("schemas", () => {
 			const result = permissionConfigSchema.parse(config)
 			expect(result.bash).toBe("allow")
 			expect(result.edit).toEqual({ "*.config.*": "deny" })
+		})
+	})
+
+	describe("registrySchema", () => {
+		const validRegistry = {
+			name: "Test Registry",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [],
+		}
+
+		it("should accept a valid registry with all required fields", () => {
+			expect(() => registrySchema.parse(validRegistry)).not.toThrow()
+		})
+
+		it("should fail when name is missing", () => {
+			const { name: _, ...registryWithoutName } = validRegistry
+			const result = registrySchema.safeParse(registryWithoutName)
+			expect(result.success).toBe(false)
+		})
+
+		it("should fail when version is missing", () => {
+			const { version: _, ...registryWithoutVersion } = validRegistry
+			const result = registrySchema.safeParse(registryWithoutVersion)
+			expect(result.success).toBe(false)
+		})
+
+		it("should fail when name is empty string", () => {
+			const result = registrySchema.safeParse({ ...validRegistry, name: "" })
+			expect(result.success).toBe(false)
+		})
+
+		it("should fail when version is invalid semver", () => {
+			const result = registrySchema.safeParse({ ...validRegistry, version: "not-semver" })
+			expect(result.success).toBe(false)
+		})
+
+		it("should accept optional fields like opencode and ocx versions", () => {
+			const registry = {
+				...validRegistry,
+				opencode: "1.0.0",
+				ocx: "2.0.0",
+			}
+			expect(() => registrySchema.parse(registry)).not.toThrow()
+		})
+
+		it("should not require namespace field", () => {
+			// namespace was removed; ensure it doesn't cause validation failure as extra key
+			// registrySchema uses .object() which strips unknown keys by default
+			const registryWithNamespace = { ...validRegistry, namespace: "kdco" }
+			expect(() => registrySchema.parse(registryWithNamespace)).not.toThrow()
 		})
 	})
 

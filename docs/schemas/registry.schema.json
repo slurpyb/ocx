@@ -4,7 +4,7 @@
 	"title": "OCX Registry Schema",
 	"description": "Schema for registry.jsonc files that define OCX component registries",
 	"type": "object",
-	"required": ["author", "components"],
+	"required": ["name", "version", "author", "components"],
 	"additionalProperties": false,
 	"properties": {
 		"$schema": {

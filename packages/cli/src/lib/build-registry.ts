@@ -186,8 +186,8 @@ export async function buildRegistry(
 	// V2: Generate index.json at the root (no registry version field)
 	const index = {
 		$schema: registry.$schema,
-		...(registry.name && { name: registry.name }),
-		...(registry.version && { version: registry.version }),
+		name: registry.name,
+		version: registry.version,
 		author: registry.author,
 		// Include version requirements for compatibility checking
 		...(registry.opencode && { opencode: registry.opencode }),

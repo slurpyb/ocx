@@ -807,10 +807,10 @@ export const registrySchema = z
 		$schema: z.string().optional(),
 
 		/** Registry display name */
-		name: z.string().min(1, "Registry name cannot be empty").optional(),
+		name: z.string().min(1, "Registry name cannot be empty"),
 
 		/** Registry version (semver) */
-		version: z.string().regex(semverRegex, { message: "Version must be valid semver" }).optional(),
+		version: z.string().regex(semverRegex, { message: "Version must be valid semver" }),
 
 		/** Registry author */
 		author: z.string().min(1, "Author cannot be empty"),
