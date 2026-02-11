@@ -73,14 +73,28 @@ describe("Error Cases", () => {
 			expect(result.stderr).toContain("Invalid registry URL")
 		})
 
-		it("should error on duplicate registry name without --force", async () => {
+		it("should succeed idempotently for same name + same URL (no conflict)", async () => {
 			await runCLI(["init"], testDir)
 			// Add first registry (V2: use namespace kdco)
 			await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
-			// Try to add duplicate - even though URL is valid, conflict check happens after validation
+			// Re-add same name + same URL => idempotent success
 			const result = await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
-			expect(result.exitCode).toBe(6) // CONFLICT error
-			expect(result.stderr).toContain("already exists")
+			expect(result.exitCode).toBe(0)
+		})
+
+		it("should error on duplicate registry name with different URL", async () => {
+			await runCLI(["init"], testDir)
+			await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
+			// Start a second mock registry for a different URL
+			const { startMockRegistry: start2 } = await import("./mock-registry")
+			const registry2 = start2()
+			try {
+				const result = await runCLI(["registry", "add", registry2.url, "--name", "kdco"], testDir)
+				expect(result.exitCode).toBe(6) // CONFLICT error
+				expect(result.stderr).toContain("already exists")
+			} finally {
+				registry2.stop()
+			}
 		})
 
 		it("should error when adding to locked registries", async () => {
@@ -198,16 +212,24 @@ describe("Error Cases", () => {
 		it("should output valid JSON for CONFLICT error", async () => {
 			await runCLI(["init"], testDir)
 			await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
-			const result = await runCLI(
-				["registry", "add", registry.url, "--name", "kdco", "--json"],
-				testDir,
-			)
-			expect(result.exitCode).toBe(6)
-			const json = expectJsonError(result.stdout, {
-				code: "CONFLICT",
-				exitCode: 6,
-			})
-			expect(json.error.details).toHaveProperty("registryName", "kdco")
+			// Use a different mock registry to trigger actual name conflict
+			const { startMockRegistry: start2 } = await import("./mock-registry")
+			const registry2 = start2()
+			try {
+				const result = await runCLI(
+					["registry", "add", registry2.url, "--name", "kdco", "--json"],
+					testDir,
+				)
+				expect(result.exitCode).toBe(6)
+				const json = expectJsonError(result.stdout, {
+					code: "CONFLICT",
+					exitCode: 6,
+				})
+				expect(json.error.details).toHaveProperty("registryName", "kdco")
+				expect(json.error.details).toHaveProperty("conflictType", "name")
+			} finally {
+				registry2.stop()
+			}
 		})
 
 		it("should output valid JSON for VALIDATION_ERROR", async () => {

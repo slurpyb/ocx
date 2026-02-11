@@ -21,8 +21,6 @@ export interface BuildRegistryOptions {
 }
 
 export interface BuildRegistryResult {
-	/** Namespace of the registry */
-	namespace: string
 	/** Number of components built */
 	componentsCount: number
 	/** Absolute path to output directory */
@@ -190,7 +188,6 @@ export async function buildRegistry(
 		$schema: registry.$schema,
 		...(registry.name && { name: registry.name }),
 		...(registry.version && { version: registry.version }),
-		namespace: registry.namespace,
 		author: registry.author,
 		// Include version requirements for compatibility checking
 		...(registry.opencode && { opencode: registry.opencode }),
@@ -211,7 +208,6 @@ export async function buildRegistry(
 	await Bun.write(join(wellKnownDir, "ocx.json"), JSON.stringify(discovery, null, 2))
 
 	return {
-		namespace: registry.namespace,
 		componentsCount: registry.components.length,
 		outputPath: outPath,
 	}

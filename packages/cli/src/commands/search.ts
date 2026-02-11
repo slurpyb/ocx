@@ -68,7 +68,7 @@ export function registerSearchCommand(program: Command): void {
 				}
 
 				const installed = Object.entries(receipt.installed).map(([_canonicalId, info]) => ({
-					name: `${info.namespace}/${info.name}`,
+					name: `${info.registryName}/${info.name}`,
 					registry: info.registryUrl,
 					version: info.revision,
 					installedAt: undefined, // V2 receipt doesn't track installedAt
@@ -151,7 +151,7 @@ export async function runSearchCore(
 			}
 			for (const comp of index.components) {
 				allComponents.push({
-					name: `${index.namespace}/${comp.name}`,
+					name: `${registryName}/${comp.name}`,
 					description: comp.description,
 					type: comp.type,
 					registry: registryName,

@@ -111,16 +111,17 @@ describe("ocx registry", () => {
 		const { exitCode, output } = await runCLI(["registry", "add", registry.url], testDir)
 
 		expect(exitCode).not.toBe(0)
-		expect(output).toContain("--name is required")
+		// Commander requiredOption outputs: "error: required option '--name <name>' not specified"
+		expect(output).toContain("--name")
 	})
 })
 
-describe("registry add --force", () => {
+describe("registry add conflict matrix", () => {
 	let testDir: string
 	let registry: MockRegistry
 
 	beforeEach(async () => {
-		testDir = await createTempDir("registry-force-test")
+		testDir = await createTempDir("registry-conflict-test")
 		registry = startMockRegistry()
 		await runCLI(["init"], testDir)
 	})
@@ -130,46 +131,68 @@ describe("registry add --force", () => {
 		await cleanupTempDir(testDir)
 	})
 
-	it("should error when adding duplicate registry without --force", async () => {
+	// Rule 1: New name + new URL => add (covered by "should add a registry" above)
+
+	// Rule 2: Same name + same normalized URL => idempotent no-op
+	it("should succeed idempotently when adding same name + same URL", async () => {
 		// Add initial registry
 		await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
 
-		// Try to add again without --force - same URL, same name
+		// Re-add with exact same name + URL
 		const result = await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
 
-		expect(result.exitCode).toBe(6)
-		expect(result.stderr).toContain("already exists")
-		expect(result.stderr).toContain("--force")
-	})
-
-	it("should overwrite registry with --force flag", async () => {
-		// Add initial registry
-		await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
-
-		// Overwrite with --force (same registry, just testing --force works)
-		const result = await runCLI(
-			["registry", "add", registry.url, "--name", "kdco", "--force"],
-			testDir,
-		)
-
 		expect(result.exitCode).toBe(0)
-		expect(result.stdout).toContain("Updated registry")
+		expect(result.stdout).toContain("Registry already configured (no changes): kdco")
 
-		// Verify URL remains the same (overwrite succeeded)
+		// Config unchanged
 		const configPath = join(testDir, ".opencode", "ocx.jsonc")
 		const configContent = await Bun.file(configPath).text()
-		const config = parseJsonc(configContent) as { registries: Record<string, { url: string }> }
+		const config = parseJsonc(configContent) as TestOcxConfig
 		expect(config.registries.kdco.url).toBe(registry.url)
 	})
 
-	it("should show current and new URL in error message", async () => {
+	// Rule 3: Same name + different URL => conflict error
+	it("should fail when same name points to a different URL", async () => {
+		// Add initial registry
+		await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
+
+		// Start a second mock registry to get a different valid URL
+		const registry2 = startMockRegistry()
+		try {
+			const result = await runCLI(["registry", "add", registry2.url, "--name", "kdco"], testDir)
+
+			expect(result.exitCode).toBe(6)
+			expect(result.stderr).toContain("already exists")
+			expect(result.stderr).toContain("ocx registry remove kdco")
+			expect(result.stderr).not.toContain("--force")
+		} finally {
+			registry2.stop()
+		}
+	})
+
+	// Rule 4: Different name + same URL => conflict error
+	it("should fail when different name points to same URL", async () => {
+		// Add initial registry
+		await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
+
+		// Try to add same URL under different name
+		const result = await runCLI(["registry", "add", registry.url, "--name", "other-alias"], testDir)
+
+		expect(result.exitCode).toBe(6)
+		expect(result.stderr).toContain("already registered under name")
+		expect(result.stderr).toContain("kdco")
+		expect(result.stderr).toContain("ocx registry remove kdco")
+		expect(result.stderr).not.toContain("--force")
+	})
+
+	it("should show current and new URL in name-conflict error message", async () => {
 		// First add registry with original URL
 		await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
 
 		// Start a second mock registry to get a different valid URL
 		const registry2 = startMockRegistry()
 		try {
-			// Try to update with a DIFFERENT URL (same namespace)
+			// Try to update with a DIFFERENT URL (same name)
 			const result = await runCLI(["registry", "add", registry2.url, "--name", "kdco"], testDir)
 
 			// Error message should contain BOTH the existing and new URLs
@@ -180,14 +203,14 @@ describe("registry add --force", () => {
 		}
 	})
 
-	it("should output structured JSON for conflict with --json flag", async () => {
+	it("should output structured JSON for name conflict with --json flag", async () => {
 		// First add registry with original URL
 		await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
 
 		// Start a second mock registry to get a different valid URL
 		const registry2 = startMockRegistry()
 		try {
-			// Try to add with DIFFERENT URL to trigger meaningful conflict
+			// Try to add with DIFFERENT URL to trigger name conflict
 			const result = await runCLI(
 				["registry", "add", registry2.url, "--name", "kdco", "--json"],
 				testDir,
@@ -197,6 +220,7 @@ describe("registry add --force", () => {
 			const output = JSON.parse(result.stdout || result.stderr)
 			expect(output.success).toBe(false)
 			expect(output.error.code).toBe("CONFLICT")
+			expect(output.error.details.conflictType).toBe("name")
 			expect(output.error.details.registryName).toBe("kdco")
 			// Assert BOTH URLs are different and both present
 			expect(output.error.details.existingUrl).toBe(registry.url)
@@ -206,6 +230,26 @@ describe("registry add --force", () => {
 		} finally {
 			registry2.stop()
 		}
+	})
+
+	it("should output structured JSON for URL conflict with --json flag", async () => {
+		// First add registry
+		await runCLI(["registry", "add", registry.url, "--name", "kdco"], testDir)
+
+		// Try to add same URL under different name with --json
+		const result = await runCLI(
+			["registry", "add", registry.url, "--name", "another-alias", "--json"],
+			testDir,
+		)
+
+		expect(result.exitCode).toBe(6)
+		const output = JSON.parse(result.stdout || result.stderr)
+		expect(output.success).toBe(false)
+		expect(output.error.code).toBe("CONFLICT")
+		expect(output.error.details.conflictType).toBe("url")
+		expect(output.error.details.registryName).toBe("another-alias")
+		expect(output.error.details.existingName).toBe("kdco")
+		expect(output.meta.timestamp).toBeDefined()
 	})
 
 	it("should error for empty URL", async () => {
@@ -227,15 +271,15 @@ describe("registry add --force", () => {
 	})
 })
 
-describe("registry add --force with --global", () => {
+describe("registry add idempotent with --global", () => {
 	let testDir: string
 	let globalTestDir: string
 	let registry: MockRegistry
 	let env: Record<string, string>
 
 	beforeEach(async () => {
-		testDir = await createTempDir("registry-force-global")
-		globalTestDir = await createTempDir("registry-force-global-config")
+		testDir = await createTempDir("registry-idempotent-global")
+		globalTestDir = await createTempDir("registry-idempotent-global-config")
 		registry = startMockRegistry()
 		env = { XDG_CONFIG_HOME: globalTestDir }
 		await runCLI(["init", "--global"], testDir, { env })
@@ -247,30 +291,30 @@ describe("registry add --force with --global", () => {
 		await cleanupTempDir(testDir)
 	})
 
-	it("should work with --force on --global registries", async () => {
+	it("should succeed idempotently on --global registries with same name + same URL", async () => {
 		await runCLI(["registry", "add", registry.url, "--name", "kdco", "--global"], testDir, {
 			env,
 		})
 
 		const result = await runCLI(
-			["registry", "add", registry.url, "--name", "kdco", "--global", "--force"],
+			["registry", "add", registry.url, "--name", "kdco", "--global"],
 			testDir,
 			{ env },
 		)
 
 		expect(result.exitCode).toBe(0)
-		expect(result.stdout).toContain("Updated registry")
+		expect(result.stdout).toContain("Registry already configured (no changes): kdco")
 	})
 })
 
-describe("registry add --force with --profile", () => {
+describe("registry add idempotent with --profile", () => {
 	let testDir: string
 	let globalTestDir: string
 	let registry: MockRegistry
 
 	beforeEach(async () => {
-		testDir = await createTempDir("registry-force-profile")
-		globalTestDir = await createTempDir("registry-force-profile-global")
+		testDir = await createTempDir("registry-idempotent-profile")
+		globalTestDir = await createTempDir("registry-idempotent-profile-global")
 		registry = startMockRegistry()
 		const env = { XDG_CONFIG_HOME: globalTestDir }
 
@@ -292,7 +336,7 @@ describe("registry add --force with --profile", () => {
 		await cleanupTempDir(globalTestDir)
 	})
 
-	it("should work with --force on --profile registries", async () => {
+	it("should succeed idempotently on --profile registries with same name + same URL", async () => {
 		const env = { XDG_CONFIG_HOME: globalTestDir }
 
 		await runCLI(
@@ -302,13 +346,13 @@ describe("registry add --force with --profile", () => {
 		)
 
 		const result = await runCLI(
-			["registry", "add", registry.url, "--name", "kdco", "--profile", "test-profile", "--force"],
+			["registry", "add", registry.url, "--name", "kdco", "--profile", "test-profile"],
 			testDir,
 			{ env },
 		)
 
 		expect(result.exitCode).toBe(0)
-		expect(result.stdout).toContain("Updated registry")
+		expect(result.stdout).toContain("Registry already configured (no changes): kdco")
 	})
 })
 
@@ -540,10 +584,10 @@ describe("ocx registry --global", () => {
 	})
 
 	it("should require --name for global registry (no default alias)", async () => {
-		// Without --name, should fail with validation error
+		// Without --name, should fail (Commander requiredOption)
 		const failResult = await runCLI(["registry", "add", "--global", registry.url], testDir, { env })
 		expect(failResult.exitCode).not.toBe(0)
-		expect(failResult.stderr).toContain("--name is required")
+		expect(failResult.output).toContain("--name")
 
 		// With --name, should succeed
 		const result = await runCLI(

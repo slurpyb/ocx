@@ -26,9 +26,9 @@ The build step runs `ocx build . --out dist` which:
 
 OCX follows the **Cargo + ShadCN model**:
 
-1. **Namespace as Identity**: Every registry declares a `namespace` (e.g., `kdco`). Components are referenced as `namespace/component` (e.g., `kdco/researcher`).
-2. **Clean Component Names**: Components within a registry use clean names (`researcher`, not `kdco-researcher`). The namespace provides provenance.
-3. **Explicit Trust**: Cross-namespace dependencies require the user to have that registry configured. No auto-fetching from unknown sources.
+1. **Registry Name as Identity**: Users configure registry names with `ocx registry add --name <name>` and reference components as `name/component` (e.g., `kdco/researcher`).
+2. **Clean Component Names**: Components within a registry use clean names (`researcher`, not `kdco-researcher`). The registry name provides provenance.
+3. **Explicit Trust**: Cross-registry dependencies require the user to have that registry configured. No auto-fetching from unknown sources.
 4. **Own Your Code**: Components are copied into your project with clean filenames. The receipt file tracks provenance.
 
 ## Structure
@@ -68,9 +68,9 @@ OCX uses **Cargo-style union types** for a clean developer experience: use strin
 ```
 
 **Key fields:**
-- `namespace`: Your registry's unique identifier (lowercase, alphanumeric, hyphens). Users reference components as `namespace/component`.
-- `name`: Clean component name (no prefix required). The namespace provides provenance.
-- `dependencies`: Use bare names for same-namespace deps (`["utils"]`), qualified names for cross-namespace (`["other/utils"]`).
+- `namespace`: Used during build; informational only in the published registry (not used for component resolution).
+- `name`: Clean component name (no prefix required).
+- `dependencies`: Use bare names for same-registry deps (`["utils"]`), qualified names for cross-registry (`["other/utils"]`).
 
 ## Cargo-Style Patterns
 
@@ -289,14 +289,24 @@ Users can add your registry using:
 ocx registry add https://example.com/registry --name my
 ```
 
+The `--name` sets the registry name used to reference components as `my/component`. This user-defined name is the canonical identity and is independent from your registry's `index.namespace` field—they may match, but it is not required.
+
 > **Tip:** Use `--global` to add the registry to your global config for profile management (e.g., `ocx profile add <name> --source my/profile --global`). For project work, configure registries in your profile or local config:
 > ```bash
 > ocx registry add https://example.com --name my --global
 > ```
 
-After adding the registry, users install components using the alias:
+After adding the registry, users install components using the registry name:
 ```bash
 ocx add my/cool-plugin
+```
+
+**Updating a registry name or URL:**
+
+To change the name or URL for an existing registry, remove it first, then re-add:
+```bash
+ocx registry remove my
+ocx registry add https://new-url.example.com --name mynew
 ```
 
 ## Dependencies
@@ -359,7 +369,7 @@ When installed via `ocx add`, the path `instructions/style-guide.md` resolves to
 
 ## Component Dependencies
 
-### Same-Namespace Dependencies
+### Same-Registry Dependencies
 
 Use bare component names for dependencies within the same registry:
 
@@ -370,9 +380,9 @@ Use bare component names for dependencies within the same registry:
 }
 ```
 
-These resolve to `my/background-agents` and `my/utils` automatically.
+These resolve using the same registry as the requesting component automatically.
 
-### Cross-Namespace Dependencies
+### Cross-Registry Dependencies
 
 Use qualified names for dependencies from other registries:
 
@@ -383,7 +393,7 @@ Use qualified names for dependencies from other registries:
 }
 ```
 
-The user must have the `acme` registry configured in their `ocx.jsonc` for cross-namespace deps to resolve.
+The user must have the `acme` registry configured in their `ocx.jsonc` for cross-registry deps to resolve.
 
 ## Conflict Handling
 

@@ -454,30 +454,35 @@ async function runRegistryAddCore(
 			throw new ValidationError(`Invalid --from URL: ${fromUrl}`)
 		}
 
-		// Fetch registry index to get declared namespace
-		const index = await fetchRegistryIndex(fromUrl)
-
-		// Parse component references to extract namespaces
-		const requestedNamespaces = new Set<string>()
+		// Parse component references to extract prefixes
+		const requestedPrefixes = new Set<string>()
 		for (const name of componentNames) {
 			const { namespace } = parseQualifiedComponent(name)
-			requestedNamespaces.add(namespace)
+			requestedPrefixes.add(namespace)
 		}
 
-		// Validate all requested components use the same namespace as the registry
-		for (const ns of requestedNamespaces) {
-			if (ns !== index.namespace) {
-				throw new ValidationError(
-					`Namespace mismatch: component "${ns}/*" does not match registry namespace "${index.namespace}".\n` +
-						`When using --from, all components must match the registry's declared namespace.`,
-				)
-			}
+		// Validate all requested components use the same prefix
+		if (requestedPrefixes.size > 1) {
+			const prefixes = Array.from(requestedPrefixes).join(", ")
+			throw new ValidationError(
+				`Mixed registry prefixes in --from call: ${prefixes}.\n` +
+					`When using --from, all components must use the same prefix.`,
+			)
 		}
+
+		// Use the single prefix as the ephemeral registry name
+		const ephemeralName = Array.from(requestedPrefixes)[0]
+		if (!ephemeralName) {
+			throw new ValidationError("No valid component references provided")
+		}
+
+		// Fetch registry index to validate the URL serves a valid registry (but ignore its namespace)
+		await fetchRegistryIndex(fromUrl)
 
 		// Create ephemeral registry config (does not persist)
 		effectiveRegistries = {
 			...registries,
-			[index.namespace]: {
+			[ephemeralName]: {
 				url: fromUrl,
 			},
 		}
@@ -603,7 +608,7 @@ async function runRegistryAddCore(
 			const existingEntries = Object.entries(receipt.installed).filter(
 				([_id, entry]) =>
 					normalizeRegistryUrl(entry.registryUrl) === normalizeRegistryUrl(component.baseUrl) &&
-					entry.namespace === component.registryName &&
+					entry.registryName === component.registryName &&
 					entry.name === component.name,
 			)
 
@@ -761,7 +766,7 @@ async function runRegistryAddCore(
 
 			receipt.installed[canonicalId] = {
 				registryUrl: component.baseUrl,
-				namespace: component.registryName,
+				registryName: component.registryName,
 				name: component.name,
 				revision: `sha256:${computedHash}`,
 				hash: computedHash,

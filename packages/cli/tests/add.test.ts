@@ -486,22 +486,35 @@ describe("ocx add --from", () => {
 		expect(output).toContain("Invalid --from URL")
 	})
 
-	it("should reject namespace mismatch", async () => {
-		testDir = await createTempDir("add-from-namespace-mismatch")
+	it("should accept any prefix with --from (prefix becomes ephemeral registry name)", async () => {
+		testDir = await createTempDir("add-from-any-prefix")
 
 		// Init project
 		await runCLI(["init"], testDir)
 
-		// Try with wrong namespace (registry declares "kdco" but we request "wrong-ns")
+		// Use any prefix — it becomes the ephemeral registry name
+		const { exitCode } = await runCLI(
+			["add", "custom-name/test-plugin", "--from", registry.url],
+			testDir,
+		)
+
+		expect(exitCode).toBe(0)
+	})
+
+	it("should reject mixed prefixes with --from", async () => {
+		testDir = await createTempDir("add-from-mixed-prefix")
+
+		// Init project
+		await runCLI(["init"], testDir)
+
+		// Try with mixed prefixes (foo/comp1 and bar/comp2 in same --from call)
 		const { exitCode, output } = await runCLI(
-			["add", "wrong-ns/test-plugin", "--from", registry.url],
+			["add", "foo/test-plugin", "bar/test-agent", "--from", registry.url],
 			testDir,
 		)
 
 		expect(exitCode).not.toBe(0)
-		expect(output).toContain("Namespace mismatch")
-		expect(output).toContain("wrong-ns")
-		expect(output).toContain("kdco")
+		expect(output).toContain("Mixed registry prefixes")
 	})
 
 	it("should NOT write files or receipt in dry-run mode", async () => {

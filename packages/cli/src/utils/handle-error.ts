@@ -107,10 +107,12 @@ function formatErrorAsJson(error: unknown): JsonErrorOutput {
 				code: error.code,
 				message: error.message,
 				details: {
+					conflictType: error.conflictType,
 					registryName: error.registryName,
 					existingUrl: error.existingUrl,
 					newUrl: error.newUrl,
 					...(error.targetLabel && { targetLabel: error.targetLabel }),
+					...(error.existingName && { existingName: error.existingName }),
 				},
 			},
 			exitCode: error.exitCode,

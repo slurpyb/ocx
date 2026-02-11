@@ -169,7 +169,6 @@ export function startMockRegistry(): MockRegistry {
 			if (path === "/index.json") {
 				return Response.json({
 					name: "Test Registry",
-					namespace: "kdco",
 					version: "1.0.0",
 					author: "Test Author",
 					components: Object.values(components).map((c) => ({

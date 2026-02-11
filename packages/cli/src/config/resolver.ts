@@ -302,7 +302,7 @@ async function loadRegistryInstructionsFromReceipt(installRoot: string): Promise
 		}
 
 		// Source description for error messages
-		const source = `${entry.namespace}/${entry.name} (${canonicalId})`
+		const source = `${entry.registryName}/${entry.name} (${canonicalId})`
 
 		// Resolve each instruction path (validates and expands globs)
 		const resolved = resolveRegistryInstructionPaths(instructions, installRoot, source)

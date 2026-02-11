@@ -91,14 +91,14 @@ Before marking any test as `covered-good`, verify:
 | P0-001 | Install OCX (curl/npm) | README.md | TBD | TBD | - | - | - | Package manager variations |
 | P0-002 | `ocx init --global` | README.md | documented | TBD | - | - | - | Creates global config + default profile |
 | P0-003 | `ocx profile add <name> --global` | README.md | documented | TBD | - | - | - | Creates empty profile with templates |
-| P0-004 | `ocx profile add <name> --source <alias/component> --global` | README.md | documented | TBD | - | - | - | Downloads profile from registry |
+| P0-004 | `ocx profile add <name> --source <name/component> --global` | README.md | documented | TBD | - | - | - | Downloads profile from registry |
 | P0-005 | `ocx oc -p <profile>` | README.md | documented | TBD | - | - | - | Launch with explicit profile |
 | P0-006 | `ocx oc` (default resolution) | README.md | documented | TBD | - | - | - | Flag > env var > default profile |
 | P0-007 | `ocx init` (local) | README.md | documented | TBD | - | - | - | Creates `.opencode/` directory |
-| P0-008 | `ocx add <alias/component> --from <url>` | README.md | documented | TBD | - | - | - | One-command install without saving registry |
+| P0-008 | `ocx add <name/component> --from <url>` | README.md | documented | TBD | - | - | - | One-command install without saving registry |
 | P0-009 | `ocx add npm:<package>` | README.md | documented | TBD | - | - | - | Plugin registration in opencode.jsonc |
 | P0-010 | `ocx registry add <url> --name <name>` | README.md | documented | TBD | - | - | - | Saves registry to config |
-| P0-011 | `ocx add <alias/component>` | README.md | documented | TBD | - | - | - | Install from configured registry |
+| P0-011 | `ocx add <name/component>` | README.md | documented | TBD | - | - | - | Install from configured registry |
 
 ## P1 Workflows (Important Command Surfaces)
 
@@ -116,7 +116,7 @@ Before marking any test as `covered-good`, verify:
 | P1-008 | `ocx list` | CLI.md | documented | TBD | - | - | - | Alias for search |
 | P1-009 | `ocx registry remove <name>` | CLI.md | documented | TBD | - | - | - | Remove registry from config |
 | P1-010 | `ocx registry list` | CLI.md | documented | TBD | - | - | - | List configured registries |
-| P1-011 | `ocx registry add <url> --global` | CLI.md | documented | TBD | - | - | - | Add global registry |
+| P1-011 | `ocx registry add <url> --name <name> --global` | CLI.md | documented | TBD | - | - | - | Add global registry with explicit name |
 | P1-012 | `ocx config show` | CLI.md | documented | TBD | - | - | - | Show merged config |
 | P1-013 | `ocx config show --origin` | CLI.md | documented | TBD | - | - | - | Show with source annotations |
 | P1-014 | `ocx config edit` | CLI.md | documented | TBD | - | - | - | Open config in $EDITOR |

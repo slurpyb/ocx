@@ -37,8 +37,7 @@ export interface RegistryOptions {
 }
 
 export interface RegistryAddOptions extends RegistryOptions {
-	name: string
-	force?: boolean
+	name: string // Always present — enforced by Commander .requiredOption()
 	dryRun?: boolean
 }
 
@@ -61,16 +60,9 @@ export async function runRegistryAddCore(
 		setRegistry: (name: string, config: RegistryConfig) => Promise<void>
 		targetLabel?: string // For dry-run summary
 	},
-): Promise<{ name: string; url: string; updated: boolean } | DryRunResult> {
-	// Guard: --name is required (alias-first model, no defaults from hostname)
-	if (!options.name) {
-		throw new ValidationError(
-			"--name is required. Provide an alias for this registry.\n\n" +
-				"Example:\n" +
-				"  ocx registry add https://registry.example.com --name my-registry",
-		)
-	}
-
+): Promise<
+	{ name: string; url: string; updated: boolean; alreadyConfigured: boolean } | DryRunResult
+> {
 	// Guard: Check registries aren't locked
 	if (callbacks.isLocked?.()) {
 		throw new Error("Registries are locked. Cannot add.")
@@ -95,60 +87,119 @@ export async function runRegistryAddCore(
 
 	const name = options.name
 	const registries = callbacks.getRegistries()
-	const existingRegistry = registries[name]
-	const isUpdate = name in registries
+	const existingByName = registries[name]
+
+	// URL uniqueness check: find any existing registry with the same normalized URL
+	const existingByUrl = findRegistryByUrl(registries, normalizedUrl)
 
 	// Fetch registry index to validate the URL serves a valid registry
 	const { fetchRegistryIndex } = await import("../registry/fetcher")
-	const index = await fetchRegistryIndex(normalizedUrl)
+	await fetchRegistryIndex(normalizedUrl)
 
-	// Dry-run mode: Build result and return early (BEFORE throwing RegistryExistsError)
+	// -------------------------------------------------------------------------
+	// Conflict resolution matrix (alias-first model)
+	// Rule 1: New name + new URL => add
+	// Rule 2: Same name + same URL => idempotent no-op
+	// Rule 3: Same name + different URL => fail (name conflict)
+	// Rule 4: Different name + same URL => fail (URL conflict)
+	// -------------------------------------------------------------------------
+
+	const nameExists = existingByName !== undefined
+	const urlExists = existingByUrl !== null
+	const sameUrl = nameExists && normalizeRegistryUrl(existingByName.url) === normalizedUrl
+	const urlOwnedByDifferentName = urlExists && existingByUrl.name !== name
+
+	// Dry-run mode: report what would happen
 	if (options.dryRun) {
 		const warnings: string[] = []
 
-		// Check for existing registry conflict - show as warning instead of error
-		if (existingRegistry && !options.force) {
+		if (nameExists && !sameUrl) {
 			warnings.push(
-				`Registry '${name}' already exists (${existingRegistry.url}). Use --force to overwrite.`,
+				`Registry '${name}' already exists with a different URL (${existingByName.url}). ` +
+					`Run 'ocx registry remove ${name}' first, then re-add.`,
+			)
+		} else if (urlOwnedByDifferentName) {
+			warnings.push(
+				`URL '${normalizedUrl}' is already registered under name '${existingByUrl.name}'. ` +
+					`Run 'ocx registry remove ${existingByUrl.name}' first, then re-add.`,
 			)
 		}
 
-		const action = isUpdate ? "update" : "add"
+		const isConflict = (nameExists && !sameUrl) || urlOwnedByDifferentName
+		const isIdempotent = nameExists && sameUrl
 		const targetLabel = callbacks.targetLabel || "config"
 
 		const dryRunResult: DryRunResult = {
 			dryRun: true,
 			command: "registry add",
-			wouldPerform: [
-				{
-					action,
-					target: `registry:${name}`,
-					details: {
-						url: normalizedUrl,
-						namespace: index.namespace,
-					},
-				},
-			],
+			wouldPerform: isIdempotent
+				? []
+				: [
+						{
+							action: "add",
+							target: `registry:${name}`,
+							details: {
+								url: normalizedUrl,
+							},
+						},
+					],
 			validation: {
-				passed: !existingRegistry || Boolean(options.force),
+				passed: !isConflict,
 				warnings: warnings.length > 0 ? warnings : undefined,
 			},
-			summary: `Would ${action} registry '${name}' to ${targetLabel}`,
+			summary: isConflict
+				? `Would fail: conflict detected for registry '${name}'`
+				: isIdempotent
+					? `Registry '${name}' already configured with same URL (no-op)`
+					: `Would add registry '${name}' to ${targetLabel}`,
 		}
 
 		return dryRunResult
 	}
 
-	// Now throw if exists and not forced (only in non-dry-run mode)
-	if (existingRegistry && !options.force) {
-		throw new RegistryExistsError(name, existingRegistry.url, normalizedUrl)
+	// Rule 3: Same name + different URL => fail
+	if (nameExists && !sameUrl) {
+		throw new RegistryExistsError(name, existingByName.url, normalizedUrl, callbacks.targetLabel)
 	}
 
+	// Rule 4: Different name + same URL => fail
+	if (urlOwnedByDifferentName) {
+		throw new RegistryExistsError(
+			name,
+			normalizedUrl,
+			normalizedUrl,
+			callbacks.targetLabel,
+			existingByUrl.name,
+		)
+	}
+
+	// Rule 2: Same name + same URL => idempotent no-op
+	if (nameExists && sameUrl) {
+		return { name, url: normalizedUrl, updated: false, alreadyConfigured: true }
+	}
+
+	// Rule 1: New name + new URL => add
 	await callbacks.setRegistry(name, {
 		url: normalizedUrl,
 	})
 
-	return { name, url: normalizedUrl, updated: isUpdate }
+	return { name, url: normalizedUrl, updated: false, alreadyConfigured: false }
+}
+
+/**
+ * Find an existing registry entry by normalized URL.
+ * Returns the entry name and config if found, null otherwise.
+ */
+function findRegistryByUrl(
+	registries: Record<string, RegistryConfig>,
+	normalizedUrl: string,
+): { name: string; config: RegistryConfig } | null {
+	for (const [name, config] of Object.entries(registries)) {
+		if (normalizeRegistryUrl(config.url) === normalizedUrl) {
+			return { name, config }
+		}
+	}
+	return null
 }
 
 /**
@@ -287,11 +338,10 @@ export function registerRegistryCommand(program: Command): void {
 		.command("add")
 		.description("Add a registry")
 		.argument("<url>", "Registry URL")
-		.option(
+		.requiredOption(
 			"--name <name>",
 			"Registry alias (required, used as lookup key for alias/component refs)",
 		)
-		.option("-f, --force", "Overwrite existing registry")
 		.option("--dry-run", "Validate registry without adding to config")
 
 	addGlobalOption(addCmd)
@@ -334,13 +384,20 @@ export function registerRegistryCommand(program: Command): void {
 				return
 			}
 
-			// Type narrowing: result is now { name: string; url: string; updated: boolean }
-			const actualResult = result as { name: string; url: string; updated: boolean }
+			// Type narrowing: result is now the add-result shape
+			const actualResult = result as {
+				name: string
+				url: string
+				updated: boolean
+				alreadyConfigured: boolean
+			}
 
 			if (options.json) {
 				outputJson({ success: true, data: actualResult })
 			} else if (!options.quiet) {
-				if (actualResult.updated) {
+				if (actualResult.alreadyConfigured) {
+					logger.info(`Registry already configured (no changes): ${actualResult.name}`)
+				} else if (actualResult.updated) {
 					logger.success(
 						`Updated registry in ${target.targetLabel}: ${actualResult.name} -> ${actualResult.url}`,
 					)
@@ -351,15 +408,6 @@ export function registerRegistryCommand(program: Command): void {
 				}
 			}
 		} catch (error) {
-			if (error instanceof RegistryExistsError && !error.targetLabel) {
-				const enrichedError = new RegistryExistsError(
-					error.registryName,
-					error.existingUrl,
-					error.newUrl,
-					target?.targetLabel ?? "config",
-				)
-				handleError(enrichedError, { json: options.json })
-			}
 			handleError(error, { json: options.json })
 		}
 	})

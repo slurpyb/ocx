@@ -608,7 +608,7 @@ Use bare name:
 
 ### External Registry
 
-Use qualified name (namespace/component):
+Use qualified name (registry-name/component):
 
 ```json
 {

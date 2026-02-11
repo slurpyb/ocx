@@ -290,7 +290,7 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 			logger.info("")
 			for (const id of removed) {
 				const parsed = parseCanonicalId(id)
-				logger.success(`✓ Removed ${parsed.namespace}/${parsed.name}@${parsed.revision}`)
+				logger.success(`✓ Removed ${parsed.registryName}/${parsed.name}@${parsed.revision}`)
 			}
 
 			if (notFound.length > 0) {

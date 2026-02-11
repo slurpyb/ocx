@@ -139,20 +139,36 @@ export class ProfileExistsError extends OCXError {
 }
 
 export class RegistryExistsError extends OCXError {
+	public readonly conflictType: "name" | "url"
+
 	constructor(
 		public readonly registryName: string,
 		public readonly existingUrl: string,
 		public readonly newUrl: string,
 		public readonly targetLabel?: string,
+		/**
+		 * When conflictType is "url", this holds the existing registry name
+		 * that already maps to the conflicting URL.
+		 */
+		public readonly existingName?: string,
 	) {
 		const target = targetLabel ? ` in ${targetLabel}` : ""
-		const message =
-			`Registry "${registryName}" already exists${target}.\n` +
-			`  Current: ${existingUrl}\n` +
-			`  New:     ${newUrl}\n\n` +
-			`Use --force to overwrite.`
+		const isUrlConflict = existingName !== undefined && existingName !== registryName
+
+		const message = isUrlConflict
+			? `Registry URL already registered under name "${existingName}"${target}.\n` +
+				`  URL:           ${existingUrl}\n` +
+				`  Existing name: ${existingName}\n` +
+				`  Requested name: ${registryName}\n\n` +
+				`Run 'ocx registry remove ${existingName}' first, then re-add with the new name.`
+			: `Registry "${registryName}" already exists${target}.\n` +
+				`  Current: ${existingUrl}\n` +
+				`  New:     ${newUrl}\n\n` +
+				`Run 'ocx registry remove ${registryName}' first, then re-add with the new URL.`
+
 		super(message, "CONFLICT", EXIT_CODES.CONFLICT)
 		this.name = "RegistryExistsError"
+		this.conflictType = isUrlConflict ? "url" : "name"
 	}
 }
 

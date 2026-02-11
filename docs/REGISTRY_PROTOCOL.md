@@ -62,10 +62,12 @@ Returns registry metadata and a list of available components. Must conform to [`
 |-------|------|----------|-------------|
 | `$schema` | string | No | Schema URL for validation |
 | `name` | string | Yes | Human-readable registry name |
-| `namespace` | string | Yes | Unique identifier (kebab-case) |
+| `namespace` | string | Yes | Registry namespace (kebab-case, informational) |
 | `version` | string | Yes | Registry version (semver recommended) |
 | `author` | string | Yes | Registry author or organization |
 | `components` | array | Yes | List of available components |
+
+**Note on `namespace`:** The `index.namespace` field is informational only and not used for component resolution. Users reference components via the registry name configured with `ocx registry add --name <name>`.
 
 ### Component Packument
 

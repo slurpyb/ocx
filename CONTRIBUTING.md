@@ -46,7 +46,7 @@ Your `registry.jsonc` defines a namespace for all components:
 }
 ```
 
-**Note:** Component names are clean (no prefix). The alias you choose when adding the registry determines CLI references: `ocx add my/component`
+**Note:** Component names are clean (no prefix). The registry name you choose with `--name` determines CLI references: `ocx add my/component`
 
 ### 3. Building the Registry
 
@@ -57,7 +57,7 @@ ocx build ./my-registry --out ./dist
 ```
 
 The build command enforces:
-- Valid namespace identifier
+- Valid registry namespace
 - Valid semver
 - Valid OpenCode target paths
 

@@ -569,10 +569,27 @@ All variations from CLI.md lines 129-253.
 
 ### 5.3 Add with Specific Profile
 
-- [ ] **Setup:** Profile configured with registry
+- [ ] **Setup:** Create `work` profile and configure `kdco` registry at profile scope
+  ```bash
+  # Ensure global profiles are initialized
+  $OCX_BIN init --global 2>/dev/null || true
+  # Idempotent: remove work profile if it exists from prior runs
+  $OCX_BIN profile rm work --global 2>/dev/null || true
+  $OCX_BIN profile add work --global
+  # Write kdco registry into the profile's ocx.jsonc (profile-scoped)
+  echo '{"registries": {"kdco": {"url": "http://localhost:8787"}}}' > $XDG_CONFIG_HOME/opencode/profiles/work/ocx.jsonc
+  ```
+- [ ] **Verify setup:** Profile has kdco registry at profile scope
+  ```bash
+  cat $XDG_CONFIG_HOME/opencode/profiles/work/ocx.jsonc | grep -q '"kdco"' && echo "OK: kdco registry in profile" || echo "FAIL: kdco registry missing from profile"
+  ```
 - [ ] **Command:** `$OCX_BIN add kdco/researcher --profile work`
-- [ ] **Expected:** Uses profile's registry for resolution
-- [ ] **Verify:** Component installed successfully
+- [ ] **Expected:** Uses profile's registry for resolution; component installed to profile directory
+- [ ] **Verify:**
+  ```bash
+  ls $XDG_CONFIG_HOME/opencode/profiles/work/  # Should contain installed component files
+  cat $XDG_CONFIG_HOME/opencode/profiles/work/.ocx/receipt.jsonc  # Should list kdco/researcher
+  ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
 ### 5.4 Add npm Plugin (Unscoped)
@@ -745,7 +762,7 @@ All variations from CLI.md lines 256-361.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
----
+### 6.6 Update with `--json` Output
 
 - [ ] **Setup:** Component installed
 - [ ] **Command:** `$OCX_BIN update kdco/researcher --json`
@@ -753,7 +770,7 @@ All variations from CLI.md lines 256-361.
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 6.6 Update with `--verbose`
+### 6.7 Update with `--verbose`
 
 - [ ] **Setup:** Component installed
 - [ ] **Command:** `$OCX_BIN update kdco/researcher --verbose`
@@ -846,7 +863,7 @@ All subcommands from CLI.md lines 519-705.
 
 - [ ] **Setup:** Local config initialized, `kdco` registry does NOT exist
 - [ ] **Command:** `$OCX_BIN registry add http://localhost:8787 --name kdco`
-- [ ] **Expected:** Registry added with alias "kdco"
+- [ ] **Expected:** Registry added with name "kdco"
 - [ ] **Verify:**
   ```bash
   $OCX_BIN registry list  # Should show kdco
@@ -866,19 +883,35 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.3 `ocx registry add --force` (Update Existing)
+### 8.3 `ocx registry add` Duplicate URL Rejection
 
 - [ ] **Setup:** Registry already configured (run Section 8.1 first to add `kdco` registry)
-- [ ] **Command:** `$OCX_BIN registry add http://localhost:8787 --name kdco --force`
-- [ ] **Expected:** Overwrites existing registry with same URL (force update behavior)
+- [ ] **Command:** `$OCX_BIN registry add http://localhost:8787 --name kdco2`
+- [ ] **Expected:** Fails with error (same URL cannot be added under a different name)
 - [ ] **Verify:**
   ```bash
-  cat .opencode/ocx.jsonc  # Should still contain kdco registry
-  $OCX_BIN registry list  # Should show kdco
+  # Error message should indicate URL is already configured
+  $OCX_BIN registry list  # Should show only 'kdco', not 'kdco2'
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.4 `ocx registry add` with `--json` Output
+### 8.4 `ocx registry add` After Explicit Remove (Update Workflow)
+
+- [ ] **Setup:** Registry already configured (run Section 8.1 first to add `kdco` registry)
+- [ ] **Commands:**
+  ```bash
+  $OCX_BIN registry remove kdco
+  $OCX_BIN registry add http://localhost:8787 --name kdco-new
+  ```
+- [ ] **Expected:** Remove then add succeeds; registry now available under new name
+- [ ] **Verify:**
+  ```bash
+  $OCX_BIN registry list  # Should show 'kdco-new', not 'kdco'
+  cat .opencode/ocx.jsonc  # Should contain kdco-new registry
+  ```
+- [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
+
+### 8.5 `ocx registry add` with `--json` Output
 
 > **Note:** Alternative to Section 8.1. If that already ran, `kdco` registry
 > already exists. Either skip this test, remove the registry first
@@ -890,7 +923,7 @@ All subcommands from CLI.md lines 519-705.
 - [ ] **Verify:** Output is valid JSON
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.5 `ocx registry remove` (Local)
+### 8.6 `ocx registry remove` (Local)
 
 - [ ] **Setup:** Registry configured locally
 - [ ] **Command:** `$OCX_BIN registry remove kdco`
@@ -902,7 +935,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.6 `ocx registry remove --global`
+### 8.7 `ocx registry remove --global`
 
 - [ ] **Setup:** Registry configured globally
 - [ ] **Command:** `$OCX_BIN registry remove kdco --global`
@@ -913,7 +946,7 @@ All subcommands from CLI.md lines 519-705.
   ```
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.7 `ocx registry list` (Local)
+### 8.8 `ocx registry list` (Local)
 
 - [ ] **Setup:** Registries configured locally
 - [ ] **Command:** `$OCX_BIN registry list`
@@ -921,7 +954,7 @@ All subcommands from CLI.md lines 519-705.
 - [ ] **Verify:** Output matches `.opencode/ocx.jsonc` content
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.8 `ocx registry list --global`
+### 8.9 `ocx registry list --global`
 
 - [ ] **Setup:** Registries configured globally
 - [ ] **Command:** `$OCX_BIN registry list --global`
@@ -929,7 +962,7 @@ All subcommands from CLI.md lines 519-705.
 - [ ] **Verify:** Output matches global config
 - [ ] **Last tested:** _vX.X.X on YYYY-MM-DD_
 
-### 8.9 `ocx registry list --json`
+### 8.10 `ocx registry list --json`
 
 - [ ] **Setup:** Registries configured
 - [ ] **Command:** `$OCX_BIN registry list --json`
@@ -1842,7 +1875,7 @@ Common errors from CLI.md error tables.
   ```bash
   # Idempotent: ensure kdco registry exists first
   $OCX_BIN registry list | grep -q "kdco" || $OCX_BIN registry add http://localhost:8787 --name kdco
-  # Attempt to add conflicting registry with same alias
+  # Attempt to add conflicting registry with same name
   $OCX_BIN registry add http://localhost:8788 --name kdco
   ```
 - [ ] **Expected:** Error: "Registry 'kdco' already exists"

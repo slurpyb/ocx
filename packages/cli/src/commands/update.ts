@@ -184,7 +184,7 @@ export async function runUpdateCore(
 		newHash: string
 		newVersion: string
 		baseUrl: string
-		namespace: string
+		registryName: string
 		name: string
 	}[] = []
 
@@ -197,14 +197,14 @@ export async function runUpdateCore(
 				throw new NotFoundError(`Component '${canonicalId}' not found in receipt.`)
 			}
 
-			const namespace = entry.namespace
+			const registryName = entry.registryName
 			const componentName = entry.name
 
 			// Get registry config by alias
-			const regConfig = registries[namespace]
+			const regConfig = registries[registryName]
 			if (!regConfig) {
 				throw new ConfigError(
-					`Registry alias '${namespace}' not configured. Component '${canonicalId}' cannot be updated.`,
+					`Registry alias '${registryName}' not configured. Component '${canonicalId}' cannot be updated.`,
 				)
 			}
 
@@ -253,7 +253,7 @@ export async function runUpdateCore(
 					newHash,
 					newVersion: newVersion,
 					baseUrl: regConfig.url,
-					namespace,
+					registryName,
 					name: componentName,
 				})
 			}
@@ -333,7 +333,7 @@ export async function runUpdateCore(
 
 			receipt.installed[update.canonicalId] = {
 				registryUrl: existingEntry.registryUrl,
-				namespace: existingEntry.namespace,
+				registryName: existingEntry.registryName,
 				name: existingEntry.name,
 				revision: update.newVersion,
 				hash: update.newHash,
@@ -433,7 +433,7 @@ function resolveComponentsToUpdate(
 		return installedComponents
 			.filter((canonicalId) => {
 				const entry = receipt.installed[canonicalId]
-				return entry?.namespace === options.registry
+				return entry?.registryName === options.registry
 			})
 			.map((c) => ({ component: c }))
 	}
@@ -449,7 +449,7 @@ function resolveComponentsToUpdate(
 			const suggestions = installedComponents
 				.map((id) => {
 					const parsed = parseCanonicalId(id)
-					return `${parsed.namespace}/${parsed.name}`
+					return `${parsed.registryName}/${parsed.name}`
 				})
 				.filter((qualified) => qualified.endsWith(`/${name}`))
 			if (suggestions.length === 1) {
@@ -470,10 +470,10 @@ function resolveComponentsToUpdate(
 		}
 
 		// Find matching canonical ID
-		const { namespace, component } = parseQualifiedComponent(name)
+		const { namespace: prefix, component } = parseQualifiedComponent(name)
 		const matchingIds = installedComponents.filter((id) => {
 			const parsed = parseCanonicalId(id)
-			return parsed.namespace === namespace && parsed.name === component
+			return parsed.registryName === prefix && parsed.name === component
 		})
 
 		if (matchingIds.length === 0) {

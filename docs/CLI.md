@@ -105,7 +105,7 @@ ocx add <components...> [options]
 
 | Argument | Description |
 |----------|-------------|
-| `components...` | Components to install (namespace/component or npm:package[@version]) |
+| `components...` | Components to install (name/component or npm:package[@version]) |
 
 ### Options
 
@@ -141,7 +141,8 @@ ocx add npm:@opencode/plugin-github@1.2.3
 ocx add shadcn/button --dry-run
 
 # Use ephemeral registry (not saved to config)
-ocx add my-component --from https://my-registry.com
+# Registry name comes from requested refs (e.g., kdco/workspace)
+ocx add kdco/workspace --from https://my-registry.com
 ```
 
 ---
@@ -390,9 +391,8 @@ ocx registry add <url> [options]
 
 | Option | Description |
 |--------|-------------|
-| `--name <name>` | Registry alias (required) |
+| `--name <name>` | Registry name (required). Canonical identity used to reference components as `<name>/<component>`. |
 | `--dry-run` | Validate registry without adding to config |
-| `-f, --force` | Overwrite existing registry |
 | `-g, --global` | Add to global config (~/.config/opencode) |
 | `-p, --profile <name>` | Use specific global profile for registry resolution |
 | `--cwd <path>` | Working directory (default: current directory) |
@@ -402,7 +402,7 @@ ocx registry add <url> [options]
 #### Examples
 
 ```bash
-# Add a registry with a custom alias
+# Add a registry with a name
 ocx registry add https://registry.example.com --name myregistry
 
 # Validate registry without adding
@@ -410,9 +410,6 @@ ocx registry add https://registry.example.com --name myregistry --dry-run
 
 # Get machine-readable output
 ocx registry add https://registry.example.com --name myregistry --json
-
-# Update existing registry (requires --force)
-ocx registry add https://new-url.example.com --name myregistry --force
 ```
 
 #### Registry Scope (Local-First)
@@ -426,11 +423,22 @@ ocx registry add https://registry.example.com --name myregistry
 # Add to global config
 ocx registry add https://registry.example.com --name myregistry --global
 
-# Use the alias to install components
+# Use the registry name to install components
 ocx add myregistry/component-name
 ```
 
 **Note:** `--global` and `--cwd` are mutually exclusive.
+
+#### Identity Model
+
+- **Registry name is canonical identity**: The `--name` you provide becomes the canonical identifier for the registry in your configuration.
+- **Components referenced as `name/component`**: Users reference components using the configured registry name (e.g., `kdco/researcher`).
+- **Registry `index.namespace` not authoritative**: The `namespace` field in the registry's `index.json` is informational only and not part of the identity protocol.
+
+#### Constraints
+
+- **URL uniqueness**: The same URL cannot be added under multiple names. To change the name for a registry, remove it first with `ocx registry remove <name>`, then add with the new name.
+- **No `--force` for conflicts**: To update an existing registry name or URL, use remove-then-add (e.g., `ocx registry remove myregistry && ocx registry add <new-url> --name myregistry`).
 
 #### Errors
 
@@ -438,7 +446,8 @@ ocx add myregistry/component-name
 |-------|-------|----------|
 | `No ocx.jsonc found` | Not initialized | Run `ocx init` first |
 | `Registries are locked` | `lockRegistries: true` in config | Remove lock or edit config manually |
-| `Registry 'name' already exists` | Duplicate name | Use `--force` to overwrite, or choose a different `--name` |
+| `Registry 'name' already exists` | Name already in use | Remove existing registry first with `ocx registry remove <name>`, then add again |
+| `Registry URL already configured` | Same URL under different name | Remove the existing registry first, then add with the new name |
 
 ---
 
@@ -954,7 +963,7 @@ ocx p add <name> [options]  # alias
 | Option | Description |
 |--------|-------------|
 | `--clone <profile>` | Clone from existing profile (local or global scope) |
-| `--source <namespace/component>` | Install profile from registry component (requires `--global`) |
+| `--source <name/component>` | Install profile from registry component (requires `--global`) |
 | `--from <url>` | Ephemeral registry URL for profile installation (used with `--source`) |
 | `-g, --global` | Create global profile (default is local) |
 

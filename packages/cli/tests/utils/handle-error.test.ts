@@ -173,7 +173,7 @@ describe("handleError JSON output", () => {
 	}
 
 	describe("RegistryExistsError", () => {
-		it("formats with all details", () => {
+		it("formats name conflict with all details", () => {
 			const error = new RegistryExistsError(
 				"my-registry",
 				"https://old.example.com",
@@ -191,6 +191,7 @@ describe("handleError JSON output", () => {
 			expect(output.success).toBe(false)
 			expect(output.error.code).toBe("CONFLICT")
 			expect(output.error.details).toEqual({
+				conflictType: "name",
 				registryName: "my-registry",
 				existingUrl: "https://old.example.com",
 				newUrl: "https://new.example.com",
@@ -198,6 +199,32 @@ describe("handleError JSON output", () => {
 			})
 			expect(output.exitCode).toBe(EXIT_CODES.CONFLICT)
 			expect(capturedExitCode).toBe(EXIT_CODES.CONFLICT)
+		})
+
+		it("formats URL conflict with existingName", () => {
+			const error = new RegistryExistsError(
+				"new-alias",
+				"https://same.example.com",
+				"https://same.example.com",
+				"local config",
+				"old-alias",
+			)
+
+			try {
+				handleError(error, { json: true })
+			} catch {
+				// Expected
+			}
+
+			const output = parseJsonOutput()
+			expect(output.error.details).toEqual({
+				conflictType: "url",
+				registryName: "new-alias",
+				existingUrl: "https://same.example.com",
+				newUrl: "https://same.example.com",
+				targetLabel: "local config",
+				existingName: "old-alias",
+			})
 		})
 
 		it("formats without optional targetLabel", () => {
@@ -215,11 +242,13 @@ describe("handleError JSON output", () => {
 
 			const output = parseJsonOutput()
 			expect(output.error.details).toEqual({
+				conflictType: "name",
 				registryName: "my-registry",
 				existingUrl: "https://old.example.com",
 				newUrl: "https://new.example.com",
 			})
 			expect(output.error.details).not.toHaveProperty("targetLabel")
+			expect(output.error.details).not.toHaveProperty("existingName")
 		})
 	})
 

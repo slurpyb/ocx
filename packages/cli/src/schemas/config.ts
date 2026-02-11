@@ -62,15 +62,15 @@ export const RECEIPT_FILE = "receipt.jsonc"
 
 /**
  * V1: Installed component entry in receipt
- * Canonical ID format: "registryUrl::namespace/component@resolvedRevision"
+ * Canonical ID format: "registryUrl::registryName/component@resolvedRevision"
  * Includes ownership tracking and sha256 baseline for integrity
  */
 export const installedComponentSchema = z.object({
 	/** Registry URL where this was installed from */
 	registryUrl: z.string(),
 
-	/** Registry namespace */
-	namespace: z.string(),
+	/** Registry name (configured alias from ocx.jsonc) */
+	registryName: z.string(),
 
 	/** Component name */
 	name: z.string(),
@@ -122,7 +122,7 @@ export type InstalledComponent = z.infer<typeof installedComponentSchema>
  * Tracks installed components with ownership and baselines per install root.
  * Replaces the old ocx.lock format.
  *
- * Keys use canonical ID format: "registryUrl::namespace/component@resolvedRevision"
+ * Keys use canonical ID format: "registryUrl::registryName/component@resolvedRevision"
  */
 export const receiptSchema = z.object({
 	/** Receipt format version */
@@ -213,30 +213,30 @@ export type OcxLock = z.infer<typeof ocxLockSchema>
 
 /**
  * V1: Create canonical component ID.
- * Format: "registryUrl::namespace/component@resolvedRevision"
+ * Format: "registryUrl::registryName/component@resolvedRevision"
  *
  * Registry versions are ignored - registry is treated as latest-only.
  *
  * @param registryUrl - Registry base URL (normalized)
- * @param namespace - Component namespace
+ * @param registryName - Configured registry alias
  * @param name - Component name
  * @param revision - Resolved version/revision (not tags)
  * @returns Canonical ID string
  */
 export function createCanonicalId(
 	registryUrl: string,
-	namespace: string,
+	registryName: string,
 	name: string,
 	revision: string,
 ): string {
 	// Normalize registry URL (remove trailing slash)
 	const normalizedUrl = normalizeRegistryUrl(registryUrl)
-	return `${normalizedUrl}::${namespace}/${name}@${revision}`
+	return `${normalizedUrl}::${registryName}/${name}@${revision}`
 }
 
 /**
  * V1: Parse a canonical component ID.
- * Format: "registryUrl::namespace/component@resolvedRevision"
+ * Format: "registryUrl::registryName/component@resolvedRevision"
  *
  * @param canonicalId - The canonical ID to parse
  * @returns Parsed components
@@ -244,14 +244,14 @@ export function createCanonicalId(
  */
 export function parseCanonicalId(canonicalId: string): {
 	registryUrl: string
-	namespace: string
+	registryName: string
 	name: string
 	revision: string
 } {
 	// Guard: must contain ::
 	if (!canonicalId.includes("::")) {
 		throw new Error(
-			`Invalid canonical ID: "${canonicalId}". Expected format: registryUrl::namespace/component@revision`,
+			`Invalid canonical ID: "${canonicalId}". Expected format: registryUrl::registryName/component@revision`,
 		)
 	}
 
@@ -260,14 +260,14 @@ export function parseCanonicalId(canonicalId: string): {
 	// Guard: must have content after ::
 	if (!rest || !registryUrl) {
 		throw new Error(
-			`Invalid canonical ID: "${canonicalId}". Expected format: registryUrl::namespace/component@revision`,
+			`Invalid canonical ID: "${canonicalId}". Expected format: registryUrl::registryName/component@revision`,
 		)
 	}
 
 	// Guard: must contain @
 	if (!rest.includes("@")) {
 		throw new Error(
-			`Invalid canonical ID: "${canonicalId}". Expected format: registryUrl::namespace/component@revision`,
+			`Invalid canonical ID: "${canonicalId}". Expected format: registryUrl::registryName/component@revision`,
 		)
 	}
 
@@ -282,29 +282,29 @@ export function parseCanonicalId(canonicalId: string): {
 	// Guard: must have qualified name and revision
 	if (!qualifiedName || !revision) {
 		throw new Error(
-			`Invalid canonical ID: "${canonicalId}". Expected format: registryUrl::namespace/component@revision`,
+			`Invalid canonical ID: "${canonicalId}". Expected format: registryUrl::registryName/component@revision`,
 		)
 	}
 
 	// Parse qualified name
 	if (!qualifiedName.includes("/")) {
 		throw new Error(
-			`Invalid canonical ID: "${canonicalId}". Component must be qualified (namespace/component)`,
+			`Invalid canonical ID: "${canonicalId}". Component must be qualified (registryName/component)`,
 		)
 	}
 
-	const [namespace, name] = qualifiedName.split("/")
+	const [registryName, name] = qualifiedName.split("/")
 
-	// Guard: namespace and name must exist
-	if (!namespace || !name) {
+	// Guard: registryName and name must exist
+	if (!registryName || !name) {
 		throw new Error(
-			`Invalid canonical ID: "${canonicalId}". Both namespace and component name are required`,
+			`Invalid canonical ID: "${canonicalId}". Both registry name and component name are required`,
 		)
 	}
 
 	return {
 		registryUrl: normalizeRegistryUrl(registryUrl), // Normalize
-		namespace,
+		registryName,
 		name,
 		revision,
 	}

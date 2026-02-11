@@ -7,7 +7,7 @@ import type { Command } from "commander"
 import { LocalConfigProvider } from "../config/provider"
 import { type Receipt, readReceipt } from "../schemas/config"
 import { parseQualifiedComponent } from "../schemas/registry"
-import { ConflictError, EXIT_CODES, NotFoundError } from "../utils/errors"
+import { ConflictError, EXIT_CODES, NotFoundError, ValidationError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
 import { checkFileIntegrity, parseCanonicalId } from "../utils/receipt"
 import { addCommonOptions, addVerboseOption } from "../utils/shared-options"
@@ -49,6 +49,7 @@ export function registerVerifyCommand(program: Command): void {
  * @param receipt - Receipt to search
  * @returns Canonical ID from the receipt
  * @throws NotFoundError if component is not installed
+ * @throws ValidationError if multiple matches found (ambiguous shorthand)
  */
 function resolveComponentRef(ref: string, receipt: Receipt): string {
 	const installedKeys = Object.keys(receipt.installed)
@@ -58,12 +59,12 @@ function resolveComponentRef(ref: string, receipt: Receipt): string {
 		return ref
 	}
 
-	// Shorthand path: resolve "namespace/name" against receipt entries
+	// Shorthand path: resolve "registryName/name" against receipt entries
 	if (ref.includes("/") && !ref.includes("::")) {
-		const { namespace, component } = parseQualifiedComponent(ref)
+		const { namespace: prefix, component } = parseQualifiedComponent(ref)
 		const matchingIds = installedKeys.filter((id) => {
 			const parsed = parseCanonicalId(id)
-			return parsed.namespace === namespace && parsed.name === component
+			return parsed.registryName === prefix && parsed.name === component
 		})
 
 		if (matchingIds.length === 1) {
@@ -71,7 +72,11 @@ function resolveComponentRef(ref: string, receipt: Receipt): string {
 		}
 
 		if (matchingIds.length > 1) {
-			return matchingIds[0] as string
+			throw new ValidationError(
+				`Ambiguous component '${ref}'. Found ${matchingIds.length} matches:\n` +
+					matchingIds.map((id) => `  - ${id}`).join("\n") +
+					"\n\nPlease use the full canonical ID.",
+			)
 		}
 	}
 
@@ -98,18 +103,7 @@ async function runVerify(componentNames: string[], options: VerifyOptions): Prom
 	// Resolve shorthand refs (e.g., "kdco/researcher") to canonical receipt IDs
 	let toVerify: string[]
 	if (componentNames.length > 0) {
-		toVerify = []
-		for (const name of componentNames) {
-			try {
-				toVerify.push(resolveComponentRef(name, receipt))
-			} catch (error) {
-				// Re-throw NotFoundError to halt with clear message (Law 4: Fail Fast)
-				if (error instanceof NotFoundError) {
-					throw error
-				}
-				throw error
-			}
-		}
+		toVerify = componentNames.map((name) => resolveComponentRef(name, receipt))
 	} else {
 		toVerify = Object.keys(receipt.installed)
 	}

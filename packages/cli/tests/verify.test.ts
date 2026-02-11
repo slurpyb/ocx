@@ -353,3 +353,51 @@ describe("ocx verify", () => {
 		expect(output).toContain("No components installed")
 	})
 })
+
+describe("ocx verify ambiguity", () => {
+	let testDir: string
+	let registry: MockRegistry
+
+	afterEach(async () => {
+		registry?.stop()
+		if (testDir) {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("should fail with ambiguity error when shorthand matches multiple canonical IDs", async () => {
+		registry = startMockRegistry()
+		testDir = await createTempDir("verify-ambiguity")
+		await runCLI(["init"], testDir)
+
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
+		config.registries = { kdco: { url: registry.url } }
+		await writeFile(configPath, JSON.stringify(config, null, 2))
+
+		// Install a component to get a valid receipt, then manually craft ambiguity
+		const { exitCode: addExit } = await runCLI(["add", "kdco/test-plugin"], testDir)
+		expect(addExit).toBe(0)
+
+		// Read receipt and duplicate the entry under a different URL to simulate ambiguity
+		const receiptPath = join(testDir, ".ocx/receipt.jsonc")
+		const receiptContent = await readFile(receiptPath, "utf-8")
+		const receipt = parseJsonc(receiptContent) as Record<string, unknown>
+		const installed = receipt.installed as Record<string, unknown>
+		const originalKey = Object.keys(installed).find((k) => k.includes("test-plugin"))
+		expect(originalKey).toBeDefined()
+		if (!originalKey) throw new Error("originalKey should be defined")
+
+		// Create a second entry with a different URL but same registryName/name
+		const secondKey = originalKey.replace(/^https?:\/\/[^:]+/, "https://other-registry.example.com")
+		installed[secondKey] = installed[originalKey]
+		await writeFile(receiptPath, JSON.stringify(receipt, null, 2))
+
+		// Now verify using shorthand — should fail with ambiguity error
+		const { exitCode, output } = await runCLI(["verify", "kdco/test-plugin"], testDir)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("Ambiguous")
+		expect(output).toContain("canonical ID")
+	})
+})

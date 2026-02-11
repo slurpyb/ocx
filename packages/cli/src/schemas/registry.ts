@@ -92,7 +92,13 @@ export function parseQualifiedComponent(ref: string): { namespace: string; compo
 	if (!ref.includes("/")) {
 		throw new Error(`Invalid component reference: "${ref}". Use format: namespace/component`)
 	}
-	const [namespace, component] = ref.split("/")
+	const parts = ref.split("/")
+	if (parts.length > 2) {
+		throw new Error(
+			`Invalid component reference: "${ref}". Too many "/" separators. Use format: namespace/component`,
+		)
+	}
+	const [namespace, component] = parts
 	if (!namespace || !component) {
 		throw new Error(
 			`Invalid component reference: "${ref}". Both namespace and component are required.`,
@@ -806,9 +812,6 @@ export const registrySchema = z
 		/** Registry version (semver) */
 		version: z.string().regex(semverRegex, { message: "Version must be valid semver" }).optional(),
 
-		/** Registry namespace - used in qualified component references (e.g., kdco/researcher) */
-		namespace: namespaceSchema,
-
 		/** Registry author */
 		author: z.string().min(1, "Author cannot be empty"),
 
@@ -881,9 +884,6 @@ export type Packument = z.infer<typeof packumentSchema>
 export const registryIndexSchema = z.object({
 	/** JSON Schema URL for IDE support */
 	$schema: z.string().optional(),
-
-	/** Registry namespace */
-	namespace: namespaceSchema,
 
 	/** Registry author */
 	author: z.string(),

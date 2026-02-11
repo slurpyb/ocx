@@ -4,7 +4,7 @@
 	"title": "OCX Registry Schema",
 	"description": "Schema for registry.jsonc files that define OCX component registries",
 	"type": "object",
-	"required": ["name", "namespace", "version", "author", "components"],
+	"required": ["author", "components"],
 	"additionalProperties": false,
 	"properties": {
 		"$schema": {
@@ -15,13 +15,6 @@
 			"type": "string",
 			"minLength": 1,
 			"description": "Human-readable registry name"
-		},
-		"namespace": {
-			"type": "string",
-			"minLength": 1,
-			"maxLength": 64,
-			"pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-			"description": "Registry namespace identifier (lowercase alphanumeric with hyphens)"
 		},
 		"version": {
 			"type": "string",
@@ -66,7 +59,16 @@
 				},
 				"type": {
 					"type": "string",
-					"enum": ["ocx:agent", "ocx:skill", "ocx:plugin", "ocx:command", "ocx:tool", "ocx:bundle"],
+					"enum": [
+						"agent",
+						"skill",
+						"plugin",
+						"command",
+						"tool",
+						"bundle",
+						"ocx:bundle",
+						"ocx:profile"
+					],
 					"description": "Component type"
 				},
 				"description": {

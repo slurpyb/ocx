@@ -34,13 +34,9 @@ describe("resolver", () => {
 			expect(result).toEqual({ namespace: "other", component: "utils" })
 		})
 
-		it("should handle multiple slashes by using first as separator", () => {
-			// parseQualifiedComponent splits on "/" - only takes first two parts
-			const result = parseComponentRef("ns/comp/extra")
-			// Based on the implementation using split("/"), it takes the first element as namespace
-			// and second element as component (extra parts are ignored)
-			expect(result.namespace).toBe("ns")
-			expect(result.component).toBe("comp")
+		it("should reject multiple slashes in component ref", () => {
+			// parseQualifiedComponent now rejects refs with more than one "/"
+			expect(() => parseComponentRef("ns/comp/extra")).toThrow('Too many "/" separators')
 		})
 	})
 

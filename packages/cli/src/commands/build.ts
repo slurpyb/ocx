@@ -68,7 +68,6 @@ export function registerBuildCommand(program: Command): void {
 					outputJson({
 						success: true,
 						data: {
-							namespace: buildResult.namespace,
 							components: buildResult.componentsCount,
 							output: buildResult.outputPath,
 						},

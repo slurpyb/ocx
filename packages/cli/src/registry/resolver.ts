@@ -43,12 +43,10 @@ export function parseComponentRef(
 }
 
 export interface ResolvedComponent extends NormalizedComponentManifest {
-	/** The namespace this component belongs to */
-	namespace: string
-	/** The registry name from ocx.jsonc */
+	/** The registry name from ocx.jsonc (configured alias) */
 	registryName: string
 	baseUrl: string
-	/** Qualified name (namespace/component) */
+	/** Qualified name (registryName/component) */
 	qualifiedName: string
 }
 
@@ -146,7 +144,6 @@ export async function resolveDependencies(
 		// Add to resolved (dependencies are already added)
 		resolved.set(qualifiedName, {
 			...normalizedComponent,
-			namespace: componentNamespace,
 			registryName: componentNamespace,
 			baseUrl: regConfig.url,
 			qualifiedName,

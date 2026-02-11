@@ -40,6 +40,7 @@ Work in any repo without modifying it. Your config, their code.
 ocx init --global
 
 # Install a pre-configured profile from a registry
+# Registry name comes from the source reference (e.g., kit/omo uses 'kit')
 ocx profile add omo --source kit/omo --from https://ocx-kit.kdco.dev --global
 
 # Use in any repo
@@ -63,7 +64,7 @@ Profiles control what OpenCode sees through `exclude`/`include` patterns. Each p
 
 | Command | Description |
 |---------|-------------|
-| `ocx profile add <name> --source <ns/profile> --from <url> --global` | Install a profile from a registry |
+| `ocx profile add <name> --source <registry/profile> --from <url> --global` | Install a profile from a registry |
 | `ocx profile add <name> --clone <existing> --global` | Clone an existing profile |
 | `ocx oc -p <name>` | Launch OpenCode with a profile |
 | `ocx profile list` | List your profiles |
@@ -81,10 +82,10 @@ Add individual components to projects (copied to `.opencode/`, not `node_modules
 # One-time local setup
 ocx init
 
-# Add a registry with a custom alias
+# Add a registry with a name
 ocx registry add https://registry.kdco.dev --name kdco
 
-# Install components using alias/component syntax
+# Install components using name/component syntax
 ocx add kdco/workspace
 ```
 

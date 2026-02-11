@@ -246,6 +246,12 @@ describe("schemas", () => {
 				"Both namespace and component are required",
 			)
 		})
+
+		it("should throw for multiple slash separators", () => {
+			expect(() => parseQualifiedComponent("a/b/c")).toThrow('Too many "/" separators')
+			expect(() => parseQualifiedComponent("ns/comp/extra")).toThrow('Too many "/" separators')
+			expect(() => parseQualifiedComponent("a/b/c/d")).toThrow('Too many "/" separators')
+		})
 	})
 
 	describe("createQualifiedComponent", () => {
@@ -454,7 +460,7 @@ describe("schemas", () => {
 			const id = "https://registry.example.com::kdco/component@1.0.0"
 			const result = parseCanonicalId(id)
 			expect(result.registryUrl).toBe("https://registry.example.com")
-			expect(result.namespace).toBe("kdco")
+			expect(result.registryName).toBe("kdco")
 			expect(result.name).toBe("component")
 			expect(result.revision).toBe("1.0.0")
 		})
@@ -463,7 +469,7 @@ describe("schemas", () => {
 			const id = "https://registry.example.com::kdco/component@user@branch"
 			const result = parseCanonicalId(id)
 			expect(result.registryUrl).toBe("https://registry.example.com")
-			expect(result.namespace).toBe("kdco")
+			expect(result.registryName).toBe("kdco")
 			expect(result.name).toBe("component")
 			expect(result.revision).toBe("user@branch")
 		})
