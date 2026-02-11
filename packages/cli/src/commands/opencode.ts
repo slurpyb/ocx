@@ -10,9 +10,11 @@
 import type { Command } from "commander"
 import { ConfigResolver } from "../config/resolver"
 import { getProfileOpencodeConfig } from "../profile/paths"
+import { ConfigError } from "../utils/errors"
 import { getGitInfo } from "../utils/git-context"
 import { handleError, logger } from "../utils/index"
 import { getGlobalConfigPath } from "../utils/paths"
+import { resolveConfigPatterns } from "../utils/resolve-config"
 import {
 	formatTerminalName,
 	restoreTerminalTitle,
@@ -72,18 +74,19 @@ export function resolveOpenCodeBinary(opts: { configBin?: string; envBin?: strin
  * - Overwrites OCX_PROFILE, OPENCODE_* keys with new values
  * - OPENCODE_DISABLE_PROJECT_CONFIG always set to "true" when disableProjectConfig is true
  * - OPENCODE_CONFIG_DIR always set to base config dir (XDG-aware), never respects user-provided value
+ * - configContent is a pre-serialized JSON string (already token-resolved)
  */
 export function buildOpenCodeEnv(opts: {
 	baseEnv: Record<string, string | undefined>
 	profileName?: string
-	mergedConfig?: object
+	configContent?: string
 	disableProjectConfig: boolean
 }): Record<string, string | undefined> {
 	return {
 		...opts.baseEnv,
 		...(opts.disableProjectConfig && { OPENCODE_DISABLE_PROJECT_CONFIG: "true" }),
 		OPENCODE_CONFIG_DIR: getGlobalConfigPath(),
-		...(opts.mergedConfig && { OPENCODE_CONFIG_CONTENT: JSON.stringify(opts.mergedConfig) }),
+		...(opts.configContent && { OPENCODE_CONFIG_CONTENT: opts.configContent }),
 		...(opts.profileName && { OCX_PROFILE: opts.profileName }),
 	}
 }
@@ -207,13 +210,30 @@ async function runOpencode(args: string[], options: OpencodeOptions): Promise<vo
 	})
 
 	// Spawn OpenCode directly in the project directory with config via environment
+	// TODO: Remove resolveConfigPatterns() call once upstream OpenCode resolves
+	// {env:...} / {file:...} tokens in OPENCODE_CONFIG_CONTENT.
+	const configContent = configToPass
+		? resolveConfigPatterns(JSON.stringify(configToPass), getGlobalConfigPath())
+		: undefined
+
+	// Validate resolved config is still valid JSON after token substitution
+	if (configContent) {
+		try {
+			JSON.parse(configContent)
+		} catch {
+			throw new ConfigError(
+				"Resolved config content is not valid JSON. Check that {env:...} and {file:...} token values do not break JSON syntax.",
+			)
+		}
+	}
+
 	proc = Bun.spawn({
 		cmd: [bin, ...args],
 		cwd: projectDir,
 		env: buildOpenCodeEnv({
 			baseEnv: process.env as Record<string, string | undefined>,
 			profileName: config.profileName ?? undefined,
-			mergedConfig: configToPass,
+			configContent,
 			disableProjectConfig: true,
 		}),
 		stdin: "inherit",

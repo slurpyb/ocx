@@ -133,11 +133,11 @@ describe("buildOpenCodeEnv", () => {
 		expect(typeof result.OPENCODE_CONFIG_DIR).toBe("string")
 	})
 
-	it("sets OPENCODE_CONFIG_CONTENT as JSON when mergedConfig provided", () => {
+	it("sets OPENCODE_CONFIG_CONTENT as JSON when configContent provided", () => {
 		const config = { theme: "dark", nested: { key: "value" } }
 		const result = buildOpenCodeEnv({
 			baseEnv: {},
-			mergedConfig: config,
+			configContent: JSON.stringify(config),
 			disableProjectConfig: true,
 		})
 		// Parse and compare objects - NOT string comparison
