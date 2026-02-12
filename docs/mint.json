@@ -1,0 +1,170 @@
+{
+	"$schema": "https://mintlify.com/schema.json",
+	"name": "OCX Documentation",
+	"logo": {
+		"dark": "/logo/dark.svg",
+		"light": "/logo/light.svg"
+	},
+	"favicon": "/favicon.svg",
+	"colors": {
+		"primary": "#0D9373",
+		"light": "#07C983",
+		"dark": "#0D9373",
+		"anchors": {
+			"from": "#0D9373",
+			"to": "#07C983"
+		}
+	},
+	"topbarLinks": [
+		{
+			"name": "GitHub",
+			"url": "https://github.com/kdcokenny/ocx"
+		}
+	],
+	"topbarCtaButton": {
+		"name": "Install",
+		"url": "/getting-started/installation"
+	},
+	"anchors": [
+		{
+			"name": "GitHub",
+			"icon": "github",
+			"url": "https://github.com/kdcokenny/ocx"
+		},
+		{
+			"name": "npm",
+			"icon": "npm",
+			"url": "https://www.npmjs.com/package/ocx"
+		}
+	],
+	"navigation": [
+		{
+			"group": "Getting Started",
+			"pages": [
+				"getting-started/introduction",
+				"getting-started/installation",
+				"getting-started/quick-start"
+			]
+		},
+		{
+			"group": "Profiles",
+			"pages": [
+				"profiles/overview",
+				"profiles/configuration",
+				"profiles/security",
+				"profiles/ws",
+				"profiles/omo"
+			]
+		},
+		{
+			"group": "CLI",
+			"pages": [
+				"cli/commands",
+				"cli/init",
+				"cli/add",
+				"cli/remove",
+				"cli/update",
+				"cli/search",
+				"cli/verify",
+				"cli/registry",
+				"cli/build",
+				"cli/self",
+				"cli/profile",
+				"cli/config",
+				"cli/opencode"
+			]
+		},
+		{
+			"group": "Registries",
+			"pages": ["registries/create", "registries/protocol"]
+		},
+		{
+			"group": "Reference",
+			"pages": [
+				"reference/opencode",
+				"reference/plugins",
+				"reference/configuration",
+				"reference/agents",
+				"reference/skills",
+				"reference/tools",
+				"reference/mcp",
+				"reference/permissions"
+			]
+		},
+		{
+			"group": "Guides",
+			"pages": ["guides/index", "guides/oh-my-opencode", "guides/kdco-workspace"]
+		},
+		{
+			"group": "Integrations",
+			"pages": [
+				"integrations/workspace",
+				"integrations/background-agents",
+				"integrations/notify",
+				"integrations/worktree"
+			]
+		},
+		{
+			"group": "Enterprise",
+			"pages": ["enterprise/overview"]
+		},
+		{
+			"group": "Security",
+			"pages": ["security/policy", "security/verification"]
+		},
+		{
+			"group": "Maintainers",
+			"pages": ["maintainers/migration-v1-4-0", "maintainers/kdco-registry", "maintainers/ocx-kit"],
+			"hidden": true
+		}
+	],
+	"redirects": [
+		{
+			"source": "/docs/CLI",
+			"destination": "/cli/commands"
+		},
+		{
+			"source": "/docs/PROFILES",
+			"destination": "/profiles/overview"
+		},
+		{
+			"source": "/docs/ENTERPRISE",
+			"destination": "/enterprise/overview"
+		},
+		{
+			"source": "/SECURITY",
+			"destination": "/security/policy"
+		},
+		{
+			"source": "/docs/MIGRATION-v1.4.0",
+			"destination": "/maintainers/migration-v1-4-0"
+		},
+		{
+			"source": "/docs/CREATING_REGISTRIES",
+			"destination": "/registries/create"
+		},
+		{
+			"source": "/docs/REGISTRY_PROTOCOL",
+			"destination": "/registries/protocol"
+		},
+		{
+			"source": "/docs/OPENCODE_REFERENCE",
+			"destination": "/reference/opencode"
+		},
+		{
+			"source": "/docs/guides",
+			"destination": "/guides/index"
+		},
+		{
+			"source": "/docs/guides/oh-my-opencode",
+			"destination": "/guides/oh-my-opencode"
+		},
+		{
+			"source": "/docs/guides/kdco-workspace",
+			"destination": "/guides/kdco-workspace"
+		}
+	],
+	"footerSocials": {
+		"github": "https://github.com/kdcokenny/ocx"
+	}
+}

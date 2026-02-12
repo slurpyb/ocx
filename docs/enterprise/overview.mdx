@@ -1,0 +1,161 @@
+---
+title: "Enterprise Overview"
+description: "Registry locking, integrity verification, and enterprise deployment features for OCX"
+---
+
+## Overview
+
+OCX is designed for professional environments where supply-chain security and configuration stability are critical. This page covers registry locking, security audit capabilities, integrity verification, and air-gapped deployment.
+
+## Registry Locking
+
+In team environments, you may want to prevent developers from adding unapproved registry sources. Enable `lockRegistries` in `ocx.jsonc`:
+
+```jsonc
+{
+  "registries": {
+    "internal": { "url": "https://registry.corp.com" }
+  },
+  "lockRegistries": true
+}
+```
+
+When `lockRegistries` is `true`, `ocx registry add` and `ocx registry remove` fail. This configuration should be checked into your version control system.
+
+<Note>
+The `lockRegistries` setting applies to the config file where it is defined. If set in your global config (`~/.config/opencode/ocx.jsonc`), it prevents `ocx registry add --global` and `ocx registry remove --global` from modifying global registries. If set in a local project config, it only affects local registry operations. When using profiles, `lockRegistries` in a profile's `ocx.jsonc` locks that profile's registries.
+</Note>
+
+## Security Audit with Receipt File
+
+OCX automatically generates a `.ocx/receipt.jsonc` file. This file acts as an audit log and provenance record for your installed extensions.
+
+| Field | Purpose |
+|-------|---------|
+| `registry` | Tracks exactly which source provided the component |
+| `version` | Records the specific version installed |
+| `hash` | SHA-256 hash of the component files, used for integrity verification during updates |
+| `files` | Array of file paths installed by this component |
+| `installedAt` | ISO timestamp of the installation |
+
+### Receipt vs Lockfile
+
+OCX uses **receipt semantics** rather than strict lockfile semantics:
+
+- **Receipts are advisory** — They record what was installed but do not enforce strict reproducibility.
+- **Component-level pinning** — Pin individual components to ensure reproducible builds: `ocx add kdco/researcher@1.2.0`.
+
+This approach gives you flexibility while maintaining auditability.
+
+## Integrity Verification
+
+OCX provides both proactive and reactive integrity verification to protect against supply-chain attacks and accidental tampering.
+
+### Install-Time Verification (Proactive)
+
+When you run `ocx add`, OCX automatically verifies the integrity of the component before writing any files to your project. If a component is already present in your receipt file (`.ocx/receipt.jsonc`), OCX computes the SHA-256 hash of the incoming content and compares it against the recorded hash.
+
+If the hashes do not match, the installation fails immediately with an `INTEGRITY_ERROR`. This prevents malicious or unauthorized updates from silently entering your codebase even if a registry is compromised.
+
+### Intentional Updates
+
+The `INTEGRITY_ERROR` is a security feature, not a bug. When you need to update a component whose source has changed, use the dedicated `ocx update` command:
+
+```bash
+# Preview what will change
+ocx update kdco/researcher --dry-run
+
+# Apply the update
+ocx update kdco/researcher
+
+# Update all components
+ocx update --all --dry-run
+ocx update --all
+```
+
+This explicit workflow ensures that component updates are always intentional and auditable.
+
+### Update Audit Trail
+
+The receipt file tracks metadata for each component's latest update:
+
+```jsonc
+{
+  "kdco/researcher": {
+    "version": "1.2.0",
+    "hash": "sha256-...",
+    "installedAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-04T00:00:00.000Z"
+  }
+}
+```
+
+The `updatedAt` timestamp (when present) indicates the component was updated after initial installation. Combined with the `hash` field, this provides audit metadata for compliance and security reviews.
+
+## CLI Binary Verification
+
+When running `ocx self update`, OCX verifies the downloaded binary against the published `SHA256SUMS.txt` file in GitHub Releases. This protects against:
+
+- Compromised CDN/mirror serving malicious binaries
+- Man-in-the-middle attacks during download
+- Tampered releases
+
+### Disabling Update Notifications
+
+Control update checks via environment variables:
+
+| Variable | Value | Behavior |
+|----------|-------|----------|
+| `OCX_SELF_UPDATE` | `off` | Disable all update checks |
+| `OCX_NO_UPDATE_CHECK` | `1` | Disable all update checks (alternative) |
+
+```bash
+# Disable permanently in shell profile
+export OCX_SELF_UPDATE=off
+
+# Disable for single command
+OCX_SELF_UPDATE=off ocx add button
+```
+
+Update checks are automatically disabled in CI environments.
+
+## Air-Gapped Environments
+
+Since OCX is a single binary and registries are simple static JSON files, you can easily mirror registries internally and point OCX to local network URLs.
+
+### Internal Binary Hosting
+
+For air-gapped or restricted environments, mirror OCX releases internally:
+
+1. Download releases from GitHub to your internal server.
+2. Include the `SHA256SUMS.txt` file for integrity verification.
+3. Set `OCX_DOWNLOAD_URL` environment variable to your internal mirror URL.
+
+```bash
+export OCX_DOWNLOAD_URL="https://internal.corp.com/ocx/releases"
+ocx self update
+```
+
+The URL should point to a directory structure matching GitHub releases:
+
+```text
+https://internal.corp.com/ocx/releases/
+├── v1.0.0/
+│   ├── ocx-darwin-arm64
+│   ├── ocx-darwin-x64
+│   ├── ocx-linux-arm64
+│   ├── ocx-linux-x64
+│   ├── ocx-windows-x64.exe
+│   └── SHA256SUMS.txt
+└── v1.0.1/
+    └── ...
+```
+
+The download URL is constructed as `${OCX_DOWNLOAD_URL}/v${version}/${binary-name}`, where binary names match the platform (e.g., `ocx-darwin-arm64` for macOS ARM64).
+
+## See Also
+
+- [Security Policy](/security/policy) — Vulnerability disclosure and security scope.
+- [Security Verification](/security/verification) — How SHA-256 verification works.
+- [Profile Security](/profiles/security) — Lock down recipes for untrusted repositories.
+- [CLI Reference](/cli/commands) — Full command documentation.

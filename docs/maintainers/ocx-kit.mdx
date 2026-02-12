@@ -1,0 +1,56 @@
+---
+title: "OCX Kit Worker"
+description: "Internal documentation for the OCX Kit registry Cloudflare Worker"
+---
+
+## Overview
+
+The OCX Kit Registry is a component registry for OpenCode deployed on Cloudflare Workers. It serves profile components from `https://ocx-kit.kdco.dev`.
+
+## Quick Start
+
+```bash
+# Install dependencies
+bun install
+
+# Build the registry
+bun run build
+
+# Local development
+bun run dev
+
+# Deploy to Cloudflare
+bun run deploy
+```
+
+## Using the Registry
+
+```bash
+# Install profile directly from registry
+ocx profile add omo --source kit/omo --from https://ocx-kit.kdco.dev --global
+
+# Or clone to customize
+ocx profile add my-omo --clone omo --global
+```
+
+## Project Structure
+
+```
+├── registry.jsonc      # Registry manifest
+├── files/              # Component source files
+│   └── profiles/       # Profile configurations
+├── dist/               # Built output (generated)
+└── wrangler.jsonc      # Cloudflare Workers config
+```
+
+## Adding Components
+
+1. Create your component files in `files/`
+2. Register in `registry.jsonc`
+3. Build and deploy: `bun run build && bun run deploy`
+
+## See Also
+
+- [Creating Registries](/registries/create) — How to build your own registry.
+- [Workspace Profile](/profiles/ws) — ws profile documentation.
+- [OMO Profile](/profiles/omo) — omo profile documentation.

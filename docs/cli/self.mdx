@@ -1,0 +1,99 @@
+---
+title: "ocx self"
+description: "Reference for the ocx self commands — update and uninstall OCX itself"
+---
+
+## Overview
+
+The `ocx self` commands manage the OCX installation itself, including updating to new versions and uninstalling.
+
+---
+
+## Self Update
+
+Update OCX to the latest version.
+
+### Usage
+
+```bash
+ocx self update [options]
+```
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--method <method>` | Auto-detected | Override install method detection (`curl`, `npm`, `pnpm`, `bun`) |
+| `--force` | `false` | Force update even if already on latest version |
+
+### Examples
+
+```bash
+# Update to latest version
+ocx self update
+
+# Force reinstall via npm
+ocx self update --method npm --force
+```
+
+### How It Works
+
+OCX automatically detects how it was installed and uses the appropriate update method:
+
+- **curl-installed binaries**: Downloads from GitHub releases with SHA256 verification.
+- **npm/pnpm/bun installs**: Uses the respective package manager's global install command.
+
+---
+
+## Self Uninstall
+
+Remove OCX global configuration files and binary.
+
+### Usage
+
+```bash
+ocx self uninstall [options]
+```
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--dry-run` | `false` | Preview what would be removed |
+
+### What Gets Removed
+
+- `~/.config/opencode/profiles/` — All profiles
+- `~/.config/opencode/ocx.jsonc` — Global OCX config
+- `~/.config/opencode/` — Root directory (only if empty after cleanup)
+- Binary executable (for curl installs only; package-managed installs print the removal command)
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success (removed, already missing, or dry-run) |
+| 1 | Error (package-managed install, permission denied) |
+| 2 | Safety error (symlink root, containment violation) |
+
+### Examples
+
+```bash
+# Preview what would be removed
+ocx self uninstall --dry-run
+
+# Remove OCX installation
+ocx self uninstall
+```
+
+### Notes
+
+- **Package-managed installs**: If installed via npm/pnpm/bun/yarn, the command removes config files but prints the package manager removal command instead of deleting the binary directly.
+- **Safety**: Only removes known OCX files (allowlist approach). Unexpected files in the config directory are left untouched.
+- **Symlinks**: Symlinks are unlinked without following. Symlink targets are preserved.
+- **Idempotent**: Safe to run multiple times. Returns success if already uninstalled.
+
+## See Also
+
+- [Installation](/getting-started/installation) — How to install OCX.
+- [CLI Reference](/cli/commands) — All commands.

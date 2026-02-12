@@ -1,0 +1,93 @@
+---
+title: "KDCO Workspace Setup"
+description: "Set up the KDCO Workspace multi-agent harness with OCX profiles"
+---
+
+## Overview
+
+Set up the KDCO Workspace multi-agent harness with OCX profiles for a fully portable AI coding environment with planning, code review, delegation, and notifications.
+
+**Prerequisites**: [OCX installed](/getting-started/installation) and [global profiles initialized](/profiles/overview)
+
+## Step 1: Install the ws Profile
+
+```bash
+# One-command install with ephemeral registry (not saved)
+ocx profile add ws --source kit/ws --from https://ocx-kit.kdco.dev --global
+
+# Or add registries first, then install
+ocx registry add https://ocx-kit.kdco.dev --name kit --global
+ocx profile add ws --source kit/ws --global
+```
+
+## Step 2: Launch
+
+```bash
+ocx oc -p ws
+```
+
+The profile comes pre-configured with free [OpenCode Zen](https://opencode.ai/docs/zen/) models and the full workspace bundle.
+
+## What's Included
+
+The `ws` profile installs the complete KDCO Workspace:
+
+| Category | Components |
+|----------|-----------|
+| Plugins | workspace-plugin, background-agents, notify, worktree |
+| Agents | researcher, coder, scribe, reviewer |
+| Skills | plan-protocol, code-review, code-philosophy, frontend-philosophy |
+| Commands | /review |
+| MCP | Context7, Exa, GitHub Grep |
+
+**Pre-configured models:**
+
+| Agent | Model |
+|-------|-------|
+| plan, build, coder | Big Pickle |
+| explore, researcher, scribe, reviewer | GPT-5 Nano |
+
+## Customize Models
+
+Edit your profile's OpenCode config:
+
+```bash
+# View available models
+opencode models
+
+# Edit the config
+$EDITOR ~/.config/opencode/profiles/ws/opencode.jsonc
+```
+
+## Tips
+
+**Set as default profile:**
+
+```bash
+export OCX_PROFILE=ws  # Add to ~/.zshrc or ~/.bashrc
+```
+
+**Clone for variations:**
+
+```bash
+ocx profile add work --clone ws --global
+```
+
+**For untrusted repos**, see [Profile Security](/profiles/security).
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| Terminal hangs on first run | Close the terminal and rerun `ocx oc -p ws`. This can happen during initial dependency installation. |
+
+## Next Steps
+
+- [Workspace Integration](/integrations/workspace) — Architecture details and component documentation.
+- [Background Agents](/integrations/background-agents) — Async delegation system.
+- [Profiles Overview](/profiles/overview) — Understanding profile concepts.
+
+## See Also
+
+- [Oh-My-OpenCode Guide](/guides/oh-my-opencode) — Lighter-weight alternative profile.
+- [ocx profile](/cli/profile) — Manage profiles from the CLI.

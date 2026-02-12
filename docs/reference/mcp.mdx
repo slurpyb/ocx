@@ -1,0 +1,129 @@
+---
+title: "MCP Servers"
+description: "Configure Model Context Protocol servers to add external tools to OpenCode"
+---
+
+## Overview
+
+MCP (Model Context Protocol) servers add external tools to OpenCode. Configure local command-based servers or remote HTTP servers with optional OAuth authentication.
+
+## Local MCP Server
+
+```jsonc
+{
+  "mcp": {
+    "my-local-mcp": {
+      "type": "local",
+      "command": ["npx", "-y", "my-mcp-command"],
+      "enabled": true,
+      "environment": {
+        "MY_ENV_VAR": "value"
+      },
+      "timeout": 5000
+    }
+  }
+}
+```
+
+### Local Server Options
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `type` | `"local"` | Yes | Server type |
+| `command` | string[] | Yes | Command to run |
+| `environment` | object | No | Environment variables |
+| `enabled` | boolean | No | Enable on startup |
+| `timeout` | number | No | Timeout in ms (default: 5000) |
+
+## Remote MCP Server
+
+```jsonc
+{
+  "mcp": {
+    "my-remote-mcp": {
+      "type": "remote",
+      "url": "https://mcp.example.com/mcp",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer {env:API_KEY}"
+      }
+    }
+  }
+}
+```
+
+### Remote Server Options
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `type` | `"remote"` | Yes | Server type |
+| `url` | string | Yes | Server URL |
+| `headers` | object | No | HTTP headers |
+| `oauth` | object / false | No | OAuth config or disable |
+| `enabled` | boolean | No | Enable on startup |
+| `timeout` | number | No | Timeout in ms (default: 5000) |
+
+## OAuth Configuration
+
+```jsonc
+{
+  "mcp": {
+    "oauth-server": {
+      "type": "remote",
+      "url": "https://mcp.example.com/mcp",
+      "oauth": {
+        "clientId": "{env:MCP_CLIENT_ID}",
+        "clientSecret": "{env:MCP_CLIENT_SECRET}",
+        "scope": "tools:read tools:execute"
+      }
+    }
+  }
+}
+```
+
+## Per-Agent MCP Tools
+
+Restrict MCP tools to specific agents:
+
+```jsonc
+{
+  "mcp": {
+    "my-mcp": {
+      "type": "local",
+      "command": ["bun", "x", "my-mcp-command"]
+    }
+  },
+  "tools": {
+    "my-mcp*": false
+  },
+  "agent": {
+    "researcher": {
+      "tools": {
+        "my-mcp*": true
+      }
+    }
+  }
+}
+```
+
+This disables MCP tools globally but enables them only for the `researcher` agent.
+
+## Registry Shorthand
+
+In registry component manifests, remote MCP servers use URL shorthand:
+
+```jsonc
+"opencode": {
+  "mcp": {
+    "context7": "https://mcp.context7.com/mcp"
+  }
+}
+```
+
+This expands to `{ "type": "remote", "url": "https://...", "enabled": true }`.
+
+## See Also
+
+- [Plugin Development](/reference/plugins) — Build plugins with embedded tools.
+- [Custom Tools](/reference/tools) — Custom tool implementations.
+- [Permissions](/reference/permissions) — Tool access control.

@@ -1,0 +1,151 @@
+---
+title: "Skills & Instructions"
+description: "Reusable AI instruction sets, discovery rules, and instruction file management"
+---
+
+## Overview
+
+Skills are reusable instructions loaded on-demand via the `skill` tool. Instruction files (`AGENTS.md`, `CLAUDE.md`, `CONTEXT.md`) provide project-level and global AI guidance.
+
+## Skill Locations
+
+| Location | Scope |
+|----------|-------|
+| `.opencode/skills/<name>/SKILL.md` | Project config |
+| `~/.config/opencode/skills/<name>/SKILL.md` | Global config |
+| `.claude/skills/<name>/SKILL.md` | Claude-compatible |
+| `~/.claude/skills/<name>/SKILL.md` | Global Claude |
+
+## SKILL.md Format
+
+```markdown
+---
+name: git-release
+description: Create consistent releases and changelogs
+license: MIT
+compatibility: opencode
+metadata:
+  audience: maintainers
+  workflow: github
+---
+
+## What I do
+
+- Draft release notes from merged PRs
+- Propose a version bump
+- Provide a copy-pasteable `gh release create` command
+
+## When to use me
+
+Use this when you are preparing a tagged release.
+```
+
+### Frontmatter Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | 1–64 chars, lowercase alphanumeric with hyphens |
+| `description` | Yes | 1–1024 chars, specific enough for agent selection |
+| `license` | No | License identifier |
+| `compatibility` | No | Compatibility info |
+| `metadata` | No | String-to-string map for custom data |
+
+### Name Validation Rules
+
+- 1–64 characters
+- Lowercase alphanumeric with single hyphen separators
+- Cannot start/end with `-`
+- No consecutive `--`
+- Must match directory name
+- Regex: `^[a-z0-9]+(-[a-z0-9]+)*$`
+
+## Skill Permissions
+
+Control which skills agents can load:
+
+```jsonc
+{
+  "permission": {
+    "skill": {
+      "pr-review": "allow",
+      "internal-*": "deny",
+      "experimental-*": "ask",
+      "*": "allow"
+    }
+  }
+}
+```
+
+### Per-Agent Skill Permissions
+
+```jsonc
+{
+  "agent": {
+    "plan": {
+      "permission": {
+        "skill": {
+          "internal-*": "allow"
+        }
+      }
+    }
+  }
+}
+```
+
+### Disable Skills for an Agent
+
+```jsonc
+{
+  "agent": {
+    "plan": {
+      "tools": {
+        "skill": false
+      }
+    }
+  }
+}
+```
+
+## Instruction File Types
+
+OpenCode discovers instruction files using a **"first type wins"** strategy:
+
+| File Type | Status | Priority | Behavior |
+|-----------|--------|----------|----------|
+| `AGENTS.md` | **Recommended** | Primary | If ANY `AGENTS.md` is found, ALL `AGENTS.md` files are used and other types are **completely ignored** |
+| `CLAUDE.md` | Fallback | Secondary | Only used if NO `AGENTS.md` exists in the project tree |
+| `CONTEXT.md` | **Deprecated** | Tertiary | Only used if neither `AGENTS.md` nor `CLAUDE.md` exist |
+
+### Discovery vs Config-Based Instructions
+
+**Discovery-based instructions** (AGENTS.md, CLAUDE.md, CONTEXT.md):
+- Subject to profile `exclude`/`include` patterns (for local project files)
+- Follow "first type wins" rule
+- Discovered by walking UP from current directory to git root
+
+**Config-based instructions** (`instructions` array in `opencode.jsonc`):
+- **Additive** to discovered files (both are loaded)
+- **Bypass** profile `exclude`/`include` filters
+- Always loaded regardless of file type precedence
+
+```jsonc
+{
+  "instructions": [
+    "CONTRIBUTING.md",
+    "docs/guidelines.md"
+  ]
+}
+```
+
+### Locations
+
+| Location | Scope |
+|----------|-------|
+| `./AGENTS.md` | Project-specific |
+| `~/.config/opencode/AGENTS.md` | Global (all sessions) |
+
+## See Also
+
+- [Agents](/reference/agents) — Agent types and configuration.
+- [Permissions](/reference/permissions) — Controlling skill access.
+- [Profiles Configuration](/profiles/configuration) — Instruction discovery with profiles.

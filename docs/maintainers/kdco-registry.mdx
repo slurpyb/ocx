@@ -1,0 +1,94 @@
+---
+title: "KDCO Registry Worker"
+description: "Internal documentation for the KDCO registry Cloudflare Worker"
+---
+
+## Overview
+
+The KDCO Registry is a curated collection of OpenCode extensions deployed as a Cloudflare Worker. It serves components from `https://registry.kdco.dev`.
+
+## Quick Start
+
+```bash
+# Install dependencies
+bun install
+
+# Build the registry
+bun run build
+
+# Local development
+bun run dev
+
+# Deploy to Cloudflare
+bun run deploy
+```
+
+## Using the Registry
+
+```bash
+# Add a component directly
+ocx add kdco/workspace --from https://registry.kdco.dev
+
+# Or add the registry permanently
+ocx registry add https://registry.kdco.dev --name kdco
+ocx add kdco/workspace
+```
+
+## Available Components
+
+### Bundles
+
+| Name | Description |
+|------|-------------|
+| workspace | Full KDCO experience |
+| philosophy | Code quality philosophies |
+
+### Agents
+
+| Name | Description |
+|------|-------------|
+| researcher | External research via MCP |
+| scribe | Documentation specialist |
+| coder | Code implementation |
+
+### Plugins
+
+| Name | Description |
+|------|-------------|
+| background-agents | Async task execution |
+| notify | OS notifications |
+| workspace-plugin | Plan management |
+| worktree | Git worktree isolation |
+
+### Skills
+
+| Name | Description |
+|------|-------------|
+| plan-protocol | Implementation plan guidelines |
+| code-philosophy | The 5 Laws of Elegant Defense |
+| frontend-philosophy | The 5 Pillars of Intentional UI |
+
+## Web Search Setup
+
+The researcher agent uses **Exa** by default (free, no auth required). Additional search engines can be integrated via MCP servers.
+
+### Adding Custom Search Engines
+
+1. Configure the MCP server with command and environment
+2. Store secrets securely using file-based or environment variables
+3. Enable tools for the researcher agent using a glob pattern
+
+**Preferred: File-based secrets:**
+
+```bash
+mkdir -p ~/.secrets && chmod 700 ~/.secrets
+echo "your-api-key" > ~/.secrets/service-api-key
+chmod 600 ~/.secrets/service-api-key
+```
+
+Reference in config with `{file:~/.secrets/service-api-key}`.
+
+## See Also
+
+- [Creating Registries](/registries/create) — How to build your own registry.
+- [Registry Protocol](/registries/protocol) — HTTP API specification.

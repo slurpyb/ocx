@@ -1,0 +1,122 @@
+---
+title: "Profile Security"
+description: "Lock down recipes and visibility controls for untrusted repositories"
+---
+
+## Overview
+
+Profiles provide fine-grained control over what OpenCode sees in any repository. This page covers the lock-down recipe for maximum isolation, visibility patterns, and practical workflows for untrusted code.
+
+## Lock Down Recipe
+
+For maximum isolation when working in untrusted repositories, the default profile template already excludes everything. **No changes are needed** — the template ships with a secure exclude list out of the box.
+
+### Default Secure Configuration
+
+```jsonc
+{
+  "exclude": [
+    "**/AGENTS.md",
+    "**/CLAUDE.md",
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
+  ]
+}
+```
+
+This prevents any project-level instruction files from influencing your OpenCode session. Only your profile's own `AGENTS.md` and the global `~/.config/opencode/AGENTS.md` are included.
+
+## When to Use Lock Down
+
+- **Open source contributions**: Prevent untrusted repositories from injecting instructions into your AI agent.
+- **Client codebases**: Ensure project-level configurations cannot override your team's policies.
+- **Security-sensitive work**: Guarantee your agent operates only with vetted instructions.
+
+## Loosening Restrictions for Trusted Repos
+
+When you trust a repository, selectively loosen the exclude list:
+
+### Option 1: Remove Patterns from Exclude
+
+```jsonc
+{
+  // Remove AGENTS.md from exclude to trust project instructions
+  "exclude": [
+    "**/CLAUDE.md",
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
+  ]
+}
+```
+
+### Option 2: Use Include Overrides
+
+```jsonc
+{
+  "exclude": [
+    "**/AGENTS.md",
+    "**/CLAUDE.md",
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
+  ],
+  "include": [
+    "**/AGENTS.md"  // Override: allow project AGENTS.md files
+  ]
+}
+```
+
+### Option 3: Selective Inclusion
+
+Allow only the root-level instruction file:
+
+```jsonc
+{
+  "exclude": [
+    "**/AGENTS.md",
+    "**/CLAUDE.md",
+    "**/CONTEXT.md"
+  ],
+  "include": ["./AGENTS.md"]  // Only root AGENTS.md
+}
+```
+
+## Workflow: Context Switching
+
+Maintain separate profiles for different trust levels:
+
+```bash
+# Contribute to open source (locked down)
+cd ~/projects/external-repo
+OCX_PROFILE=untrusted ocx opencode
+
+# Work on client project (selective trust)
+cd ~/projects/client-app
+ocx oc -p client-x
+
+# Personal projects (full trust)
+cd ~/projects/my-side-project
+ocx oc -p default
+```
+
+<Tip>
+`ocx oc` is a shorthand alias for `ocx opencode`. Both are interchangeable. See [`ocx opencode`](/cli/opencode) for full usage details.
+</Tip>
+
+## Registry Isolation
+
+Each profile has its own isolated registry scope. Global base config registries (`~/.config/opencode/ocx.jsonc`) are **only** used for downloading profiles, never for components. This prevents global registries from injecting components into all projects.
+
+For teams, see [Registry Locking](/enterprise/overview#registry-locking) to prevent developers from adding unapproved registry sources.
+
+## Related Concepts
+
+- [Profiles Overview](/profiles/overview) — Core concepts and profile layering.
+- [Profile Configuration](/profiles/configuration) — Full exclude/include reference and instruction discovery.
+- [Enterprise Overview](/enterprise/overview) — Registry locking and integrity verification.
+- [Security Policy](/security/policy) — Vulnerability disclosure and security scope.

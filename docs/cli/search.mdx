@@ -1,0 +1,87 @@
+---
+title: "ocx search"
+description: "Reference for the ocx search command — search for components across registries"
+---
+
+## Usage
+
+```bash
+ocx search [query] [options]
+ocx list [options]  # alias
+```
+
+## Description
+
+Search for components across configured registries or list installed components. The `ocx list` alias provides a convenient shorthand.
+
+## Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `query` | No | Search query string |
+
+## Flags
+
+| Flag | Shorthand | Default | Description |
+|------|-----------|---------|-------------|
+| `--installed` | | `false` | List installed components only |
+| `--profile <name>` | `-p` | | Use specific profile |
+| `--limit <n>` | | `20` | Limit number of results |
+| `--cwd <path>` | | Current directory | Working directory |
+| `--quiet` | `-q` | `false` | Suppress output |
+| `--verbose` | `-v` | `false` | Verbose output |
+| `--json` | | `false` | Output as JSON |
+
+## Examples
+
+### Search for Components
+
+```bash
+ocx search button
+```
+
+### List All Available Components
+
+```bash
+ocx list
+```
+
+### List Installed Components Only
+
+```bash
+ocx search --installed
+```
+
+### Limit Results
+
+```bash
+ocx search button --limit 5
+```
+
+## Output
+
+```bash
+$ ocx search agent
+Found 3 components:
+  kdco/researcher (agent) - AI agent definitions
+  kdco/background-agents (plugin) - Background agent sync plugin
+  acme/agent-utils (lib) - Agent utility functions
+
+$ ocx search --installed
+Installed components (2):
+  kdco/researcher v1.2.0 from kdco
+  kdco/notify v0.5.0 from kdco
+```
+
+## Errors
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `No ocx.jsonc found` | Not initialized | Run `ocx init` first |
+| `No components installed` | Lock file empty | Run `ocx add` first |
+
+## See Also
+
+- [ocx add](/cli/add) — Install components you find.
+- [ocx registry](/cli/registry) — Manage registries to search.
+- [CLI Reference](/cli/commands) — All commands.

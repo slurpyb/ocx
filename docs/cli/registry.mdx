@@ -1,0 +1,195 @@
+---
+title: "ocx registry"
+description: "Reference for the ocx registry command — manage configured registries"
+---
+
+## Usage
+
+```bash
+ocx registry <subcommand> [options]
+```
+
+## Description
+
+Manage configured component registries. Registries are sources for components that OCX can install. By default, registry commands operate on local project configuration; use `--global` for global scope.
+
+## Subcommands
+
+- [`ocx registry add`](#registry-add) — Add a registry
+- [`ocx registry remove`](#registry-remove) — Remove a registry
+- [`ocx registry list`](#registry-list) — List configured registries
+
+---
+
+## Registry Add
+
+Add a new registry to your configuration.
+
+### Usage
+
+```bash
+ocx registry add <url> [options]
+```
+
+### Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `url` | Yes | Registry URL |
+
+### Flags
+
+| Flag | Shorthand | Default | Description |
+|------|-----------|---------|-------------|
+| `--name <name>` | | | Registry name (required). Canonical identity used to reference components as `<name>/<component>`. |
+| `--dry-run` | | `false` | Validate registry without adding to config |
+| `--global` | `-g` | `false` | Add to global config (`~/.config/opencode`) |
+| `--profile <name>` | `-p` | | Use specific global profile for registry resolution |
+| `--cwd <path>` | | Current directory | Working directory |
+| `--json` | | `false` | Output as JSON |
+| `--quiet` | `-q` | `false` | Suppress output |
+
+### Examples
+
+```bash
+# Add a registry with a name
+ocx registry add https://registry.example.com --name myregistry
+
+# Add to global config
+ocx registry add https://registry.example.com --name myregistry --global
+
+# Validate without adding
+ocx registry add https://registry.example.com --name myregistry --dry-run
+```
+
+### Identity Model
+
+- **Registry name is canonical identity**: The `--name` you provide becomes the canonical identifier for the registry in your configuration.
+- **Components referenced as `name/component`**: Users reference components using the configured registry name (e.g., `kdco/researcher`).
+- **Registry `index.namespace` not authoritative**: The `namespace` field in the registry's `index.json` is informational only.
+
+### Constraints
+
+- **URL uniqueness**: The same URL cannot be added under multiple names. To change the name, remove it first with `ocx registry remove <name>`, then add with the new name.
+- **No `--force` for conflicts**: Use remove-then-add to update an existing registry name or URL.
+
+### Errors
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `No ocx.jsonc found` | Not initialized | Run `ocx init` first |
+| `Registries are locked` | `lockRegistries: true` in config | Remove lock or edit config manually |
+| `Registry 'name' already exists` | Name already in use | Remove existing registry first |
+| `Registry URL already configured` | Same URL under different name | Remove existing registry first |
+
+<Note>
+`--global` and `--cwd` are mutually exclusive.
+</Note>
+
+---
+
+## Registry Remove
+
+Remove a registry from your configuration.
+
+### Usage
+
+```bash
+ocx registry remove <name> [options]
+```
+
+### Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `name` | Yes | Registry name |
+
+### Flags
+
+| Flag | Shorthand | Default | Description |
+|------|-----------|---------|-------------|
+| `--global` | `-g` | `false` | Remove from global config |
+| `--profile <name>` | `-p` | | Use specific global profile for registry resolution |
+| `--cwd <path>` | | Current directory | Working directory |
+| `--json` | | `false` | Output as JSON |
+| `--quiet` | `-q` | `false` | Suppress output |
+
+### Examples
+
+```bash
+# Remove a registry
+ocx registry remove myregistry
+
+# Remove from global config
+ocx registry remove myregistry --global
+```
+
+### Errors
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `No ocx.jsonc found` | Not initialized | Run `ocx init` first |
+| `Registries are locked` | `lockRegistries: true` in config | Remove lock or edit config manually |
+| `Registry 'name' not found` | Registry does not exist | Check name with `ocx registry list` |
+
+---
+
+## Registry List
+
+List all configured registries.
+
+### Usage
+
+```bash
+ocx registry list [options]
+```
+
+### Flags
+
+| Flag | Shorthand | Default | Description |
+|------|-----------|---------|-------------|
+| `--global` | `-g` | `false` | List registries from global config |
+| `--profile <name>` | `-p` | | Use specific global profile for registry resolution |
+| `--cwd <path>` | | Current directory | Working directory |
+| `--json` | | `false` | Output as JSON |
+| `--quiet` | `-q` | `false` | Suppress output |
+
+### Examples
+
+```bash
+# List registries
+ocx registry list
+
+# List global registries
+ocx registry list --global
+
+# Get machine-readable output
+ocx registry list --json
+```
+
+### Output
+
+```bash
+$ ocx registry list
+Configured registries:
+  kdco: https://ocx.kdco.dev (latest)
+  acme: https://registry.acme.com (1.0.0)
+
+$ ocx registry list --json
+{
+  "success": true,
+  "data": {
+    "registries": [
+      { "name": "kdco", "url": "https://ocx.kdco.dev", "version": "latest" },
+      { "name": "acme", "url": "https://registry.acme.com", "version": "1.0.0" }
+    ],
+    "locked": false
+  }
+}
+```
+
+## See Also
+
+- [ocx add](/cli/add) — Install components from registries.
+- [ocx init](/cli/init) — Initialize configuration before adding registries.
+- [Enterprise Overview](/enterprise/overview) — Registry locking for teams.

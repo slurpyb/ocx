@@ -1,0 +1,76 @@
+---
+title: "Background Agents Plugin"
+description: "Async background delegation with persistent results that survive context compaction"
+---
+
+## Overview
+
+A plugin for OpenCode that enables async background delegation. Fire off research tasks, continue brainstorming or coding, and retrieve results when you need them. Results survive context compaction.
+
+## Why This Exists
+
+Context windows fill up. When that happens, compaction kicks in and your AI loses track of research it just did. Background agents solve this:
+
+- **Keep working** — Delegate research and continue your conversation.
+- **Survive compaction** — Results are saved to disk as markdown.
+- **Fire and forget** — A notification arrives when your research is ready.
+
+## Installation
+
+```bash
+ocx add kdco/background-agents --from https://registry.kdco.dev
+```
+
+Or install the full [Workspace bundle](/integrations/workspace):
+
+```bash
+ocx add kdco/workspace --from https://registry.kdco.dev
+```
+
+## How It Works
+
+```
+1. Delegate    →  "Research OAuth2 PKCE best practices"
+2. Continue    →  Keep coding, brainstorming, reviewing
+3. Notified    →  <system-reminder> tells you it's done
+4. Retrieve    →  AI calls delegation_read() to get the result
+```
+
+Results are persisted to `~/.local/share/opencode/delegations/` as markdown files. Each delegation is automatically tagged with a title and summary.
+
+## Tools
+
+| Tool | Purpose |
+|------|---------|
+| `delegate(prompt, agent)` | Launch a background task |
+| `delegation_read(id)` | Retrieve a specific result |
+| `delegation_list()` | List all delegations with titles and summaries |
+
+## Limitations
+
+### Read-Only Agents Only
+
+Only read-only agents (`researcher`, `explore`) can use `delegate`. Write-capable agents (`coder`, `scribe`) must use the native `task` tool.
+
+**Why?** Background delegations run in isolated sessions outside OpenCode's session tree. The undo/branching system cannot track changes made in background sessions.
+
+### Timeout
+
+Delegations timeout after **15 minutes**.
+
+### Real-Time Monitoring
+
+View active and completed sub-agents using OpenCode's navigation shortcuts:
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+X Up` | Jump to parent session |
+| `Ctrl+X Left` | Previous sub-agent |
+| `Ctrl+X Right` | Next sub-agent |
+
+## See Also
+
+- [Workspace Integration](/integrations/workspace) — Full multi-agent workspace bundle.
+- [Notify Plugin](/integrations/notify) — Get notified when delegations complete.
+- [Worktree Plugin](/integrations/worktree) — Isolated development environments.
+- [KDCO Workspace Guide](/guides/kdco-workspace) — Installation walkthrough.

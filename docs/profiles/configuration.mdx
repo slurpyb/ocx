@@ -1,0 +1,208 @@
+---
+title: "Profile Configuration"
+description: "Configure exclude/include patterns, instruction discovery, and profile settings"
+---
+
+## Overview
+
+Profile configuration controls what OpenCode sees in your projects. This page covers exclude/include patterns, instruction file discovery, configuration merging, and practical examples for common workflows.
+
+## Controlling What OpenCode Sees
+
+The default profile template ships an exclude list for maximum security. OCX itself does not exclude anything by default — a clean `ocx.jsonc` includes all project instruction files. You control visibility using exclude/include patterns in your profile's `ocx.jsonc`.
+
+### How Visibility Works
+
+| Pattern Type | Effect |
+|--------------|--------|
+| `exclude` | Hide matching files from OpenCode |
+| `include` | Override excludes, make files visible again |
+
+Patterns follow glob syntax (`**/*.md`, `src/**`, etc.). Include patterns always override exclude patterns, following the same semantics as TypeScript/Vite configuration.
+
+### Default Configuration (Secure by Default)
+
+The default profile template uses this exclude list:
+
+```jsonc
+{
+  "exclude": [
+    "**/AGENTS.md",
+    "**/CLAUDE.md",
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
+  ]
+}
+```
+
+### Trusting Project Files
+
+For trusted repositories, loosen the template's exclude list by removing patterns or adding include overrides:
+
+```jsonc
+{
+  // Remove AGENTS.md from exclude list to trust project files
+  "exclude": [
+    "**/CLAUDE.md",
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
+  ]
+}
+```
+
+Or use include patterns to override excludes:
+
+```jsonc
+{
+  "exclude": [
+    "**/AGENTS.md",
+    "**/CLAUDE.md",
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
+  ],
+  "include": [
+    "**/AGENTS.md"  // Override: allow project AGENTS.md files
+  ]
+}
+```
+
+## Instruction File Discovery
+
+OCX discovers instruction files in this exact order (low to high priority), matching OpenCode's behavior:
+
+| Order | Scope | Path | Priority | Filtering |
+|-------|-------|------|----------|-----------|
+| 1 | Global | `~/.config/opencode/AGENTS.md` | Lowest | Always included |
+| 2 | Global Profile | `~/.config/opencode/profiles/<name>/AGENTS.md` | ↓ | Always included |
+| 3 | Local (Project) | `./AGENTS.md`, `./src/AGENTS.md`, etc. | ↓ | Filtered by patterns |
+| 4 | Local Profile | `.opencode/profiles/<name>/AGENTS.md` | Highest | Always included |
+
+**Discovery details:**
+
+- Local project files are discovered **deepest-first** (walking up from current directory to git root).
+- Profile instructions come last and have the highest priority.
+- Global `AGENTS.md` is **always included** regardless of profile selection.
+- **Claude Code compatibility**: If no global `AGENTS.md` exists, OCX checks `~/.claude/CLAUDE.md` as a fallback (disable with `OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1`).
+
+### File Type Priority ("First Type Wins")
+
+OpenCode uses a **"first type wins"** discovery strategy:
+
+1. Search for `AGENTS.md` first (walking up the project tree).
+2. If any `AGENTS.md` is found: collect **all** `AGENTS.md` files and **stop** (ignore `CLAUDE.md` and `CONTEXT.md` entirely).
+3. If no `AGENTS.md`: search for `CLAUDE.md` (and ignore `CONTEXT.md`).
+4. If no `CLAUDE.md`: search for `CONTEXT.md` (**deprecated**, will be removed).
+
+<Warning>
+If your project contains any `AGENTS.md` file, all `CLAUDE.md` files in the tree are completely ignored. Use `AGENTS.md` (preferred). `CLAUDE.md` is a fallback. `CONTEXT.md` is **deprecated** and legacy-only.
+</Warning>
+
+### Pattern Filtering (Local Files Only)
+
+Profile `exclude` and `include` patterns apply **only to local (project) instruction files**. Global and profile instruction files are **always included** regardless of patterns.
+
+## Configuration Merging
+
+### OCX Configs
+
+OCX configurations (`ocx.jsonc`) merge when using profiles:
+
+- Global profile `ocx.jsonc` (base layer)
+- Local profile `ocx.jsonc` (overlay layer, if exists)
+- Deep merge with local winning on conflicts
+
+### OpenCode Configs
+
+OpenCode configurations (`opencode.jsonc`) cascade:
+
+1. Global profile's `opencode.jsonc`
+2. Local profile's `opencode.jsonc` (if exists, deep merged)
+3. Local `.opencode/opencode.jsonc` (if not excluded, deep merged)
+
+### Registry Isolation
+
+Global base config registries (`~/.config/opencode/ocx.jsonc`) are **only** used for downloading profiles, never for components. When using a profile, registries come from the merged profile config. This isolation prevents global registries from injecting components into all projects.
+
+## Custom OpenCode Binary
+
+To use a custom OpenCode binary (such as a development build), set the `bin` option in your profile's `ocx.jsonc`:
+
+```jsonc
+{
+  "bin": "/path/to/custom/opencode"
+}
+```
+
+**Resolution order:**
+
+1. `bin` in profile's `ocx.jsonc`
+2. `OPENCODE_BIN` environment variable
+3. `opencode` (system PATH)
+
+## Practical Examples
+
+### Trusted Repository
+
+```jsonc
+{
+  "exclude": [
+    "**/CLAUDE.md",
+    "**/CONTEXT.md",
+    "**/.opencode/**",
+    "**/opencode.jsonc",
+    "**/opencode.json"
+  ]
+}
+```
+
+### Selective Inclusion
+
+Exclude all instruction files but include specific ones:
+
+```jsonc
+{
+  "exclude": [
+    "**/AGENTS.md",
+    "**/CLAUDE.md",
+    "**/CONTEXT.md"
+  ],
+  "include": ["./AGENTS.md"]  // Only root AGENTS.md
+}
+```
+
+### Work Profile with Custom Binary
+
+```jsonc
+{
+  "bin": "/Users/kenny/code/opencode/bin/opencode",
+  "exclude": [
+    "**/CLAUDE.md",
+    "**/CONTEXT.md"
+  ],
+  "registries": {
+    "work": { "url": "https://registry.company.internal" }
+  }
+}
+```
+
+### Profile Selection via Local Config
+
+Specify which profile to use in your project's `.opencode/ocx.jsonc`:
+
+```jsonc
+{
+  "profile": "work"
+}
+```
+
+## Related Concepts
+
+- [Profiles Overview](/profiles/overview) — Core concepts and mental model.
+- [Profile Security](/profiles/security) — Lock down recipes for untrusted repos.
+- [CLI: Config Commands](/cli/config) — View and edit configuration.

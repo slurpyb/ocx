@@ -1,0 +1,111 @@
+---
+title: "Custom Tools"
+description: "Build custom tools that AI agents can call during conversations"
+---
+
+## Overview
+
+Custom tools are functions the LLM can call during conversations. They extend what AI agents can do beyond built-in capabilities.
+
+## Tool Locations
+
+| Location | Scope |
+|----------|-------|
+| `.opencode/tool/` | Project |
+| `~/.config/opencode/tool/` | Global |
+
+## Basic Tool Structure
+
+```typescript
+import { tool } from "@opencode-ai/plugin"
+
+export default tool({
+  description: "Query the project database",
+  args: {
+    query: tool.schema.string().describe("SQL query to execute"),
+  },
+  async execute(args) {
+    return `Executed query: ${args.query}`
+  },
+})
+```
+
+The **filename** becomes the **tool name**.
+
+## Multiple Tools Per File
+
+```typescript
+import { tool } from "@opencode-ai/plugin"
+
+export const add = tool({
+  description: "Add two numbers",
+  args: {
+    a: tool.schema.number().describe("First number"),
+    b: tool.schema.number().describe("Second number"),
+  },
+  async execute(args) {
+    return args.a + args.b
+  },
+})
+
+export const multiply = tool({
+  description: "Multiply two numbers",
+  args: {
+    a: tool.schema.number().describe("First number"),
+    b: tool.schema.number().describe("Second number"),
+  },
+  async execute(args) {
+    return args.a * args.b
+  },
+})
+```
+
+Creates tools: `math_add` and `math_multiply` (filename prefix + export name).
+
+## Tool Context
+
+Access session and agent information:
+
+```typescript
+export default tool({
+  description: "Get project information",
+  args: {},
+  async execute(args, context) {
+    const { agent, sessionID, messageID } = context
+    return `Agent: ${agent}, Session: ${sessionID}`
+  },
+})
+```
+
+## Using External Languages
+
+Wrap non-TypeScript tools with a TypeScript shell:
+
+```python title=".opencode/tool/add.py"
+import sys
+a = int(sys.argv[1])
+b = int(sys.argv[2])
+print(a + b)
+```
+
+```typescript title=".opencode/tool/python-add.ts"
+import { tool } from "@opencode-ai/plugin"
+
+export default tool({
+  description: "Add two numbers using Python",
+  args: {
+    a: tool.schema.number().describe("First number"),
+    b: tool.schema.number().describe("Second number"),
+  },
+  async execute(args) {
+    const result = await Bun.$`python3 .opencode/tool/add.py ${args.a} ${args.b}`.text()
+    return result.trim()
+  },
+})
+```
+
+## See Also
+
+- [Plugin Development](/reference/plugins) — Create tools inside plugins.
+- [MCP Servers](/reference/mcp) — External tool providers via MCP.
+- [Permissions](/reference/permissions) — Control tool access per agent.

@@ -1,0 +1,325 @@
+---
+title: "Configuration"
+description: "OpenCode configuration reference — opencode.jsonc options, variable substitution, and provider settings"
+---
+
+## Overview
+
+OpenCode uses JSON and JSONC (JSON with Comments) configuration files. Settings are merged from multiple locations, with local configuration taking precedence.
+
+## File Format
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  // Theme configuration
+  "theme": "opencode",
+  "model": "anthropic/claude-sonnet-4-5",
+  "auto_update": true
+}
+```
+
+## Configuration Locations (Merged)
+
+| Priority | Location | Description |
+|----------|----------|-------------|
+| 1 | `~/.config/opencode/opencode.jsonc` | Global settings |
+| 2 | `opencode.jsonc` (project root) | Project settings |
+| 3 | `OPENCODE_CONFIG` env var | Custom file path |
+| 4 | `OPENCODE_CONFIG_DIR` env var | Custom directory |
+
+## Core Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `$schema` | string | Schema URL for validation |
+| `theme` | string | UI theme name |
+| `model` | string | Default model (`provider/model-id`) |
+| `small_model` | string | Model for lightweight tasks |
+| `auto_update` | boolean / `"notify"` | Auto-update behavior |
+| `default_agent` | string | Default primary agent |
+| `share` | `"manual"` / `"auto"` / `"disabled"` | Session sharing mode |
+
+## Tools Configuration
+
+Globally enable or disable tools:
+
+```jsonc
+{
+  "tools": {
+    "write": false,
+    "bash": false,
+    "mymcp_*": false
+  }
+}
+```
+
+## Provider Configuration
+
+```jsonc
+{
+  "provider": {
+    "anthropic": {
+      "options": {
+        "timeout": 600000,
+        "setCacheKey": true
+      }
+    }
+  },
+  "disabled_providers": ["openai"],
+  "enabled_providers": ["anthropic"]
+}
+```
+
+## TUI Configuration
+
+```jsonc
+{
+  "tui": {
+    "scroll_speed": 3,
+    "scroll_acceleration": { "enabled": true },
+    "diff_style": "auto"
+  }
+}
+```
+
+## Server Configuration
+
+```jsonc
+{
+  "server": {
+    "port": 4096,
+    "host": "0.0.0.0",
+    "mdns": true,
+    "cors": ["http://localhost:5173"]
+  }
+}
+```
+
+## Compaction Configuration
+
+```jsonc
+{
+  "compaction": {
+    "auto": true,
+    "prune": true
+  }
+}
+```
+
+## File Watcher Configuration
+
+```jsonc
+{
+  "watcher": {
+    "include": ["src/**/*.ts", "*.json"],
+    "exclude": ["node_modules/**", "dist/**", ".git/**"]
+  }
+}
+```
+
+## Formatter Configuration
+
+```jsonc
+{
+  "formatter": {
+    "prettier": { "disabled": true },
+    "custom-prettier": {
+      "command": ["npx", "prettier", "--write", "$FILE"],
+      "environment": { "NODE_ENV": "development" },
+      "extensions": [".js", ".ts", ".jsx", ".tsx"]
+    }
+  }
+}
+```
+
+## Commands Configuration
+
+### JSONC Format
+
+```jsonc
+{
+  "command": {
+    "test": {
+      "run": "Run the full test suite with coverage.",
+      "description": "Run tests with coverage",
+      "agent": "build",
+      "model": "anthropic/claude-sonnet-4-5"
+    }
+  }
+}
+```
+
+### Markdown Format
+
+```markdown title=".opencode/command/test.md"
+---
+description: Run tests with coverage
+agent: build
+model: anthropic/claude-sonnet-4-5
+---
+
+Run the full test suite with coverage report.
+Focus on failing tests and suggest fixes.
+```
+
+### Command Placeholders
+
+| Placeholder | Description |
+|-------------|-------------|
+| `$ARGUMENTS` | All arguments |
+| `$1`, `$2`, ... | Positional arguments |
+| `` !`command` `` | Shell output injection |
+| `@filepath` | File content inclusion |
+
+## Variable Substitution
+
+### Environment Variables
+
+```jsonc
+{
+  "model": "{env:OPENCODE_MODEL}",
+  "provider": {
+    "anthropic": {
+      "options": {
+        "apiKey": "{env:ANTHROPIC_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+### File Contents
+
+```jsonc
+{
+  "provider": {
+    "openai": {
+      "options": {
+        "apiKey": "{file:~/.secrets/openai-key}"
+      }
+    }
+  }
+}
+```
+
+## Built-in Tools
+
+| Tool | Description |
+|------|-------------|
+| `bash` | Execute shell commands |
+| `edit` | Modify files via string replacement |
+| `write` | Create/overwrite files |
+| `read` | Read file contents |
+| `grep` | Search file contents (regex) |
+| `glob` | Find files by pattern |
+| `list` | List directory contents |
+| `patch` | Apply patches |
+| `skill` | Load skill definitions |
+| `todowrite` | Manage todo lists |
+| `todoread` | Read todo lists |
+| `webfetch` | Fetch web content |
+| `lsp` | (Experimental) LSP integration |
+
+## OpenCode CLI
+
+| Command | Description |
+|---------|-------------|
+| `opencode` | Start TUI |
+| `opencode run [message]` | Non-interactive mode |
+| `opencode serve` | Start headless server |
+| `opencode web` | Start server with web interface |
+| `opencode agent create` | Create new agent |
+| `opencode agent list` | List agents |
+| `opencode auth login` | Configure API keys |
+| `opencode auth list` | List authenticated providers |
+| `opencode auth logout` | Remove credentials |
+| `opencode mcp add` | Add MCP server |
+| `opencode mcp list` | List MCP servers |
+| `opencode session list` | List sessions |
+| `opencode models` | List available models |
+| `opencode stats` | Show usage statistics |
+| `opencode upgrade` | Update OpenCode |
+
+### Global Flags
+
+| Flag | Description |
+|------|-------------|
+| `--help`, `-h` | Display help |
+| `--version`, `-v` | Print version |
+| `--print-logs` | Print logs to stderr |
+| `--log-level` | DEBUG, INFO, WARN, ERROR |
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `OPENCODE_CONFIG` | Custom config file path |
+| `OPENCODE_CONFIG_DIR` | Custom config directory |
+| `OPENCODE_PERMISSION` | Inline JSON permissions |
+| `OPENCODE_DISABLE_AUTOUPDATE` | Disable updates |
+| `OPENCODE_EXPERIMENTAL` | Enable experimental features |
+
+## SDK Reference
+
+### Installation
+
+```bash
+npm install @opencode-ai/sdk
+```
+
+### Create Instance
+
+```javascript
+import { createOpencode } from "@opencode-ai/sdk"
+
+const { client } = await createOpencode({
+  host: "127.0.0.1",
+  port: 4096,
+  config: {
+    model: "anthropic/claude-sonnet-4-5"
+  }
+})
+```
+
+### Client Only
+
+```javascript
+import { createOpencodeClient } from "@opencode-ai/sdk"
+
+const client = createOpencodeClient({
+  baseUrl: "http://localhost:4096"
+})
+```
+
+### Key APIs
+
+```javascript
+// Health check
+const health = await client.global.health()
+
+// Sessions
+const session = await client.session.create({ body: { title: "My session" } })
+const sessions = await client.session.list()
+
+// Send prompt
+const result = await client.session.prompt({
+  path: { id: session.id },
+  body: {
+    model: { providerID: "anthropic", modelID: "claude-sonnet-4-5" },
+    parts: [{ type: "text", text: "Hello!" }]
+  }
+})
+
+// Event stream
+const events = await client.event.subscribe()
+for await (const event of events.stream) {
+  console.log("Event:", event.type)
+}
+```
+
+## See Also
+
+- [Agents](/reference/agents) — Agent types and configuration.
+- [Permissions](/reference/permissions) — Fine-grained access control.
+- [Profiles Configuration](/profiles/configuration) — Profile-level settings.

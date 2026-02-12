@@ -1,0 +1,125 @@
+---
+title: "ocx opencode"
+description: "Reference for the ocx opencode command — launch OpenCode with resolved configuration"
+---
+
+## Usage
+
+```bash
+ocx opencode [options] [args...]
+ocx oc [options] [args...]  # alias
+```
+
+## Description
+
+Launch OpenCode with resolved configuration and profile support. OCX merges profile settings, discovers instruction files, applies pattern filtering, and spawns OpenCode with the final configuration.
+
+## Flags
+
+| Flag | Shorthand | Default | Description |
+|------|-----------|---------|-------------|
+| `--profile <name>` | `-p` | | Use specific global profile |
+| `--no-rename` | | `false` | Skip automatic window/terminal renaming |
+
+<Note>
+Only `-p`/`--profile` and `--no-rename` are OCX flags. All other arguments and flags pass through to OpenCode. Use `--` to pass flags that conflict with OCX (e.g., `ocx oc -- --help` forwards help to OpenCode).
+</Note>
+
+## Examples
+
+### Launch with Default Profile
+
+```bash
+ocx opencode
+```
+
+### Launch with Specific Profile
+
+```bash
+ocx opencode -p work
+```
+
+### Skip Window Renaming
+
+```bash
+ocx opencode --no-rename
+```
+
+### Use Environment Variable
+
+```bash
+OCX_PROFILE=work ocx opencode
+```
+
+### Use the Short Alias
+
+```bash
+ocx oc -p personal
+```
+
+### Pass Flags to OpenCode
+
+```bash
+# Get help from OpenCode itself
+ocx oc -- --help
+```
+
+## Profile Resolution Priority
+
+Profiles are resolved in this order (first match wins):
+
+1. **`--profile` / `-p` flag** — Explicit CLI specification
+2. **`OCX_PROFILE` environment variable** — Session-level profile
+3. **`profile` field in `.opencode/ocx.jsonc`** — Project-specific profile
+4. **`default` profile** — If it exists
+5. **No profile** — Base configurations only
+
+## How It Works
+
+1. **Profile Resolution**: Resolves profile using the priority order above.
+2. **Profile Layering**: If both global and local profiles exist with the same name, merges them.
+3. **Config Merging**: Deep merges profile configs (global + local).
+4. **Instruction Discovery**: Discovers instruction files in priority order.
+5. **Pattern Filtering**: Applies exclude/include patterns from merged profile.
+6. **Launch OpenCode**: Spawns with merged configuration and discovered instructions.
+
+## Configuration Merging
+
+**OCX configs** (`ocx.jsonc`) merge when using profiles:
+
+- Global profile `ocx.jsonc` (base layer)
+- Local profile `ocx.jsonc` (overlay layer, if exists)
+- Deep merge with local winning on conflicts
+
+**OpenCode configs** (`opencode.jsonc`) cascade:
+
+1. Global profile's `opencode.jsonc`
+2. Local profile's `opencode.jsonc` (if exists, deep merged)
+3. Local `.opencode/opencode.jsonc` (if not excluded, deep merged)
+
+**Registry Isolation:**
+
+Global base config registries (`~/.config/opencode/ocx.jsonc`) are **only** used for downloading profiles, never for components. When using a profile, registries come from the merged profile config. This isolation prevents global registries from injecting components into all projects.
+
+## Custom OpenCode Binary
+
+To use a custom OpenCode binary, set the `bin` option in your profile's `ocx.jsonc`:
+
+```jsonc
+{
+  "bin": "/path/to/custom/opencode"
+}
+```
+
+**Resolution order:**
+
+1. `bin` in profile's `ocx.jsonc`
+2. `OPENCODE_BIN` environment variable
+3. `opencode` (system PATH)
+
+## See Also
+
+- [Profiles Overview](/profiles/overview) — Core profile concepts.
+- [Profile Configuration](/profiles/configuration) — Instruction discovery and pattern filtering details.
+- [ocx profile](/cli/profile) — Manage profiles.
+- [CLI Reference](/cli/commands) — All commands.

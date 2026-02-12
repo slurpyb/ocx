@@ -1,0 +1,165 @@
+---
+title: "CLI Reference"
+description: "Complete command reference for the OCX command-line interface"
+---
+
+## Overview
+
+OCX provides a command-line interface for managing OpenCode profiles, component registries, and configuration. This page covers the full command set, global options, and conventions.
+
+## Short-Flag Policy
+
+OCX follows a minimal short-flag policy inspired by Cargo and [CLI Guidelines](https://clig.dev):
+
+- **Short flags** (`-x`) are reserved for high-frequency, cross-command options.
+- **Specialized options** use long flags only (`--option-name`).
+
+### Standard Short Flags
+
+| Flag | Long Form | Description |
+|------|-----------|-------------|
+| `-q` | `--quiet` | Suppress non-essential output |
+| `-v` | `--verbose` | Enable verbose output |
+| `-f` | `--force` | Skip confirmation prompts |
+| `-p` | `--profile <name>` | Target a specific profile |
+| `-g` | `--global` | Operate on global config |
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| [`ocx init`](/cli/init) | Initialize OCX configuration |
+| [`ocx add`](/cli/add) | Add components from a registry |
+| [`ocx remove`](/cli/remove) | Remove installed components |
+| [`ocx update`](/cli/update) | Update installed components |
+| [`ocx search`](/cli/search) | Search for components |
+| [`ocx verify`](/cli/verify) | Verify component integrity |
+| [`ocx registry`](/cli/registry) | Manage registries |
+| [`ocx build`](/cli/build) | Build a registry from source |
+| [`ocx self`](/cli/self) | Update or uninstall OCX itself |
+| [`ocx profile`](/cli/profile) | Manage global profiles |
+| [`ocx config`](/cli/config) | View and edit configuration |
+| [`ocx opencode`](/cli/opencode) | Launch OpenCode with resolved configuration |
+
+## Global Options
+
+These options are available on all commands:
+
+| Option | Description |
+|--------|-------------|
+| `--cwd <path>` | Set working directory |
+| `--json` | Output as JSON for scripting |
+| `-q, --quiet` | Suppress non-essential output |
+| `-v, --verbose` | Show detailed output |
+| `-h, --help` | Show help for command |
+| `-V, --version` | Show version number |
+
+## Exit Codes
+
+| Code | Name | Description |
+|------|------|-------------|
+| 0 | Success | Command completed successfully |
+| 1 | General | Unspecified error |
+| 6 | Conflict | Resource already exists |
+| 66 | Not Found | Resource not found |
+| 69 | Network | Network/connectivity error |
+| 73 | Integrity | Component hash mismatch |
+| 78 | Config | Configuration error |
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `OCX_PROFILE` | Set the active global profile for commands |
+| `OPENCODE_BIN` | Path to custom OpenCode binary |
+| `OCX_NO_COLOR` | Disable colored output |
+| `NO_COLOR` | Standard no-color flag |
+| `OCX_SELF_UPDATE` | Set to `off` to disable self-update functionality |
+| `OCX_NO_UPDATE_CHECK` | Set to `1` to disable update notifications on startup |
+| `EDITOR` | Text editor for `ocx config edit` |
+| `VISUAL` | Fallback editor if `EDITOR` not set |
+
+## Configuration Files
+
+### Local Configuration
+
+#### .opencode/ocx.jsonc
+
+Local project configuration created by `ocx init`:
+
+```jsonc
+{
+  "$schema": "https://ocx.kdco.dev/schemas/ocx.json",
+  "registries": {
+    "kdco": {
+      "url": "https://ocx.kdco.dev"
+    }
+  },
+  "lockRegistries": false
+}
+```
+
+### Global Configuration
+
+#### ~/.config/opencode/ocx.jsonc
+
+Global base configuration (used for downloading global settings like profiles, not applied to projects):
+
+```jsonc
+{
+  "registries": {
+    "kdco": {
+      "url": "https://ocx.kdco.dev"
+    }
+  }
+}
+```
+
+### Profile Configuration
+
+#### ~/.config/opencode/profiles/&lt;name&gt;/ocx.jsonc
+
+Profile-specific OCX settings:
+
+```jsonc
+{
+  "registries": {
+    "kdco": {
+      "url": "https://ocx.kdco.dev"
+    }
+  },
+  "exclude": ["**/AGENTS.md", "**/CLAUDE.md", "**/CONTEXT.md"],
+  "include": [],
+  "bin": "/path/to/custom/opencode"  // optional
+}
+```
+
+### Receipt File
+
+#### .ocx/receipt.jsonc
+
+Receipt tracking installed components (managed automatically):
+
+```jsonc
+{
+  "version": 1,
+  "installed": {
+    "kdco/researcher": {
+      "registry": "kdco",
+      "version": "1.2.0",
+      "hash": "abc123...",
+      "files": [".opencode/agents.md"],
+      "installedAt": "2024-01-15T10:30:00Z",
+      "updatedAt": "2024-01-20T14:00:00Z"
+    }
+  }
+}
+```
+
+Receipts are advisory records of what was installed. They help track provenance but do not enforce strict lockfile semantics.
+
+## See Also
+
+- [Profiles Overview](/profiles/overview) — Profile concepts and configuration.
+- [Enterprise Overview](/enterprise/overview) — Registry locking and integrity verification.
+- [Security Policy](/security/policy) — Vulnerability disclosure.

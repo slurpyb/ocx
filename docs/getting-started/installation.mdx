@@ -1,0 +1,67 @@
+---
+title: "Installation"
+description: "Install OCX on macOS, Linux, or Windows using the install script or npm"
+---
+
+## Overview
+
+OCX supports macOS (x64, Apple Silicon), Linux (x64, arm64), and Windows (x64). Choose the method that fits your environment.
+
+## Install via Shell Script (Recommended)
+
+The install script handles PATH configuration automatically or prints instructions if manual setup is needed.
+
+```bash
+curl -fsSL https://ocx.kdco.dev/install.sh | sh
+```
+
+<Tip>
+This method downloads a pre-built binary and verifies it with SHA-256 checksums. It is the fastest way to get started on macOS or Linux.
+</Tip>
+
+## Install via npm
+
+Use npm if you prefer a package-manager-based install or are on Windows:
+
+```bash
+npm install -g ocx
+```
+
+## Verify Your Installation
+
+After installing, confirm OCX is available:
+
+```bash
+ocx --version
+```
+
+You should see the installed version number printed to the terminal.
+
+## Updating
+
+OCX can update itself:
+
+```bash
+ocx self update
+```
+
+The update mechanism auto-detects how OCX was originally installed (curl or npm) and uses the appropriate method. For curl-installed binaries, the downloaded binary is verified against published SHA-256 checksums.
+
+## Uninstalling
+
+To remove OCX and its global configuration:
+
+```bash
+ocx self uninstall
+```
+
+Preview what would be removed first with `--dry-run`:
+
+```bash
+ocx self uninstall --dry-run
+```
+
+## Next Steps
+
+- [Quick Start](/getting-started/quick-start) — Set up your first profile and launch OpenCode.
+- [CLI Reference](/cli/commands) — Full command documentation.

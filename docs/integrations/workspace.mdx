@@ -1,0 +1,93 @@
+---
+title: "Workspace Bundle"
+description: "Bundled multi-agent orchestration harness for OpenCode — one install, complete control"
+---
+
+## Overview
+
+A curated collection of 16 components that work together as a complete AI development harness. Installing `kdco/workspace` gives you specialist agents, planning tools, code review workflows, notifications, and worktree isolation.
+
+## Quick Start
+
+```bash
+# Install via profile for complete, isolated configuration
+ocx profile add ws --source kit/ws --from https://ocx-kit.kdco.dev --global
+ocx oc -p ws
+```
+
+Or install directly into a project:
+
+```bash
+ocx add kdco/workspace --from https://registry.kdco.dev
+```
+
+See the [KDCO Workspace Guide](/guides/kdco-workspace) for full installation and customization.
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                     ORCHESTRATORS                        │
+│         ┌──────┐                    ┌───────┐            │
+│         │ plan │                    │ build │            │
+│         └──┬───┘                    └───┬───┘            │
+└────────────┼────────────────────────────┼────────────────┘
+             │                            │
+     ┌───────┴───────┐            ┌───────┴───────┐
+     ▼       ▼       ▼            ▼       ▼       ▼
+┌─────────────────────────────────────────────────────────┐
+│                      SPECIALISTS                        │
+│  ┌─────────┐ ┌────────────┐ ┌───────┐ ┌──────┐ ┌──────┐│
+│  │ explore │ │ researcher │ │ coder │ │scribe│ │review││
+│  └─────────┘ └────────────┘ └───────┘ └──────┘ └──────┘│
+└─────────────────────────────────────────────────────────┘
+```
+
+| Role | Agents |
+|------|--------|
+| Orchestrators | `plan`, `build` |
+| Specialists | `explore`, `researcher`, `coder`, `scribe`, `reviewer` |
+
+## Components
+
+| Category | Component | Description |
+|----------|-----------|-------------|
+| Plugin | workspace-plugin | Plan management, agent rule injection |
+| Plugin | [background-agents](/integrations/background-agents) | Async delegation system |
+| Plugin | [notify](/integrations/notify) | OS notifications on completion |
+| Plugin | [worktree](/integrations/worktree) | Git worktree isolation |
+| Plugin | @tarquinen/opencode-dcp | Differential context protocol |
+| Plugin | @franlol/opencode-md-table-formatter | Markdown table formatting |
+| Skill | plan-protocol | Implementation planning guidelines |
+| Skill | code-review | Review methodology + severity classification |
+| Skill | code-philosophy | Internal logic philosophy (5 Laws) |
+| Skill | frontend-philosophy | Visual/UI philosophy (5 Pillars) |
+| Agent | researcher | External research (MCP tools, read-only) |
+| Agent | coder | Implementation (full file + bash) |
+| Agent | scribe | Documentation (write, no bash) |
+| Agent | reviewer | Code review (read-only + git) |
+| Command | review | `/review` slash command |
+| MCP | context7, exa, gh_grep | Library docs, web search, GitHub code search |
+
+## Permissions
+
+The bundle configures security boundaries:
+
+| Scope | Setting |
+|-------|---------|
+| Global | `webfetch: deny` — no direct web fetching |
+| plan | Read-only orchestrator, delegates via `task` tool |
+| build | Read-only orchestrator, delegates via `task` tool |
+| explore | Read-only specialist, filesystem + git inspection only |
+| researcher | Read-only, MCP tools only (Context7, Exa, GitHub Grep) |
+| coder | Full file + bash access |
+| scribe | File write only, no bash |
+| reviewer | Read-only + git inspection |
+
+## See Also
+
+- [KDCO Workspace Guide](/guides/kdco-workspace) — Step-by-step installation and customization.
+- [Background Agents](/integrations/background-agents) — Async delegation details.
+- [Notify Plugin](/integrations/notify) — Notification configuration.
+- [Worktree Plugin](/integrations/worktree) — Worktree configuration.
+- [Profiles Overview](/profiles/overview) — Profile concepts.

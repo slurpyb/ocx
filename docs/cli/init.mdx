@@ -1,0 +1,62 @@
+---
+title: "ocx init"
+description: "Reference for the ocx init command — initialize OCX configuration"
+---
+
+## Usage
+
+```bash
+ocx init [options]
+ocx init --registry <path> [options]
+```
+
+## Description
+
+Initialize OCX configuration in your project directory or globally. When used with `--registry`, scaffolds a new OCX registry project.
+
+## Flags
+
+| Flag | Shorthand | Default | Description |
+|------|-----------|---------|-------------|
+| `--cwd <path>` | | Current directory | Working directory |
+| `--quiet` | `-q` | `false` | Suppress output |
+| `--verbose` | `-v` | `false` | Verbose output |
+| `--json` | | `false` | Output as JSON |
+| `--registry <path>` | | | Scaffold a new OCX registry project at path |
+| `--namespace <name>` | | | Registry namespace (e.g., my-org) |
+| `--author <name>` | | | Author name for the registry |
+| `--canary` | | `false` | Use canary (main branch) instead of latest release |
+| `--local <path>` | | | Use local template directory instead of fetching |
+| `--global` | `-g` | `false` | Initialize in global OpenCode config (`~/.config/opencode`) |
+
+## Examples
+
+### Initialize Local Project
+
+```bash
+ocx init
+```
+
+Creates `.opencode/ocx.jsonc` in the current directory with a default registry configuration.
+
+### Initialize Global Configuration
+
+```bash
+ocx init --global
+```
+
+Creates the global profile directory at `~/.config/opencode/` with base configuration. This is required before creating profiles.
+
+### Scaffold a New Registry
+
+```bash
+ocx init --registry ./my-registry --namespace my-org --author "My Name"
+```
+
+Creates a new registry project with the proper directory structure, manifest, and example components.
+
+## See Also
+
+- [Quick Start](/getting-started/quick-start) — End-to-end setup walkthrough.
+- [ocx add](/cli/add) — Add components after initialization.
+- [ocx registry](/cli/registry) — Manage registries.

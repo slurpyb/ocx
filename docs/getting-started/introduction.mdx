@@ -1,0 +1,41 @@
+---
+title: "Introduction"
+description: "OCX brings your OpenCode configuration anywhere — profiles, registries, and auditable components"
+---
+
+## Overview
+
+OCX is a configuration manager for [OpenCode](https://github.com/sst/opencode). It gives you portable profiles, curated component registries, and SHA-256 verified integrity — so your AI agent never runs code you haven't reviewed.
+
+## Why OCX?
+
+- **Profiles** — Work in any repository with your own configuration, without modifying the project.
+- **Registries** — Install profiles and components from curated, versioned registries.
+- **Auditable** — Every component is SHA-256 verified. You own the code.
+
+## Philosophy
+
+OCX follows the **ShadCN model**: components are copied into your project (`.opencode/`), not hidden in `node_modules`. You own the code — customize freely.
+
+Like **Cargo**, OCX resolves dependencies and verifies integrity. Every component is SHA-256 verified at install time and on every subsequent update.
+
+*Your AI agent never runs code you haven't reviewed.*
+
+## How It Works
+
+1. **Initialize** your global configuration with `ocx init --global`.
+2. **Install a profile** from a registry or create one from scratch.
+3. **Launch OpenCode** with `ocx oc -p <name>` — your profile controls what OpenCode sees through `exclude`/`include` patterns.
+
+Each profile has isolated registries for security. OpenCode configuration merges safely between profile and local settings.
+
+## Next Steps
+
+- [Install OCX](/getting-started/installation) to get started on macOS, Linux, or Windows.
+- [Follow the Quick Start](/getting-started/quick-start) to configure and launch your first profile.
+- [Explore Profiles](/profiles/overview) for a deep dive into configuration isolation.
+- [Browse the CLI Reference](/cli/commands) for the full command documentation.
+
+## Disclaimer
+
+This project is not built by the OpenCode team and is not affiliated with [OpenCode](https://github.com/sst/opencode) in any way.

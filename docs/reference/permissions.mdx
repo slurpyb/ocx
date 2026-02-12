@@ -1,0 +1,116 @@
+---
+title: "Permissions"
+description: "Fine-grained access control for tools, bash commands, skills, and agent permissions"
+---
+
+## Overview
+
+Permissions control which actions require approval. Configure them globally, per-tool, or per-agent.
+
+## Permission Values
+
+| Value | Behavior |
+|-------|----------|
+| `"allow"` | Run without approval |
+| `"ask"` | Prompt for approval |
+| `"deny"` | Disable the tool |
+
+## Default Permissions
+
+Most operations are allowed by default. Exceptions:
+- `doom_loop`: `ask`
+- `external_directory`: `ask`
+
+## Global Permissions
+
+```jsonc
+{
+  "permission": {
+    "edit": "allow",
+    "bash": "ask",
+    "skill": "ask",
+    "webfetch": "deny",
+    "doom_loop": "ask",
+    "external_directory": "ask"
+  }
+}
+```
+
+## Bash Command Permissions
+
+Use glob patterns to control specific commands:
+
+```jsonc
+{
+  "permission": {
+    "bash": {
+      "git push": "ask",
+      "git status": "allow",
+      "terraform *": "deny",
+      "*": "ask"
+    }
+  }
+}
+```
+
+## Skill Permissions
+
+```jsonc
+{
+  "permission": {
+    "skill": {
+      "*": "deny",
+      "git-*": "allow",
+      "frontend/*": "ask"
+    }
+  }
+}
+```
+
+## Per-Agent Permissions
+
+Override global permissions for specific agents:
+
+```jsonc
+{
+  "permission": {
+    "bash": { "git push": "ask" }
+  },
+  "agent": {
+    "build": {
+      "permission": {
+        "bash": { "git push": "allow" }
+      }
+    }
+  }
+}
+```
+
+## Markdown Agent Permissions
+
+```markdown
+---
+description: Code review without edits
+mode: subagent
+permission:
+  edit: deny
+  bash:
+    "git diff": allow
+    "git log*": allow
+    "*": ask
+  webfetch: deny
+---
+```
+
+## Best Practices
+
+1. **Start restrictive, allow as needed** — Deny by default for sensitive operations.
+2. **Use wildcards for grouped permissions** — `my-mcp*` controls all tools from an MCP server.
+3. **Override per-agent when appropriate** — Give `build` agent more access than `plan`.
+4. **Use `ask` for destructive operations** — `git push`, `rm`, deployment commands.
+
+## See Also
+
+- [Agents](/reference/agents) — Agent configuration with permission overrides.
+- [Skills & Instructions](/reference/skills) — Skill access control.
+- [Profiles Security](/profiles/security) — Lock down recipes for untrusted repos.

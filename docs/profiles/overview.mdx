@@ -1,0 +1,131 @@
+---
+title: "Profiles Overview"
+description: "Portable OpenCode configuration that works across repositories without modifying projects"
+---
+
+## Overview
+
+Profiles give you a global configuration system that lives outside your project directories. Instead of initializing `.opencode/` in every repository, you define your settings once and bring them anywhere.
+
+## When to Use Profiles
+
+- When you work across multiple repositories and want consistent configuration.
+- When you contribute to open source projects and need zero-footprint configuration.
+- When you need to control what OpenCode sees in untrusted repositories.
+- When you maintain separate configurations for work, personal, and client projects.
+
+## Core Concepts
+
+### Global vs Local Mode
+
+| Aspect | Local Mode | Profile Mode |
+|--------|------------|--------------|
+| Config location | `./.opencode/` | `~/.config/opencode/profiles/<name>/` |
+| Modifies repo | Yes | No |
+| Per-project settings | Yes | Profile-isolated |
+| Requires `ocx init` | Yes | No (uses profile config) |
+| Visibility control | No | Yes (exclude/include) |
+| Registry scope | Project-only | Profile-isolated |
+| Best for | Single project customization | Multi-project workflows |
+
+### What Is Inside a Profile
+
+Each profile lives in `~/.config/opencode/profiles/<name>/` and contains:
+
+- `ocx.jsonc` — OCX settings (registries, exclude/include patterns, custom binary)
+- `opencode.jsonc` — OpenCode configuration
+- `AGENTS.md` — Instructions for AI agents
+
+### Profile Layering
+
+When a local profile has the same name as a global profile, they **merge together**:
+
+- Global profile provides base settings.
+- Local profile overlays on top (local wins on conflicts).
+
+| Type | Merge Behavior |
+|------|---------------|
+| Objects (registries) | Deep merge (local adds to/overrides global) |
+| Arrays (exclude/include) | Local replaces global completely |
+| `plugin[]`, `instructions[]` | Concatenated and deduplicated |
+| Scalars | Local wins |
+
+**Example:**
+
+```jsonc
+// Global: ~/.config/opencode/profiles/work/ocx.jsonc
+{
+  "exclude": ["**/CLAUDE.md"],
+  "registries": { "kdco": { "url": "https://registry.kdco.dev" } }
+}
+
+// Local: .opencode/profiles/work/ocx.jsonc
+{
+  "exclude": ["**/CLAUDE.md", "**/AGENTS.md"],
+  "registries": { "internal": { "url": "https://internal.company.com" } }
+}
+
+// Merged result when using -p work:
+{
+  "exclude": ["**/CLAUDE.md", "**/AGENTS.md"],  // Local replaces
+  "registries": {
+    "kdco": { "url": "https://registry.kdco.dev" },      // From global
+    "internal": { "url": "https://internal.company.com" } // From local (added)
+  }
+}
+```
+
+## How It Works
+
+1. **Profile Resolution**: OCX resolves the active profile using a priority chain (CLI flag → env var → local config → default profile → none).
+2. **Layer Merging**: If both global and local profiles exist with the same name, they deep merge.
+3. **Instruction Discovery**: OCX discovers instruction files walking up from the project directory to the git root.
+4. **Pattern Filtering**: Exclude/include patterns from the active profile filter which project instruction files OpenCode receives.
+5. **Launch**: OpenCode starts with the merged configuration and filtered instructions.
+
+### Profile Selection Priority
+
+Profiles are resolved in this order:
+
+1. `--profile <name>` / `-p <name>` flag (explicit override)
+2. `OCX_PROFILE` environment variable
+3. `profile` field in `.opencode/ocx.jsonc` (project-specific profile)
+4. `default` profile (if it exists)
+5. No profile (base configurations only)
+
+## Directory Structure
+
+### Global Profiles
+
+```text
+~/.config/opencode/
+├── ocx.jsonc                 # Global base config
+└── profiles/
+    ├── default/
+    │   ├── ocx.jsonc         # Profile OCX settings
+    │   ├── opencode.jsonc    # Profile OpenCode config
+    │   └── AGENTS.md         # Profile instructions
+    └── work/
+        ├── ocx.jsonc
+        ├── opencode.jsonc
+        └── AGENTS.md
+```
+
+### Local Project Config
+
+```text
+.opencode/                    # Local config
+├── ocx.jsonc                 # Local OCX config (can specify profile)
+└── opencode.jsonc            # Local OpenCode config
+```
+
+## Related Concepts
+
+- [Profile Configuration](/profiles/configuration) — Detailed configuration reference for exclude/include patterns and instruction discovery.
+- [Profile Security](/profiles/security) — Lock down recipes for untrusted repositories.
+- [CLI: Profile Commands](/cli/profile) — Full command reference for profile management.
+
+## See Also
+
+- [Quick Start](/getting-started/quick-start) — Set up your first profile.
+- [Enterprise Overview](/enterprise/overview) — Registry locking and integrity verification for teams.

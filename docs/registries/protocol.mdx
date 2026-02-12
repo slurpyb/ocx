@@ -1,0 +1,221 @@
+---
+title: "Registry Protocol"
+description: "HTTP API specification that OCX-compatible registries must implement"
+---
+
+## Overview
+
+This document specifies the HTTP API that OCX-compatible registries must implement. Registries serve component metadata and files as static JSON endpoints.
+
+<Note>
+**V2 Changes:** Registry targets are now root-relative (no `.opencode/` prefix required). The OCX CLI handles path resolution based on component type.
+</Note>
+
+## Discovery (Optional)
+
+```
+GET /.well-known/ocx.json
+```
+
+Enables automatic registry discovery from a domain. If provided, clients can register using just the domain URL.
+
+**Response:**
+
+```json
+{
+  "version": 1,
+  "registry": "/index.json"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `version` | number | Protocol version (currently `1`) |
+| `registry` | string | Path to the registry index endpoint |
+
+If not provided, clients must be configured with the full registry URL.
+
+## Required Endpoints
+
+### Registry Index
+
+```
+GET /index.json
+```
+
+Returns registry metadata and a list of available components.
+
+**Response:**
+
+```json
+{
+  "$schema": "https://ocx.kdco.dev/schemas/registry.json",
+  "name": "My Registry",
+  "namespace": "myregistry",
+  "version": "1.0.0",
+  "author": "Your Name",
+  "components": [
+    {
+      "name": "my-skill",
+      "type": "skill",
+      "version": "1.0.0",
+      "description": "A helpful skill"
+    }
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `$schema` | string | No | Schema URL for validation |
+| `name` | string | Yes | Human-readable registry name |
+| `namespace` | string | Yes | Registry namespace (kebab-case, informational) |
+| `version` | string | Yes | Registry version (semver recommended) |
+| `author` | string | Yes | Registry author or organization |
+| `components` | array | Yes | List of available components |
+
+<Note>
+The `index.namespace` field is informational only and not used for component resolution. Users reference components via the registry name configured with `ocx registry add --name <name>`.
+</Note>
+
+### Component Packument
+
+```
+GET /components/{name}.json
+```
+
+Returns full component metadata in npm-style packument format.
+
+**Response:**
+
+```json
+{
+  "name": "my-skill",
+  "dist-tags": {
+    "latest": "1.0.0"
+  },
+  "versions": {
+    "1.0.0": {
+      "name": "my-skill",
+      "type": "skill",
+      "version": "1.0.0",
+      "description": "A helpful skill",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "target": "skills/my-skill/SKILL.md"
+        }
+      ],
+      "dependencies": [],
+      "opencode": {}
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Component identifier |
+| `dist-tags` | object | Version aliases (`latest` required) |
+| `versions` | object | Map of version string to component manifest |
+
+### File Content
+
+```
+GET /components/{name}/{path}
+```
+
+Returns raw file content for installation.
+
+| Path | Content-Type |
+|------|--------------|
+| `*.md` | `text/markdown` |
+| `*.ts` | `text/typescript` |
+| `*.json` | `application/json` |
+| Other | `text/plain` |
+
+## Component Types
+
+| Type | Common Location | Description |
+|------|-----------------|-------------|
+| `skill` | `skills/{name}/` | AI behavior instructions |
+| `plugin` | `plugins/` | OpenCode plugins |
+| `agent` | `agents/` | Custom agent definitions |
+| `command` | `commands/` | Custom CLI commands |
+| `tool` | `tools/` | Custom tools |
+| `bundle` | (varies) | Meta-package grouping other components |
+| `profile` | `~/.config/opencode/profiles/{name}/` | Shareable profile configuration |
+
+Targets in registry files are root-relative. The OCX CLI resolves them to the appropriate `.opencode/` subdirectory based on component type.
+
+### Blocked Paths
+
+Registry components cannot target these paths:
+
+- `.ocx/` — OCX state and receipt
+- `ocx.jsonc` — OCX configuration
+- `package.json` — Package manifest
+- `.git/` — Git internals
+- `.env` — Environment secrets
+- `node_modules/` — Dependencies
+
+**Additional Security Constraints:**
+- Absolute paths (starting with `/` or drive letters like `C:`) are rejected
+- Path traversal sequences (`../`, `..\\`) are rejected
+- Null bytes and control characters are rejected
+
+## Minimal Compliant Registry
+
+A registry with a single skill needs three files:
+
+```
+/index.json
+/components/my-skill.json
+/components/my-skill/SKILL.md
+```
+
+**`/index.json`:**
+
+```json
+{
+  "name": "Minimal Registry",
+  "namespace": "minimal",
+  "version": "1.0.0",
+  "author": "Your Name",
+  "components": [
+    { "name": "my-skill", "type": "skill", "version": "1.0.0" }
+  ]
+}
+```
+
+**`/components/my-skill.json`:**
+
+```json
+{
+  "name": "my-skill",
+  "dist-tags": { "latest": "1.0.0" },
+  "versions": {
+    "1.0.0": {
+      "name": "my-skill",
+      "type": "skill",
+      "version": "1.0.0",
+      "files": [{ "path": "SKILL.md" }]
+    }
+  }
+}
+```
+
+## Hosting Options
+
+| Platform | Approach |
+|----------|----------|
+| **Cloudflare Workers** | Static assets from `dist/` directory |
+| **GitHub Pages** | Pre-build with `ocx build`, serve `dist/` |
+| **Vercel / Netlify** | Pre-build with `ocx build`, serve `dist/` |
+| **Any HTTP server** | Serve required endpoints |
+
+## See Also
+
+- [Creating Registries](/registries/create) — Guide to building your own registry.
+- [ocx build](/cli/build) — CLI command for building registries.
+- [Enterprise Overview](/enterprise/overview) — Locking, versioning, and integrity verification.

@@ -1,0 +1,126 @@
+---
+title: "Agents"
+description: "Agent types, configuration formats, and per-agent permissions for OpenCode"
+---
+
+## Overview
+
+Agents are specialized AI assistants for specific tasks. OpenCode supports two agent modes and multiple configuration formats.
+
+## Agent Types
+
+| Type | Description |
+|------|-------------|
+| `primary` | Main agents you interact with directly (Tab to switch) |
+| `subagent` | Specialized assistants invoked by primary agents or via `@mention` |
+
+## Built-in Agents
+
+| Agent | Mode | Description |
+|-------|------|-------------|
+| `build` | primary | Default agent with all tools enabled |
+| `plan` | primary | Analysis mode with `edit`/`bash` set to `ask` |
+| `general` | subagent | General-purpose research and multi-step tasks |
+| `explore` | subagent | Fast codebase exploration |
+
+## JSONC Configuration
+
+Define agents in `opencode.jsonc`:
+
+```jsonc
+{
+  "agent": {
+    "code-reviewer": {
+      "description": "Reviews code for best practices",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "temperature": 0.1,
+      "prompt": "You are a code reviewer. Focus on security and performance.",
+      "steps": 10,
+      "tools": {
+        "write": false,
+        "edit": false
+      },
+      "permission": {
+        "bash": "ask"
+      }
+    }
+  }
+}
+```
+
+## Markdown Configuration
+
+Place files in `~/.config/opencode/agent/` or `.opencode/agent/`:
+
+```markdown title="~/.config/opencode/agent/review.md"
+---
+description: Reviews code for quality and best practices
+mode: subagent
+model: anthropic/claude-sonnet-4-5
+temperature: 0.1
+tools:
+  write: false
+  edit: false
+  bash: false
+permission:
+  edit: deny
+  bash:
+    "git diff": allow
+    "git log*": allow
+    "*": ask
+---
+
+You are in code review mode. Focus on:
+
+- Code quality and best practices
+- Potential bugs and edge cases
+- Performance implications
+- Security considerations
+
+Provide constructive feedback without making direct changes.
+```
+
+## Agent Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `description` | string | **Required.** Brief description of agent purpose |
+| `mode` | `primary` / `subagent` / `all` | Agent mode (default: `all`) |
+| `model` | string | Model override (`provider/model-id`) |
+| `temperature` | number | 0.0–1.0 (lower = more focused) |
+| `steps` | number | Max agentic iterations before forced response |
+| `prompt` | string | Custom system prompt (supports `{file:path}`) |
+| `tools` | object | Tool enable/disable map |
+| `permission` | object | Permission overrides |
+| `disable` | boolean | Disable the agent |
+
+## Temperature Guidelines
+
+| Range | Use Case |
+|-------|----------|
+| 0.0–0.2 | Code analysis, planning (focused/deterministic) |
+| 0.3–0.5 | General development (balanced) |
+| 0.6–1.0 | Brainstorming, exploration (creative) |
+
+## Additional Model Options
+
+Pass provider-specific options directly:
+
+```jsonc
+{
+  "agent": {
+    "deep-thinker": {
+      "model": "openai/gpt-5",
+      "reasoningEffort": "high",
+      "textVerbosity": "low"
+    }
+  }
+}
+```
+
+## See Also
+
+- [Permissions](/reference/permissions) — Fine-grained per-agent access control.
+- [Skills & Instructions](/reference/skills) — Reusable instruction sets for agents.
+- [Configuration](/reference/configuration) — Global configuration reference.

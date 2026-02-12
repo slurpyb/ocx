@@ -1,0 +1,122 @@
+---
+title: "ocx config"
+description: "Reference for the ocx config command — view and edit OCX configuration"
+---
+
+## Usage
+
+```bash
+ocx config <subcommand> [options]
+```
+
+## Description
+
+View and edit OCX configuration files. Operates on local project config by default; use `--global` or `--profile` to target other scopes.
+
+## Subcommands
+
+- [`ocx config show`](#config-show) — Show configuration from current scope
+- [`ocx config edit`](#config-edit) — Edit configuration in `$EDITOR`
+
+---
+
+## Config Show
+
+Show the merged configuration from the current directory and profile.
+
+### Usage
+
+```bash
+ocx config show [options]
+```
+
+### Flags
+
+| Flag | Shorthand | Default | Description |
+|------|-----------|---------|-------------|
+| `--origin` | | `false` | Show the source of each configuration setting |
+| `--profile <name>` | `-p` | | Use specific profile for resolution |
+| `--json` | | `false` | Output as JSON |
+
+### Examples
+
+```bash
+# Show config from current scope
+ocx config show
+
+# Show config with sources
+ocx config show --origin
+
+# Show config using specific profile
+ocx config show -p work
+
+# Get JSON output
+ocx config show --json
+```
+
+### Output
+
+```bash
+$ ocx config show
+Merged configuration:
+  Registries: kdco
+  Component path: .opencode
+
+$ ocx config show --origin
+Configuration sources:
+  registries:
+    kdco: global profile (work)
+  componentPath:
+    .opencode: local config
+```
+
+---
+
+## Config Edit
+
+Edit a configuration file in your `$EDITOR`.
+
+### Usage
+
+```bash
+ocx config edit [options]
+```
+
+### Flags
+
+| Flag | Shorthand | Default | Description |
+|------|-----------|---------|-------------|
+| `--global` | | `false` | Edit global config |
+| `--profile <name>` | `-p` | | Edit specific profile's config (implies `--global`) |
+
+### Environment
+
+- **`$EDITOR`**: Text editor to use (e.g., `vim`, `nano`, `code`).
+- **`$VISUAL`**: Fallback editor if `$EDITOR` is not set.
+- Falls back to `vi` if neither is set.
+
+### Examples
+
+```bash
+# Edit local .opencode/ocx.jsonc
+ocx config edit
+
+# Edit global ocx.jsonc
+ocx config edit --global
+
+# Edit specific profile's ocx.jsonc
+ocx config edit -p work
+```
+
+### File Paths
+
+| Scope | File Path |
+|-------|-----------|
+| Local | `.opencode/ocx.jsonc` |
+| Global | `~/.config/opencode/ocx.jsonc` |
+| Profile | `~/.config/opencode/profiles/<name>/ocx.jsonc` |
+
+## See Also
+
+- [Profiles Configuration](/profiles/configuration) — Profile configuration reference.
+- [CLI Reference](/cli/commands) — All commands.

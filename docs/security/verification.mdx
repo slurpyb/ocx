@@ -1,0 +1,53 @@
+---
+title: "Integrity Verification"
+description: "How OCX uses SHA-256 hashes to verify component integrity and protect against tampering"
+---
+
+## Overview
+
+OCX uses SHA-256 cryptographic hashes to ensure installed components have not been tampered with. This protection happens automatically at install time and during updates.
+
+## How It Works
+
+1. **Receipt**: When a component is first installed, its content is hashed and stored in `.ocx/receipt.jsonc`.
+2. **Verification**: On subsequent installs or updates, OCX re-hashes the incoming content.
+3. **Protection**: If the new hash does not match the one in `.ocx/receipt.jsonc`, the installation is aborted with an `INTEGRITY_ERROR`.
+
+This ensures that once a version is approved and locked by your team, it cannot be silently swapped for different content — even if the registry itself is compromised.
+
+## Install-Time Verification
+
+When you run `ocx add`, OCX:
+
+1. Downloads the component content from the registry.
+2. If the component already exists in the receipt file, computes the SHA-256 hash of the incoming content.
+3. Compares against the recorded hash.
+4. **If mismatch**: Fails immediately with `INTEGRITY_ERROR`.
+5. **If match or new**: Writes files and records the hash.
+
+## Updating Components
+
+The `INTEGRITY_ERROR` is a security feature, not a bug. When you need to update a component whose source has changed, use `ocx update`:
+
+```bash
+# Preview what will change
+ocx update kdco/researcher --dry-run
+
+# Apply the update
+ocx update kdco/researcher
+
+# Update all components
+ocx update --all
+```
+
+This explicit workflow ensures updates are intentional and auditable.
+
+## CLI Binary Verification
+
+When running `ocx self update`, OCX verifies the downloaded binary against the published `SHA256SUMS.txt` file in GitHub Releases. This protects against compromised mirrors, man-in-the-middle attacks, and tampered releases.
+
+## See Also
+
+- [Security Policy](/security/policy) — Vulnerability disclosure and scope.
+- [Enterprise Overview](/enterprise/overview) — Registry locking, audit trail, and air-gapped deployment.
+- [ocx add](/cli/add) — Component installation with integrity verification.

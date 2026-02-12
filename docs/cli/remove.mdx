@@ -1,0 +1,65 @@
+---
+title: "ocx remove"
+description: "Reference for the ocx remove command — remove installed components"
+---
+
+## Usage
+
+```bash
+ocx remove <components...> [options]
+```
+
+## Description
+
+Remove installed components from your project. OCX deletes the component files and removes the entry from the receipt file (`.ocx/receipt.jsonc`).
+
+## Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `components...` | Yes | Canonical component IDs to remove (e.g., `kdco/researcher`) |
+
+## Flags
+
+| Flag | Shorthand | Default | Description |
+|------|-----------|---------|-------------|
+| `--dry-run` | | `false` | Show what would be removed without making changes |
+| `--force` | `-f` | `false` | Force removal even if files have been modified |
+| `--cwd <path>` | | Current directory | Working directory |
+| `--quiet` | `-q` | `false` | Suppress output |
+| `--verbose` | `-v` | `false` | Verbose output |
+| `--json` | | `false` | Output as JSON |
+
+## Examples
+
+### Remove a Single Component
+
+```bash
+ocx remove shadcn/button
+```
+
+### Remove Multiple Components
+
+```bash
+ocx remove shadcn/button shadcn/card
+```
+
+### Preview What Would Be Removed
+
+```bash
+ocx remove shadcn/button --dry-run
+```
+
+### Force Remove Modified Files
+
+```bash
+ocx remove shadcn/button --force
+```
+
+If a component's files have been edited since installation, OCX rejects the removal by default to prevent accidental data loss. Use `--force` to override this safety check.
+
+## See Also
+
+- [ocx add](/cli/add) — Add components to your project.
+- [ocx update](/cli/update) — Update components instead of removing.
+- [CLI Reference](/cli/commands) — All commands.

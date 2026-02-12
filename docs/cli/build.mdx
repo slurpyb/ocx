@@ -1,0 +1,104 @@
+---
+title: "ocx build"
+description: "Reference for the ocx build command — build a registry from source files"
+---
+
+## Usage
+
+```bash
+ocx build [path] [options]
+```
+
+## Description
+
+Build a registry from source files. This command validates the `registry.jsonc` manifest, generates the `index.json` and component packument files, and copies raw component files into the output directory. Intended for registry authors who want to publish their own components.
+
+## Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `path` | No | Registry source directory (default: current directory) |
+
+## Flags
+
+| Flag | Shorthand | Default | Description |
+|------|-----------|---------|-------------|
+| `--out <dir>` | | `./dist` | Output directory |
+| `--dry-run` | | `false` | Validate and show what would be built |
+| `--cwd <path>` | | Current directory | Working directory |
+| `--json` | | `false` | Output as JSON |
+| `--quiet` | `-q` | `false` | Suppress output |
+
+## Examples
+
+### Build Registry in Current Directory
+
+```bash
+ocx build
+```
+
+### Build from a Specific Directory
+
+```bash
+ocx build ./my-registry
+```
+
+### Specify Output Directory
+
+```bash
+ocx build --out ./public
+```
+
+### Validate Without Building
+
+```bash
+ocx build --dry-run
+```
+
+## Output
+
+```bash
+$ ocx build
+Building registry...
+Built 5 components to dist
+
+$ ocx build --json
+{
+  "success": true,
+  "data": {
+    "name": "my-registry",
+    "version": "1.0.0",
+    "components": 5,
+    "output": "/path/to/dist"
+  }
+}
+```
+
+## Source Structure
+
+The build command expects a `registry.jsonc` file in the source directory:
+
+```
+my-registry/
+  registry.jsonc        # Registry manifest
+  files/
+    agents/
+      my-agent.md       # Agent definition
+    plugins/
+      my-plugin.ts      # Plugin file
+    skills/
+      my-skill/
+        SKILL.md        # Skill definition
+```
+
+## Errors
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| Build errors | Invalid `registry.jsonc` or missing files | Check error messages for details |
+
+## See Also
+
+- [Creating Registries](/registries/create) — Full guide for registry authors.
+- [Registry Protocol](/registries/protocol) — Technical specification for registry HTTP APIs.
+- [CLI Reference](/cli/commands) — All commands.

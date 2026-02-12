@@ -1,0 +1,40 @@
+---
+title: "Oh-My-OpenCode Profile (omo)"
+description: "Starter profile using oh-my-opencode with free OpenCode Zen models"
+---
+
+## Overview
+
+The `omo` profile uses [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) with free [OpenCode Zen](https://opencode.ai/docs/zen/) models for a lightweight multi-agent setup.
+
+## Installation
+
+```bash
+ocx profile add omo --source kit/omo --from https://ocx-kit.kdco.dev --global
+ocx oc -p omo
+```
+
+## Models
+
+- **Big Pickle** — Orchestrator (Sisyphus), Executor (Atlas)
+- **GPT-5 Nano** — Research, exploration, documentation, planning
+
+## Customization
+
+Edit the config to change models:
+
+```bash
+$EDITOR ~/.config/opencode/profiles/omo/oh-my-opencode.json
+```
+
+See available models:
+
+```bash
+opencode models
+```
+
+## See Also
+
+- [Oh-My-OpenCode Guide](/guides/oh-my-opencode) — Full installation walkthrough.
+- [oh-my-opencode documentation](https://github.com/code-yeongyu/oh-my-opencode/blob/dev/docs/configurations.md) — Upstream configuration reference.
+- [Profiles Overview](/profiles/overview) — Profile concepts and configuration.

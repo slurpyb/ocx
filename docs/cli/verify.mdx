@@ -1,0 +1,55 @@
+---
+title: "ocx verify"
+description: "Reference for the ocx verify command — verify integrity of installed components"
+---
+
+## Usage
+
+```bash
+ocx verify [components...] [options]
+```
+
+## Description
+
+Verify the integrity of installed components by computing SHA-256 hashes and comparing them against the recorded values in the receipt file (`.ocx/receipt.jsonc`). Detects unauthorized modifications or corruption.
+
+## Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `components...` | No | Specific components to verify (verifies all if omitted) |
+
+## Flags
+
+| Flag | Shorthand | Default | Description |
+|------|-----------|---------|-------------|
+| `--cwd <path>` | | Current directory | Working directory |
+| `--quiet` | `-q` | `false` | Suppress output |
+| `--verbose` | `-v` | `false` | Verbose output |
+| `--json` | | `false` | Output as JSON |
+
+## Examples
+
+### Verify All Installed Components
+
+```bash
+ocx verify
+```
+
+### Verify a Specific Component
+
+```bash
+ocx verify shadcn/button
+```
+
+### Verbose Output Showing All Files
+
+```bash
+ocx verify --verbose
+```
+
+## See Also
+
+- [Security Verification](/security/verification) — How SHA-256 verification works.
+- [Enterprise Overview](/enterprise/overview) — Integrity verification in team environments.
+- [CLI Reference](/cli/commands) — All commands.

@@ -1,0 +1,88 @@
+---
+title: "ocx add"
+description: "Reference for the ocx add command — add components or npm plugins to your project"
+---
+
+## Usage
+
+```bash
+ocx add <components...> [options]
+```
+
+## Description
+
+Add components or npm plugins to your project. Components are copied into `.opencode/` (not `node_modules`) — you own the code and can customize freely.
+
+## Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `components...` | Yes | Components to install (`name/component` or `npm:package[@version]`) |
+
+## Flags
+
+| Flag | Shorthand | Default | Description |
+|------|-----------|---------|-------------|
+| `--dry-run` | | `false` | Show what would be installed without making changes |
+| `--skip-compat-check` | | `false` | Skip version compatibility checks |
+| `--trust` | | `false` | Skip npm plugin validation |
+| `--profile <name>` | `-p` | | Use specific profile |
+| `--from <url>` | | | Use ephemeral registry (does not persist) |
+| `--cwd <path>` | | Current directory | Working directory |
+| `--quiet` | `-q` | `false` | Suppress output |
+| `--verbose` | `-v` | `false` | Verbose output |
+| `--json` | | `false` | Output as JSON |
+| `--global` | `-g` | `false` | Use global config |
+
+## Examples
+
+### Add a Component from a Configured Registry
+
+```bash
+ocx add shadcn/button
+```
+
+### Add Multiple Components
+
+```bash
+ocx add shadcn/button shadcn/card shadcn/dialog
+```
+
+### Add an npm Plugin
+
+```bash
+ocx add npm:@opencode/plugin-github
+```
+
+### Add with a Specific Version
+
+```bash
+ocx add npm:@opencode/plugin-github@1.2.3
+```
+
+### Preview What Would Be Installed
+
+```bash
+ocx add shadcn/button --dry-run
+```
+
+### Use an Ephemeral Registry
+
+```bash
+ocx add kdco/workspace --from https://my-registry.com
+```
+
+The `--from` flag provides a one-time registry reference without saving it to your configuration. The registry name is inferred from the component reference (e.g., `kdco` from `kdco/workspace`).
+
+## Integrity Verification
+
+When a component is already present in your receipt file (`.ocx/receipt.jsonc`), OCX computes the SHA-256 hash of the incoming content and compares it against the recorded hash. If the hashes do not match, the installation fails immediately with an `INTEGRITY_ERROR`.
+
+To intentionally update a component whose source has changed, use [`ocx update`](/cli/update) instead.
+
+## See Also
+
+- [ocx init](/cli/init) — Initialize before adding components.
+- [ocx registry](/cli/registry) — Configure registries.
+- [Enterprise Overview](/enterprise/overview) — Integrity verification details.
+- [Security Verification](/security/verification) — How SHA-256 verification works.

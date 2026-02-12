@@ -1,0 +1,72 @@
+---
+title: "ocx update"
+description: "Reference for the ocx update command — update installed components from registries"
+---
+
+## Usage
+
+```bash
+ocx update [components...] [options]
+```
+
+## Description
+
+Update installed components from their registries to the latest version. You can update specific components, all components, or all components from a particular registry.
+
+## Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `components...` | No | Specific components to update (omit to use `--all` or `--registry`) |
+
+## Flags
+
+| Flag | Shorthand | Default | Description |
+|------|-----------|---------|-------------|
+| `--all` | | `false` | Update all installed components |
+| `--registry <name>` | | | Update all components from a specific registry |
+| `--dry-run` | | `false` | Preview changes without applying |
+| `--cwd <path>` | | Current directory | Working directory |
+| `--quiet` | `-q` | `false` | Suppress output |
+| `--verbose` | `-v` | `false` | Verbose output |
+| `--json` | | `false` | Output as JSON |
+
+## Mutual Exclusivity
+
+These flag combinations are not allowed:
+
+- `--all` with component names
+- `--registry` with component names
+- `--all` with `--registry`
+
+## Examples
+
+### Update a Specific Component
+
+```bash
+ocx update shadcn/button
+```
+
+### Update All Components
+
+```bash
+ocx update --all
+```
+
+### Update All Components from a Registry
+
+```bash
+ocx update --registry shadcn
+```
+
+### Preview Updates
+
+```bash
+ocx update --all --dry-run
+```
+
+## See Also
+
+- [ocx add](/cli/add) — Add new components.
+- [ocx remove](/cli/remove) — Remove components.
+- [CLI Reference](/cli/commands) — All commands.

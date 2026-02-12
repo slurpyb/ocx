@@ -1,0 +1,52 @@
+---
+title: "Workspace Profile (ws)"
+description: "Multi-agent orchestration profile with free OpenCode Zen models"
+---
+
+## Overview
+
+The `ws` profile provides a complete multi-agent orchestration harness using free [OpenCode Zen](https://opencode.ai/docs/zen/) models. It bundles all KDCO Workspace components into a single, portable profile.
+
+## Installation
+
+```bash
+ocx profile add ws --source kit/ws --from https://ocx-kit.kdco.dev --global
+ocx oc -p ws
+```
+
+## Model Assignments
+
+| Agent | Model | Role |
+|-------|-------|------|
+| `plan` | Big Pickle | Planning orchestrator |
+| `build` | Big Pickle | Build orchestrator |
+| `coder` | Big Pickle | Implementation |
+| `explore` | GPT-5 Nano | Codebase search |
+| `researcher` | GPT-5 Nano | External research |
+| `scribe` | GPT-5 Nano | Documentation |
+| `reviewer` | GPT-5 Nano | Code review |
+
+## Recommended Models
+
+When customizing with your own providers:
+
+| Role | Recommended | Why |
+|------|-------------|-----|
+| Orchestrators (plan, build) | Claude Opus 4.5 | Heavy reasoning for planning |
+| Implementation (coder) | Claude Opus 4.5 | Precision, complex tasks |
+| Specialists (explore, researcher, scribe) | Claude Sonnet 4.5 | Fast, capable |
+| Review (reviewer) | GPT 5.2 | Deterministic analysis |
+
+## Customize
+
+Edit your profile's config:
+
+```bash
+$EDITOR ~/.config/opencode/profiles/ws/opencode.jsonc
+```
+
+## See Also
+
+- [KDCO Workspace Guide](/guides/kdco-workspace) — Full installation walkthrough.
+- [Workspace Integration](/integrations/workspace) — Architecture and component details.
+- [Profiles Overview](/profiles/overview) — Profile concepts and configuration.

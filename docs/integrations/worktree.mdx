@@ -1,0 +1,116 @@
+---
+title: "Worktree Plugin"
+description: "Git worktrees that spawn their own terminal — zero-friction isolation for AI-driven development"
+---
+
+## Overview
+
+An OpenCode plugin that creates isolated git worktrees where each worktree automatically opens its own terminal with OpenCode running inside. No manual setup, no context switching, no cleanup work.
+
+## Why This Exists
+
+Manual worktrees require setup: create the worktree, open a terminal, navigate to it, start OpenCode. This plugin eliminates that friction. When the AI calls `worktree_create`, your terminal spawns automatically, OpenCode is already running, and files are synchronized. When it calls `worktree_delete`, changes commit automatically and the worktree cleans itself up.
+
+Works great standalone, but pairs especially well with **tmux** for seamless window management.
+
+## When to Use This
+
+| Approach | Best For | Tradeoffs |
+|----------|----------|-----------|
+| **Manual git worktree** | One-off experiments, full control | Manual setup, no auto-cleanup |
+| **OpenCode Desktop UI** | Visual workflow, integrated experience | Tied to desktop app |
+| **This plugin** | AI-driven workflows, automation, CLI-first users | Adds plugin dependency |
+
+## Installation
+
+```bash
+ocx add kdco/worktree --from https://registry.kdco.dev
+```
+
+Or install the full [Workspace bundle](/integrations/workspace):
+
+```bash
+ocx add kdco/workspace --from https://registry.kdco.dev
+```
+
+## How It Works
+
+1. **Create** — AI calls `worktree_create("feature/dark-mode")`
+2. **Terminal spawns** — New window opens with OpenCode at the worktree path
+3. **Work** — AI experiments in complete isolation
+4. **Delete** — AI calls `worktree_delete("reason")`
+5. **Cleanup** — Changes commit automatically, git worktree removed
+
+Worktrees are stored in `~/.local/share/opencode/worktree/<project-id>/<branch>/` outside your repository.
+
+## Tools
+
+| Tool | Purpose |
+|------|---------|
+| `worktree_create(branch, baseBranch?)` | Create a git worktree with automatic terminal spawning |
+| `worktree_delete(reason)` | Delete worktree with auto-commit before removal |
+
+## Platform Support
+
+| Platform | Terminals Supported |
+|----------|---------------------|
+| **macOS** | Ghostty, iTerm2, Kitty, WezTerm, Alacritty, Warp, Terminal.app |
+| **Linux** | Kitty, WezTerm, Alacritty, Ghostty, Foot, GNOME Terminal, Konsole, xterm |
+| **Windows** | Windows Terminal (wt.exe), cmd.exe fallback |
+| **tmux** | Creates new tmux window (priority detection on all platforms) |
+| **WSL** | Windows Terminal via wt.exe interop |
+
+## Configuration
+
+Auto-creates `.opencode/worktree.jsonc` on first use:
+
+```jsonc
+{
+  "$schema": "https://registry.kdco.dev/schemas/worktree.json",
+  "sync": {
+    "copyFiles": [],
+    "symlinkDirs": [],
+    "exclude": []
+  },
+  "hooks": {
+    "postCreate": [],
+    "preDelete": []
+  }
+}
+```
+
+### Common Configurations
+
+**Node.js project:**
+
+```jsonc
+{
+  "sync": {
+    "copyFiles": [".env", ".env.local"],
+    "symlinkDirs": ["node_modules"]
+  },
+  "hooks": {
+    "postCreate": ["pnpm install"]
+  }
+}
+```
+
+**Docker-based project:**
+
+```jsonc
+{
+  "sync": {
+    "copyFiles": [".env"]
+  },
+  "hooks": {
+    "postCreate": ["docker compose up -d"],
+    "preDelete": ["docker compose down"]
+  }
+}
+```
+
+## See Also
+
+- [Workspace Integration](/integrations/workspace) — Full multi-agent workspace bundle.
+- [Background Agents](/integrations/background-agents) — Async delegation system.
+- [KDCO Workspace Guide](/guides/kdco-workspace) — Installation walkthrough.
