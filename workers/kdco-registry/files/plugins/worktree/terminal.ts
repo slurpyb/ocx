@@ -468,34 +468,47 @@ export async function openMacOSTerminal(cwd: string, command?: string): Promise<
 				return { success: true }
 			}
 
-			// Non-detached terminals: use withTempScript (waits for completion)
+			// iTerm uses AppleScript `write text` which returns before execution completes.
+			// Script must self-delete via trap — withTempScript would race.
 			case "iterm": {
-				return await withTempScript(scriptContent, async (scriptPath) => {
-					const escapedPath = escapeAppleScript(scriptPath)
-					const appleScript = `
-						tell application "iTerm"
-							if not (exists window 1) then
-								reopen
-							else
-								tell current window
-									create tab with default profile
-								end tell
-							end if
-							activate
-							tell first session of current tab of current window
-								write text "${escapedPath}"
-							end tell
+				detachedScriptPath = path.join(
+					getTempDir(),
+					`worktree-${Date.now()}-${Math.random().toString(36).slice(2)}.sh`,
+				)
+				await Bun.write(detachedScriptPath, scriptContent)
+				await fs.chmod(detachedScriptPath, 0o755)
+
+				const escapedPath = escapeAppleScript(detachedScriptPath)
+				const appleScript = `
+				tell application "iTerm"
+					if not (exists window 1) then
+						reopen
+					else
+						tell current window
+							create tab with default profile
 						end tell
-					`
-					const result = Bun.spawnSync(["osascript", "-e", appleScript])
-					if (result.exitCode !== 0) {
-						return {
-							success: false,
-							error: `iTerm AppleScript failed: ${result.stderr.toString()}`,
-						}
+					end if
+					activate
+					tell first session of current tab of current window
+						write text "${escapedPath}"
+					end tell
+				end tell
+			`
+				const result = Bun.spawnSync(["osascript", "-e", appleScript])
+				if (result.exitCode !== 0) {
+					// Best-effort cleanup of orphaned script before returning
+					try {
+						await fs.rm(detachedScriptPath)
+					} catch {
+						// Best-effort cleanup
 					}
-					return { success: true }
-				})
+					return {
+						success: false,
+						error: `iTerm AppleScript failed: ${result.stderr.toString()}`,
+					}
+				}
+				detachedScriptPath = null
+				return { success: true }
 			}
 
 			default: {
