@@ -24,6 +24,12 @@ import {
 	updateOpencodeJsonConfig,
 } from "../updaters/update-opencode-config"
 import { isContentIdentical } from "../utils/content"
+import {
+	buildInvalidationDryRunAction,
+	computeDependencyDelta,
+	type DepUpdateResult,
+	invalidateNodeModules,
+} from "../utils/dep-invalidation"
 import { type DryRunAction, type DryRunResult, outputDryRun } from "../utils/dry-run"
 import { ConfigError, ConflictError, IntegrityError, ValidationError } from "../utils/errors"
 import {
@@ -544,6 +550,23 @@ async function runRegistryAddCore(
 				details: { type: component.type },
 			}))
 
+			// Add planned invalidation action if npm deps would change.
+			// NOTE: This may over-report in the edge case where the declared deps
+			// already match the existing package.json (no actual delta). This is
+			// acceptable for dry-run — it signals intent rather than guaranteeing
+			// change, and the real path uses computeDependencyDelta for precision.
+			if (resolved.npmDependencies.length > 0 || resolved.npmDevDependencies.length > 0) {
+				const packageDir = options.global || options.profile ? cwd : join(cwd, ".opencode")
+				const depNames = [...resolved.npmDependencies, ...resolved.npmDevDependencies]
+				const dryDeltaEntries = depNames.map((spec) => {
+					const lastAt = spec.lastIndexOf("@")
+					const name = lastAt > 0 ? spec.slice(0, lastAt) : spec
+					const version = lastAt > 0 ? spec.slice(lastAt + 1) : "*"
+					return { name, from: null as string | null, to: version }
+				})
+				actions.push(buildInvalidationDryRunAction(packageDir, dryDeltaEntries))
+			}
+
 			const dryRunResult: DryRunResult = {
 				dryRun: true,
 				command: "add",
@@ -808,7 +831,7 @@ async function runRegistryAddCore(
 			try {
 				// V2: Pass isFlattened based on mode (profile/global vs local)
 				const isFlattened = !!(options.global || options.profile)
-				await updateOpencodePackageDeps(
+				const depResult = await updateOpencodePackageDeps(
 					cwd,
 					resolved.npmDependencies,
 					resolved.npmDevDependencies,
@@ -816,6 +839,25 @@ async function runRegistryAddCore(
 				)
 				const totalDeps = resolved.npmDependencies.length + resolved.npmDevDependencies.length
 				npmSpin?.succeed(`Added ${totalDeps} dependencies to ${packageJsonPath}`)
+
+				// Invalidate node_modules if dependencies changed to force reinstall
+				if (depResult.changed) {
+					const invResult = await invalidateNodeModules(depResult.packageDir)
+					if (invResult.success && invResult.action !== "none") {
+						if (!suppressHumanOutput) {
+							logger.info(
+								`Invalidated ${join(depResult.packageDir, "node_modules")} to force reinstall`,
+							)
+						}
+					} else if (!invResult.success) {
+						// Warn but do not fail the command (Law 5: intentional naming for remediation)
+						const nodeModulesPath = join(depResult.packageDir, "node_modules")
+						logger.warn(
+							`Could not invalidate ${nodeModulesPath}: ${invResult.error?.message ?? "unknown error"}. ` +
+								`Run \`rm -rf "${nodeModulesPath}"\` manually to force reinstall.`,
+						)
+					}
+				}
 			} catch (error) {
 				npmSpin?.fail(`Failed to update ${packageJsonPath}`)
 				throw error
@@ -1047,6 +1089,8 @@ async function ensureManifestFilesAreTracked(opencodeDir: string): Promise<void>
  * For local mode: writes to .opencode/package.json and ensures git tracking.
  * For flattened mode (global or profile): writes directly to cwd/package.json.
  *
+ * Returns metadata about what changed for downstream invalidation logic.
+ *
  * @throws ConflictError if same package appears in both prod and dev deps
  */
 async function updateOpencodePackageDeps(
@@ -1054,13 +1098,15 @@ async function updateOpencodePackageDeps(
 	npmDeps: string[],
 	npmDevDeps: string[],
 	options: { isFlattened?: boolean } = {},
-): Promise<void> {
-	// Guard: no deps to process
-	if (npmDeps.length === 0 && npmDevDeps.length === 0) return
-
+): Promise<DepUpdateResult> {
 	// Flattened mode: write directly to cwd, no .opencode prefix
 	// Local mode: write to .opencode subdirectory
 	const packageDir = options.isFlattened ? cwd : join(cwd, ".opencode")
+
+	// Guard: no deps to process
+	if (npmDeps.length === 0 && npmDevDeps.length === 0) {
+		return { changed: false, packageDir, delta: [] }
+	}
 
 	// Ensure directory exists
 	await mkdir(packageDir, { recursive: true })
@@ -1081,13 +1127,24 @@ async function updateOpencodePackageDeps(
 
 	// Read → merge → write
 	const existing = await readOpencodePackageJson(packageDir)
+	const beforeDeps = { ...existing.dependencies, ...existing.devDependencies }
+
 	let updated = existing
 	updated = mergeProdDependencies(updated, prodDeps)
 	updated = mergeDevDependencies(updated, devDeps)
 	await Bun.write(join(packageDir, "package.json"), `${JSON.stringify(updated, null, 2)}\n`)
 
+	const afterDeps = { ...updated.dependencies, ...updated.devDependencies }
+	const delta = computeDependencyDelta(beforeDeps, afterDeps)
+
 	// Ensure manifest files are tracked by git (only for local mode)
 	if (!options.isFlattened) {
 		await ensureManifestFilesAreTracked(packageDir)
+	}
+
+	return {
+		changed: delta.changed,
+		packageDir,
+		delta: delta.entries,
 	}
 }
