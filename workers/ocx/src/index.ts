@@ -7,15 +7,16 @@ import { trimTrailingSlash } from "hono/trailing-slash"
 
 const MINTLIFY_HOST = "kdco.mintlify.app"
 
-const VALID_SCHEMAS = ["ocx", "profile", "local", "lock", "registry"] as const
+const VALID_SCHEMAS = ["ocx", "profile", "local", "lock", "registry", "receipt"] as const
 type SchemaName = (typeof VALID_SCHEMAS)[number]
 
 const SCHEMA_FILES: Record<SchemaName, string> = {
 	ocx: "docs/schemas/ocx.schema.json",
-	profile: "docs/schemas/profile.json",
-	local: "docs/schemas/local.json",
+	profile: "docs/schemas/profile.schema.json",
+	local: "docs/schemas/local.schema.json",
 	lock: "docs/schemas/lock.schema.json",
 	registry: "docs/schemas/registry.schema.json",
+	receipt: "docs/schemas/receipt.schema.json",
 }
 
 const app = new Hono<{ Bindings: Env }>()

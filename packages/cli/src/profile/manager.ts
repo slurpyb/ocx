@@ -33,7 +33,7 @@ import { profileNameSchema } from "./schema"
  * Note: AGENTS.md is NOT excluded by default - it's commented out in the template.
  */
 export const DEFAULT_OCX_CONFIG: ProfileOcxConfig = {
-	$schema: "https://ocx.kdco.dev/schemas/ocx.json",
+	$schema: "https://ocx.kdco.dev/schemas/profile.json",
 	registries: {},
 	renameWindow: true,
 	exclude: [
@@ -51,7 +51,7 @@ export const DEFAULT_OCX_CONFIG: ProfileOcxConfig = {
  * Includes commented-out AGENTS.md line so users can easily enable exclusion.
  */
 export const DEFAULT_OCX_CONFIG_TEMPLATE = `{
-  "$schema": "https://ocx.kdco.dev/schemas/ocx.json",
+  "$schema": "https://ocx.kdco.dev/schemas/profile.json",
   "registries": {},
   "renameWindow": true,
   "exclude": [

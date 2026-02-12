@@ -116,7 +116,7 @@ describe("ProfileManager.initialize", () => {
 		expect(exists).toBe(true)
 	})
 
-	it("should create ocx.jsonc with default content", async () => {
+	it("should create ocx.jsonc with profile schema URL", async () => {
 		const manager = ProfileManager.create()
 
 		await manager.initialize()
@@ -124,7 +124,7 @@ describe("ProfileManager.initialize", () => {
 		const profile = await manager.get("default")
 		expect(profile.ocx).toBeDefined()
 		expect(profile.ocx.registries).toBeDefined()
-		expect(profile.ocx.$schema).toBeDefined()
+		expect(profile.ocx.$schema).toBe("https://ocx.kdco.dev/schemas/profile.json")
 	})
 })
 

@@ -197,7 +197,7 @@ describe("init --global", () => {
 			$schema?: string
 			registries?: Record<string, unknown>
 		}
-		expect(profileOcx.$schema).toBeDefined()
+		expect(profileOcx.$schema).toBe("https://ocx.kdco.dev/schemas/profile.json")
 		expect(profileOcx.registries).toEqual({})
 
 		// Check profile opencode.jsonc
