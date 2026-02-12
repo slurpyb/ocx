@@ -76,7 +76,7 @@ The `--from` flag provides a one-time registry reference without saving it to yo
 
 ## Integrity Verification
 
-When a component is already present in your receipt file (`.ocx/receipt.jsonc`), OCX computes the SHA-256 hash of the incoming content and compares it against the recorded hash. If the hashes do not match, the installation fails immediately with an `INTEGRITY_ERROR`.
+When a component is already present in your V1 receipt file (`.ocx/receipt.jsonc`), OCX computes the SHA-256 hash of the incoming content and compares it against the recorded hash. If the hashes do not match, the installation fails immediately with an `INTEGRITY_ERROR`.
 
 To intentionally update a component whose source has changed, use [`ocx update`](/cli/update) instead.
 
