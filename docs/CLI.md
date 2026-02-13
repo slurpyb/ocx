@@ -676,9 +676,9 @@ ocx migrate [options]
 
 #### Global mode (`--global`)
 
-- **`--global` (no `--apply`):** Dry-run preview of global config migration. Shows what would change without writing any files.
-- **`--global --apply`:** Applies migration to the global config scope (`~/.config/opencode`). Writes `.ocx/receipt.jsonc`, backs up the legacy lock file to `.bak` (or `.bak.N`), and normalizes legacy registry configuration (removes deprecated `registries.*.version` fields) when applicable.
-- **Already migrated:** If the global `.ocx/receipt.jsonc` already exists, prints the already-migrated message and exits 0 without modifying files.
+- **`--global` (no `--apply`):** Dry-run preview of global migration. Fans out across the global root (`~/.config/opencode`) and every directory under `profiles/*`, processing global root first then profiles in sorted order. Shows what would change in each target without writing any files.
+- **`--global --apply`:** Applies migration to each target (global root, then sorted profiles). For each target: writes `.ocx/receipt.jsonc`, backs up the legacy lock file to `.bak` (or `.bak.N`), and normalizes legacy registry configuration (removes deprecated `registries.*.version` fields) when applicable. A per-target summary is printed after each target completes. Apply continues across all targets even if one fails; the command returns non-zero if any target fails.
+- **Already migrated:** Targets whose `.ocx/receipt.jsonc` already exists print the already-migrated message and are skipped without modifying files.
 
 ### Examples
 
@@ -692,10 +692,10 @@ ocx migrate --apply
 # Verify integrity after migration
 ocx verify
 
-# Dry-run: preview global config migration
+# Dry-run: preview global root + all profiles migration
 ocx migrate --global
 
-# Apply global config migration (receipt + lock backup + registry normalization)
+# Apply migration across global root and all profiles
 ocx migrate --global --apply
 ```
 

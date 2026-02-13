@@ -2007,54 +2007,97 @@ Smoke tests for the v1.4.6 → v2 receipt migration command.
 
 ### 15.4 Global Preview Mode (No Writes)
 
-- [x] **Setup:** Global config with legacy `ocx.lock` (create a minimal v1 lock file at `$XDG_CONFIG_HOME/opencode/ocx.lock`)
+- [x] **Setup:** Global config with legacy `ocx.lock` and at least one profile with its own legacy `ocx.lock`
   ```bash
   $OCX_BIN init --global 2>/dev/null || true
+  # Global root legacy lock
   cat > $XDG_CONFIG_HOME/opencode/ocx.lock << 'EOF'
   {"lockVersion":1,"installed":{"kdco/researcher":{"registry":"kdco","version":"1.0.0","hash":"abc123","files":[".opencode/agents/researcher.md"],"installedAt":"2025-06-01T00:00:00.000Z"}}}
   EOF
   echo '{"registries":{"kdco":{"url":"http://localhost:8787"}}}' > $XDG_CONFIG_HOME/opencode/ocx.jsonc
+  # Profile legacy lock (work profile)
+  $OCX_BIN profile rm work --global 2>/dev/null || true
+  $OCX_BIN profile add work --global
+  cat > $XDG_CONFIG_HOME/opencode/profiles/work/ocx.lock << 'EOF'
+  {"lockVersion":1,"installed":{"kdco/notify":{"registry":"kdco","version":"0.5.0","hash":"def456","files":[".opencode/skills/notify/SKILL.md"],"installedAt":"2025-07-01T00:00:00.000Z"}}}
+  EOF
   ```
 - [x] **Command:** `$OCX_BIN migrate --global`
-- [x] **Expected:** Prints migration plan without modifying any files
+- [x] **Expected:** Prints migration plan for global root AND work profile without modifying any files. Global root is listed first, then profiles in sorted order.
 - [x] **Verify:**
   ```bash
-  test -f $XDG_CONFIG_HOME/opencode/ocx.lock && echo "OK: lock file unchanged" || echo "FAIL: lock file missing"
-  test ! -f $XDG_CONFIG_HOME/opencode/.ocx/receipt.jsonc && echo "OK: No receipt created" || echo "FAIL: receipt.jsonc should not exist yet"
+  test -f $XDG_CONFIG_HOME/opencode/ocx.lock && echo "OK: global lock unchanged" || echo "FAIL: lock file missing"
+  test ! -f $XDG_CONFIG_HOME/opencode/.ocx/receipt.jsonc && echo "OK: No global receipt created" || echo "FAIL: receipt.jsonc should not exist yet"
+  test -f $XDG_CONFIG_HOME/opencode/profiles/work/ocx.lock && echo "OK: profile lock unchanged" || echo "FAIL: profile lock missing"
+  test ! -f $XDG_CONFIG_HOME/opencode/profiles/work/.ocx/receipt.jsonc && echo "OK: No profile receipt created" || echo "FAIL: profile receipt should not exist yet"
   ```
 - [x] **Last tested:** _v2.0.0 on 2026-02-13_
 
-### 15.5 Global Apply Migration
+### 15.5 Global Apply Migration (Root + Profile Fan-Out)
 
-- [x] **Setup:** Global config with legacy `ocx.lock` and a registry entry containing deprecated `version` field
+- [x] **Setup:** Global config with legacy `ocx.lock`, a registry entry containing deprecated `version` field, and one profile with its own legacy lock
   ```bash
   $OCX_BIN init --global 2>/dev/null || true
+  # Global root legacy lock
   cat > $XDG_CONFIG_HOME/opencode/ocx.lock << 'EOF'
   {"lockVersion":1,"installed":{"kdco/researcher":{"registry":"kdco","version":"1.0.0","hash":"abc123","files":[".opencode/agents/researcher.md"],"installedAt":"2025-06-01T00:00:00.000Z"}}}
   EOF
   # Add deprecated registries.*.version field to trigger normalization
   echo '{"registries":{"kdco":{"url":"http://localhost:8787","version":"latest"}}}' > $XDG_CONFIG_HOME/opencode/ocx.jsonc
+  # Profile legacy lock (work profile)
+  $OCX_BIN profile rm work --global 2>/dev/null || true
+  $OCX_BIN profile add work --global
+  cat > $XDG_CONFIG_HOME/opencode/profiles/work/ocx.lock << 'EOF'
+  {"lockVersion":1,"installed":{"kdco/notify":{"registry":"kdco","version":"0.5.0","hash":"def456","files":[".opencode/skills/notify/SKILL.md"],"installedAt":"2025-07-01T00:00:00.000Z"}}}
+  EOF
+  echo '{"registries":{"kdco":{"url":"http://localhost:8787","version":"latest"}}}' > $XDG_CONFIG_HOME/opencode/profiles/work/ocx.jsonc
   ```
 - [x] **Command:** `$OCX_BIN migrate --global --apply`
-- [x] **Expected:** Creates global `.ocx/receipt.jsonc`, backs up lock file to `.bak` (or `.bak.N`), and removes deprecated `registries.*.version` field from global config
+- [x] **Expected:** Migrates global root first, then work profile. For each target: creates `.ocx/receipt.jsonc`, backs up lock to `.bak` (or `.bak.N`), and removes deprecated `registries.*.version` fields. Per-target summary printed.
 - [x] **Verify:**
   ```bash
-  test -f $XDG_CONFIG_HOME/opencode/.ocx/receipt.jsonc && echo "OK: receipt.jsonc created" || echo "FAIL: receipt.jsonc missing"
-  ls $XDG_CONFIG_HOME/opencode/ocx.lock.bak* 2>/dev/null && echo "OK: lock backup exists" || echo "FAIL: lock backup missing"
-  # Verify deprecated version field was removed from registry config
+  # Global root
+  test -f $XDG_CONFIG_HOME/opencode/.ocx/receipt.jsonc && echo "OK: global receipt created" || echo "FAIL: global receipt missing"
+  ls $XDG_CONFIG_HOME/opencode/ocx.lock.bak* 2>/dev/null && echo "OK: global lock backup exists" || echo "FAIL: global lock backup missing"
   cat $XDG_CONFIG_HOME/opencode/ocx.jsonc | grep -q '"version"' && echo "FAIL: deprecated version field still present" || echo "OK: version field removed"
+  # Work profile
+  test -f $XDG_CONFIG_HOME/opencode/profiles/work/.ocx/receipt.jsonc && echo "OK: profile receipt created" || echo "FAIL: profile receipt missing"
+  ls $XDG_CONFIG_HOME/opencode/profiles/work/ocx.lock.bak* 2>/dev/null && echo "OK: profile lock backup exists" || echo "FAIL: profile lock backup missing"
+  cat $XDG_CONFIG_HOME/opencode/profiles/work/ocx.jsonc | grep -q '"version"' && echo "FAIL: profile version field still present" || echo "OK: profile version field removed"
   ```
 - [x] **Last tested:** _v2.0.0 on 2026-02-13_
 
 ### 15.6 Global Rerun Is Safe (Already Migrated)
 
-- [x] **Setup:** Global config already migrated (Section 15.5 completed)
+- [x] **Setup:** Global config and profile already migrated (Section 15.5 completed)
 - [x] **Command:** `$OCX_BIN migrate --global --apply`
-- [x] **Expected:** Prints "Already migrated to receipt format (.ocx/receipt.jsonc)." and exits 0 without modifying files
+- [x] **Expected:** Prints already-migrated message for each target (global root and work profile) and exits 0 without modifying files
 - [x] **Verify:**
   ```bash
   cat $XDG_CONFIG_HOME/opencode/.ocx/receipt.jsonc  # Should be unchanged from 15.5
   cat $XDG_CONFIG_HOME/opencode/ocx.jsonc  # Should be unchanged from 15.5
+  cat $XDG_CONFIG_HOME/opencode/profiles/work/.ocx/receipt.jsonc  # Should be unchanged from 15.5
+  ```
+- [x] **Last tested:** _v2.0.0 on 2026-02-13_
+
+### 15.7 Global Apply Continues on Partial Failure
+
+- [x] **Setup:** Global root already migrated, but one profile has a legacy lock
+  ```bash
+  # Ensure global root is already migrated (receipt exists, no legacy lock)
+  # Profile with legacy lock
+  $OCX_BIN profile rm failing --global 2>/dev/null || true
+  $OCX_BIN profile add failing --global
+  cat > $XDG_CONFIG_HOME/opencode/profiles/failing/ocx.lock << 'EOF'
+  {"lockVersion":1,"installed":{"kdco/workspace":{"registry":"kdco","version":"1.0.0","hash":"bad789","files":[".opencode/workspace.md"],"installedAt":"2025-08-01T00:00:00.000Z"}}}
+  EOF
+  ```
+- [x] **Command:** `$OCX_BIN migrate --global --apply`
+- [x] **Expected:** Global root reports already migrated, failing profile is migrated successfully. Per-target summaries printed for both.
+- [x] **Verify:**
+  ```bash
+  test -f $XDG_CONFIG_HOME/opencode/profiles/failing/.ocx/receipt.jsonc && echo "OK: failing profile receipt created" || echo "FAIL: failing profile receipt missing"
+  ls $XDG_CONFIG_HOME/opencode/profiles/failing/ocx.lock.bak* 2>/dev/null && echo "OK: profile lock backup exists" || echo "FAIL: profile lock backup missing"
   ```
 - [x] **Last tested:** _v2.0.0 on 2026-02-13_
 
@@ -2092,7 +2135,7 @@ Master summary for full test sessions.
 
 ### 16.5 Migration Verified
 
-- [x] ocx migrate (Section 15): 6 test cases (3 local, 3 global)
+- [x] ocx migrate (Section 15): 7 test cases (3 local, 4 global including profile fan-out)
 
 ### 16.6 Documentation Sync
 

@@ -71,8 +71,8 @@ Profiles control what OpenCode sees through `exclude`/`include` patterns. Each p
 | `ocx config edit --global` | Edit your global config |
 | `ocx migrate` | Dry-run preview of v1.4.6 → v2 migration (shows what would change, no writes) |
 | `ocx migrate --apply` | Apply migration to receipt format |
-| `ocx migrate --global` | Dry-run preview of global config migration |
-| `ocx migrate --global --apply` | Apply global config migration |
+| `ocx migrate --global` | Dry-run preview of global root + all profiles migration |
+| `ocx migrate --global --apply` | Apply migration across global root and profiles |
 
 **[Full CLI Reference →](./docs/CLI.md)**
 
@@ -105,11 +105,11 @@ ocx migrate --apply  # Apply migration
 ocx verify           # Confirm integrity post-migration
 ```
 
-For global config migration (normalizes legacy registry fields):
+For global config migration (migrates global root and all profiles):
 
 ```bash
-ocx migrate --global          # Preview global migration
-ocx migrate --global --apply  # Apply global migration
+ocx migrate --global          # Preview migration across global root + all profiles
+ocx migrate --global --apply  # Apply migration to global root and every profile
 ```
 
 ### Creating Registries

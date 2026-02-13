@@ -16,7 +16,12 @@ import { ConfigError } from "../../utils/errors"
 
 export type MigrateScope = "local" | "global"
 
-export type MigrateStatus = "nothing_to_migrate" | "already_v2" | "preview" | "migrated"
+export type MigrateStatus =
+	| "nothing_to_migrate"
+	| "already_v2"
+	| "preview"
+	| "migrated"
+	| "partial_failure"
 
 /** Describes a single registry config normalization action */
 export interface ConfigNormalizationAction {
@@ -37,6 +42,18 @@ export interface MigrateResult {
 		registryName: string
 	}>
 	configActions: ConfigNormalizationAction[]
+	/** Per-target results when --global processes root + profiles */
+	targets?: TargetResult[]
+}
+
+/** Result for a single migration target (global root or profile) */
+export interface TargetResult {
+	target: string
+	status: MigrateStatus | "error"
+	count: number
+	components: MigrateResult["components"]
+	configActions: ConfigNormalizationAction[]
+	error?: string
 }
 
 // =============================================================================

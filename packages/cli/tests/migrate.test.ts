@@ -977,6 +977,69 @@ describe("ocx migrate", () => {
 	})
 
 	// =========================================================================
+	// Preview diagnostics: degraded-parse warning & error label guard
+	// =========================================================================
+
+	describe("preview diagnostics", () => {
+		it("should warn when lock parsing fails in global preview (degraded count=0)", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path, {
+				// Write invalid lock content to trigger parse failure in analyzeTarget
+				lock: "{ this is not valid json !!!",
+			})
+
+			const { exitCode, output, stdout } = await runCLI(
+				["migrate", "--global", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			// Warning should appear in stderr (captured in output)
+			expect(output).toContain("component count may be incomplete")
+
+			// JSON output should still succeed with count=0 (degraded)
+			const json = JSON.parse(stdout)
+			expect(json.success).toBe(true)
+			expect(json.status).toBe("preview")
+
+			// Root target should show count=0 due to degraded parse
+			const rootTarget = json.targets.find((t: { target: string }) => t.target === "root")
+			expect(rootTarget.count).toBe(0)
+		})
+
+		it("should label error targets as 'error' in global preview output", async () => {
+			await using tmp = await tmpdir({ git: true })
+			// Root has a valid lock for preview
+			await setupGlobalDir(tmp.path)
+
+			// Add a profile with a lock but mismatched config → will fail in apply
+			// For preview (analyzeTarget), a bad config just degrades to count=0
+			// But describeTargetActions with status=error should return "error"
+			// We test via the global apply path which can produce error targets
+			const profilesDir = join(tmp.path, "profiles")
+			await mkdir(profilesDir, { recursive: true })
+			const badDir = join(profilesDir, "bad")
+			await mkdir(badDir, { recursive: true })
+			await writeFile(
+				join(badDir, "ocx.jsonc"),
+				JSON.stringify({ registries: { other: { url: "https://other.example.com" } } }, null, 2),
+			)
+			await writeFile(join(badDir, "ocx.lock"), createLegacyLock())
+
+			// Apply mode: bad profile will error, good root will succeed
+			const { exitCode, output } = await runCLI(
+				["migrate", "--global", "--apply", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(1)
+			// Error should be reported for the bad profile
+			expect(output.toLowerCase()).toContain("failed")
+			expect(output).toContain("profile:bad")
+		})
+	})
+
+	// =========================================================================
 	// JSON output includes scope/action details
 	// =========================================================================
 
@@ -1144,6 +1207,372 @@ describe("ocx migrate", () => {
 			// URL should still be present
 			expect(result).toContain('"url"')
 			expect(result).toContain("https://ocx.kdco.dev")
+		})
+	})
+
+	// =========================================================================
+	// --global includes profiles by default
+	// =========================================================================
+
+	describe("--global includes profiles", () => {
+		/**
+		 * Set up a global dir with profile subdirectories.
+		 * Each profile gets its own ocx.jsonc and optional lock/receipt.
+		 */
+		async function setupGlobalWithProfiles(
+			dir: string,
+			profiles: Array<{
+				name: string
+				registries?: Record<string, { url: string; version?: string }>
+				lock?: string | false
+				receipt?: boolean
+			}>,
+			rootOptions?: {
+				registries?: Record<string, { url: string; version?: string }>
+				lock?: string | false
+				receipt?: boolean
+			},
+		): Promise<void> {
+			// Set up root
+			await setupGlobalDir(dir, {
+				registries: rootOptions?.registries,
+				lock: rootOptions?.lock,
+				receipt: rootOptions?.receipt,
+			})
+
+			// Set up profiles
+			const profilesDir = join(dir, "profiles")
+			await mkdir(profilesDir, { recursive: true })
+
+			for (const profile of profiles) {
+				const profileDir = join(profilesDir, profile.name)
+				await mkdir(profileDir, { recursive: true })
+
+				// Profile config (ocx.jsonc at profile root, not in .opencode)
+				const registries = profile.registries ?? {
+					kdco: { url: "https://ocx.kdco.dev" },
+				}
+				await writeFile(join(profileDir, "ocx.jsonc"), JSON.stringify({ registries }, null, 2))
+
+				// Profile lock (at profile root, flattened)
+				if (profile.lock !== false) {
+					const lockContent = profile.lock ?? createLegacyLock()
+					await writeFile(join(profileDir, "ocx.lock"), lockContent)
+				}
+
+				// Profile receipt
+				if (profile.receipt) {
+					const receiptDir = join(profileDir, ".ocx")
+					await mkdir(receiptDir, { recursive: true })
+					await writeFile(
+						join(receiptDir, "receipt.jsonc"),
+						JSON.stringify({ version: 1, installed: {} }, null, 2),
+					)
+				}
+			}
+		}
+
+		it("should include profiles in global preview", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalWithProfiles(tmp.path, [{ name: "work" }, { name: "personal", lock: false }])
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			expect(json.success).toBe(true)
+			expect(json.status).toBe("preview")
+			expect(json.scope).toBe("global")
+			// Should have targets array
+			expect(Array.isArray(json.targets)).toBe(true)
+			// Root + 2 profiles = 3 targets
+			expect(json.targets.length).toBe(3)
+			// Root first, then profiles sorted
+			expect(json.targets[0].target).toBe("root")
+			expect(json.targets[1].target).toBe("profile:personal")
+			expect(json.targets[2].target).toBe("profile:work")
+		})
+
+		it("should handle mixed target states (already migrated, needs migration, normalization-only)", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalWithProfiles(
+				tmp.path,
+				[
+					// Profile "alpha": already migrated (receipt exists, no deprecated config)
+					{ name: "alpha", lock: false, receipt: true },
+					// Profile "beta": needs migration (has lock)
+					{ name: "beta" },
+					// Profile "gamma": normalization-only (no lock, deprecated config)
+					{
+						name: "gamma",
+						lock: false,
+						registries: { kdco: { url: "https://ocx.kdco.dev", version: "1.4.6" } },
+					},
+				],
+				// Root: nothing to migrate (no lock, no receipt, no deprecated config)
+				{ lock: false },
+			)
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			expect(json.targets.length).toBe(4) // root + 3 profiles
+
+			// Root: nothing to migrate
+			const rootTarget = json.targets.find((t: { target: string }) => t.target === "root")
+			expect(rootTarget.status).toBe("nothing_to_migrate")
+
+			// Alpha: already migrated
+			const alphaTarget = json.targets.find((t: { target: string }) => t.target === "profile:alpha")
+			expect(alphaTarget.status).toBe("already_v2")
+
+			// Beta: needs migration (preview)
+			const betaTarget = json.targets.find((t: { target: string }) => t.target === "profile:beta")
+			expect(betaTarget.status).toBe("preview")
+			expect(betaTarget.count).toBe(2) // default lock has 2 components
+
+			// Gamma: normalization-only (preview)
+			const gammaTarget = json.targets.find((t: { target: string }) => t.target === "profile:gamma")
+			expect(gammaTarget.status).toBe("preview")
+			expect(gammaTarget.configActions.length).toBe(1)
+		})
+
+		it("should not write to any target during preview", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalWithProfiles(tmp.path, [{ name: "work" }])
+
+			await runCLI(["migrate", "--global", "--cwd", tmp.path], tmp.path)
+
+			// Root: no receipt created, lock still exists
+			expect(existsSync(join(tmp.path, ".ocx", "receipt.jsonc"))).toBe(false)
+			expect(existsSync(join(tmp.path, "ocx.lock"))).toBe(true)
+
+			// Profile: no receipt created, lock still exists
+			expect(existsSync(join(tmp.path, "profiles", "work", ".ocx", "receipt.jsonc"))).toBe(false)
+			expect(existsSync(join(tmp.path, "profiles", "work", "ocx.lock"))).toBe(true)
+		})
+
+		it("should apply migration/normalization across all applicable targets", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalWithProfiles(tmp.path, [
+				{ name: "work" },
+				{
+					name: "hobby",
+					lock: false,
+					registries: { kdco: { url: "https://ocx.kdco.dev", version: "1.4.6" } },
+				},
+			])
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--apply", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			expect(json.success).toBe(true)
+			expect(json.status).toBe("migrated")
+
+			// Root: receipt created, lock backed up
+			expect(existsSync(join(tmp.path, ".ocx", "receipt.jsonc"))).toBe(true)
+			expect(existsSync(join(tmp.path, "ocx.lock"))).toBe(false)
+			expect(existsSync(join(tmp.path, "ocx.lock.bak"))).toBe(true)
+
+			// Profile "work": receipt created, lock backed up
+			expect(existsSync(join(tmp.path, "profiles", "work", ".ocx", "receipt.jsonc"))).toBe(true)
+			expect(existsSync(join(tmp.path, "profiles", "work", "ocx.lock"))).toBe(false)
+			expect(existsSync(join(tmp.path, "profiles", "work", "ocx.lock.bak"))).toBe(true)
+
+			// Profile "hobby": config normalized (version removed)
+			const hobbyConfigPath = join(tmp.path, "profiles", "hobby", "ocx.jsonc")
+			const hobbyConfig = parseJsonc(await readFile(hobbyConfigPath, "utf-8")) as {
+				registries: Record<string, Record<string, unknown>>
+			}
+			expect(hobbyConfig.registries.kdco.url).toBe("https://ocx.kdco.dev")
+			expect("version" in hobbyConfig.registries.kdco).toBe(false)
+		})
+
+		it("should be idempotent on global rerun with profiles", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalWithProfiles(tmp.path, [{ name: "work" }])
+
+			// First apply
+			const first = await runCLI(["migrate", "--global", "--apply", "--cwd", tmp.path], tmp.path)
+			expect(first.exitCode).toBe(0)
+
+			// Second apply
+			const second = await runCLI(
+				["migrate", "--global", "--apply", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+			expect(second.exitCode).toBe(0)
+			const json = JSON.parse(second.stdout)
+			expect(json.status).toBe("already_v2")
+			expect(json.scope).toBe("global")
+
+			// All targets should be already_v2
+			for (const target of json.targets) {
+				expect(target.status === "already_v2" || target.status === "nothing_to_migrate").toBe(true)
+			}
+		})
+
+		it("should continue after one target failure and exit non-zero with summary", async () => {
+			await using tmp = await tmpdir({ git: true })
+
+			// Set up root with a valid lock
+			await setupGlobalDir(tmp.path)
+
+			// Set up profiles directory
+			const profilesDir = join(tmp.path, "profiles")
+			await mkdir(profilesDir, { recursive: true })
+
+			// Profile "bad": has lock but missing registry in config (will fail)
+			const badDir = join(profilesDir, "bad")
+			await mkdir(badDir, { recursive: true })
+			await writeFile(
+				join(badDir, "ocx.jsonc"),
+				JSON.stringify({ registries: { other: { url: "https://other.example.com" } } }, null, 2),
+			)
+			await writeFile(join(badDir, "ocx.lock"), createLegacyLock())
+
+			// Profile "good": has lock with correct config (will succeed)
+			const goodDir = join(profilesDir, "good")
+			await mkdir(goodDir, { recursive: true })
+			await writeFile(
+				join(goodDir, "ocx.jsonc"),
+				JSON.stringify({ registries: { kdco: { url: "https://ocx.kdco.dev" } } }, null, 2),
+			)
+			await writeFile(join(goodDir, "ocx.lock"), createLegacyLock())
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--apply", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			// Should exit non-zero due to failure
+			expect(exitCode).toBe(1)
+			const json = JSON.parse(stdout)
+			expect(json.success).toBe(false)
+			expect(json.status).toBe("partial_failure")
+
+			// Should have targets array
+			expect(Array.isArray(json.targets)).toBe(true)
+
+			// Root should succeed
+			const rootTarget = json.targets.find((t: { target: string }) => t.target === "root")
+			expect(rootTarget.status).toBe("migrated")
+
+			// "bad" profile should have error
+			const badTarget = json.targets.find((t: { target: string }) => t.target === "profile:bad")
+			expect(badTarget.status).toBe("error")
+			expect(badTarget.error).toBeDefined()
+			expect(badTarget.error).toContain("kdco")
+
+			// "good" profile should succeed (continued despite "bad" failing)
+			const goodTarget = json.targets.find((t: { target: string }) => t.target === "profile:good")
+			expect(goodTarget.status).toBe("migrated")
+
+			// "good" profile should have receipt
+			expect(existsSync(join(goodDir, ".ocx", "receipt.jsonc"))).toBe(true)
+		})
+
+		it("should process profiles sorted by name", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalWithProfiles(
+				tmp.path,
+				[
+					{ name: "zebra", lock: false },
+					{ name: "alpha", lock: false },
+					{ name: "middle", lock: false },
+				],
+				{ lock: false },
+			)
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+
+			// Verify ordering: root first, then profiles alphabetically
+			expect(json.targets[0].target).toBe("root")
+			expect(json.targets[1].target).toBe("profile:alpha")
+			expect(json.targets[2].target).toBe("profile:middle")
+			expect(json.targets[3].target).toBe("profile:zebra")
+		})
+
+		it("should skip dot-prefixed directories in profiles", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path, { lock: false })
+
+			// Set up profiles directory with a dot-prefixed dir (should be skipped)
+			const profilesDir = join(tmp.path, "profiles")
+			await mkdir(profilesDir, { recursive: true })
+			await mkdir(join(profilesDir, ".staging-temp"), { recursive: true })
+			await mkdir(join(profilesDir, "real"), { recursive: true })
+			await writeFile(
+				join(profilesDir, "real", "ocx.jsonc"),
+				JSON.stringify({ registries: { kdco: { url: "https://ocx.kdco.dev" } } }, null, 2),
+			)
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+
+			// Only root + "real" profile (dot-prefixed skipped)
+			expect(json.targets.length).toBe(2)
+			expect(json.targets[0].target).toBe("root")
+			expect(json.targets[1].target).toBe("profile:real")
+		})
+
+		it("should handle no profiles directory gracefully", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path)
+			// No profiles directory exists
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+
+			// Only root target (no profiles)
+			expect(json.targets.length).toBe(1)
+			expect(json.targets[0].target).toBe("root")
+		})
+
+		it("should include targets array in JSON output for global scope", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path, { lock: false })
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			expect(json.targets).toBeDefined()
+			expect(Array.isArray(json.targets)).toBe(true)
+			// Preserve top-level keys for compatibility
+			expect(json.scope).toBe("global")
+			expect(json.success).toBeDefined()
+			expect(json.status).toBeDefined()
 		})
 	})
 })
