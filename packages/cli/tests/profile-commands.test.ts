@@ -185,7 +185,8 @@ describe("ocx profile remove", () => {
 // =============================================================================
 
 describe("ocx profile show", () => {
-	it("should show named profile with correct local sentinel by default", async () => {
+	// PHASE 1 RED: Local profiles are unsupported — default scope (local) must hard-fail
+	it.todo("should show named profile with correct local sentinel by default", async () => {
 		const { exitCode, stdout } = await runCLI(["profile", "show", "test-profile"], testDir)
 
 		expect(exitCode).toBe(0)
@@ -194,7 +195,8 @@ describe("ocx profile show", () => {
 		expect(stdout).not.toContain(SENTINEL_GLOBAL_TEST)
 	})
 
-	it("should show default local profile when no name provided", async () => {
+	// PHASE 1 RED: Local profiles are unsupported — default scope (local) must hard-fail
+	it.todo("should show default local profile when no name provided", async () => {
 		const { exitCode, stdout } = await runCLI(["profile", "show"], testDir)
 
 		expect(exitCode).toBe(0)
@@ -203,7 +205,8 @@ describe("ocx profile show", () => {
 		expect(stdout).not.toContain(SENTINEL_GLOBAL_DEFAULT)
 	})
 
-	it("should use OCX_PROFILE env var when no name provided", async () => {
+	// PHASE 1 RED: Local profiles are unsupported — default scope (local) must hard-fail
+	it.todo("should use OCX_PROFILE env var when no name provided", async () => {
 		const { exitCode, stdout } = await runCLI(["profile", "show"], testDir, {
 			env: { OCX_PROFILE: "other-profile" },
 		})
@@ -214,7 +217,8 @@ describe("ocx profile show", () => {
 		expect(stdout).not.toContain(SENTINEL_GLOBAL_OTHER)
 	})
 
-	it("should prioritize explicit arg over OCX_PROFILE env", async () => {
+	// PHASE 1 RED: Local profiles are unsupported — default scope (local) must hard-fail
+	it.todo("should prioritize explicit arg over OCX_PROFILE env", async () => {
 		const { exitCode, stdout } = await runCLI(["profile", "show", "test-profile"], testDir, {
 			env: { OCX_PROFILE: "other-profile" },
 		})
@@ -246,7 +250,8 @@ describe("ocx profile show", () => {
 		expect(stdout).not.toContain(SENTINEL_LOCAL_DEFAULT)
 	})
 
-	it("should fail for non-existent profile", async () => {
+	// PHASE 1 RED: Local profiles are unsupported — "show" without --global defaults to local scope
+	it.todo("should fail for non-existent profile", async () => {
 		const { exitCode, output } = await runCLI(["profile", "show", "nonexistent"], testDir)
 
 		expect(exitCode).not.toBe(0)
@@ -254,7 +259,8 @@ describe("ocx profile show", () => {
 	})
 
 	describe("JSON mode", () => {
-		it("should output valid JSON with correct structure", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — JSON output from local scope must fail
+		it.todo("should output valid JSON with correct structure", async () => {
 			const { exitCode, stdout } = await runCLI(
 				["profile", "show", "test-profile", "--json"],
 				testDir,
@@ -268,7 +274,8 @@ describe("ocx profile show", () => {
 			expect(data.hasAgents).toBe(false)
 		})
 
-		it("should show hasAgents true when AGENTS.md exists", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — AGENTS.md local profile test
+		it.todo("should show hasAgents true when AGENTS.md exists", async () => {
 			const localConfigDir = join(testDir, ".opencode")
 			await Bun.write(
 				join(localConfigDir, "profiles", "test-profile", "AGENTS.md"),
@@ -287,7 +294,8 @@ describe("ocx profile show", () => {
 			expect(data.hasAgents).toBe(true)
 		})
 
-		it("should include opencode config when present", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — opencode.jsonc in local profile
+		it.todo("should include opencode config when present", async () => {
 			const localConfigDir = join(testDir, ".opencode")
 			await Bun.write(
 				join(localConfigDir, "profiles", "test-profile", "opencode.jsonc"),
@@ -313,7 +321,8 @@ describe("ocx profile show", () => {
 // =============================================================================
 
 describe("ocx profile list", () => {
-	it("should list local profiles by default", async () => {
+	// PHASE 1 RED: Local profiles are unsupported — default scope (local) must hard-fail
+	it.todo("should list local profiles by default", async () => {
 		const { exitCode, stdout } = await runCLI(["profile", "list"], testDir)
 
 		expect(exitCode).toBe(0)
@@ -331,7 +340,8 @@ describe("ocx profile list", () => {
 		expect(stdout).not.toContain(LOCAL_ONLY_PROFILE)
 	})
 
-	it("should return local profiles in JSON mode by default", async () => {
+	// PHASE 1 RED: Local profiles are unsupported — JSON mode at local scope
+	it.todo("should return local profiles in JSON mode by default", async () => {
 		const { exitCode, stdout } = await runCLI(["profile", "list", "--json"], testDir)
 
 		expect(exitCode).toBe(0)
@@ -357,14 +367,16 @@ describe("ocx profile list", () => {
 // =============================================================================
 
 describe("profile resolution precedence", () => {
-	it("should resolve to default when no override", async () => {
+	// PHASE 1 RED: Local profiles are unsupported — these tests rely on local sentinels
+	it.todo("should resolve to default when no override", async () => {
 		const { exitCode, stdout } = await runCLI(["profile", "show"], testDir)
 
 		expect(exitCode).toBe(0)
 		expect(stdout).toContain(SENTINEL_LOCAL_DEFAULT)
 	})
 
-	it("should resolve env var over default", async () => {
+	// PHASE 1 RED: Local profiles are unsupported — relies on local sentinel
+	it.todo("should resolve env var over default", async () => {
 		const { exitCode, stdout } = await runCLI(["profile", "show"], testDir, {
 			env: { OCX_PROFILE: "test-profile" },
 		})
@@ -374,7 +386,8 @@ describe("profile resolution precedence", () => {
 		expect(stdout).not.toContain(SENTINEL_LOCAL_DEFAULT)
 	})
 
-	it("should resolve explicit arg over env var and default", async () => {
+	// PHASE 1 RED: Local profiles are unsupported — relies on local sentinel
+	it.todo("should resolve explicit arg over env var and default", async () => {
 		const { exitCode, stdout } = await runCLI(["profile", "show", "other-profile"], testDir, {
 			env: { OCX_PROFILE: "test-profile" },
 		})
@@ -383,5 +396,78 @@ describe("profile resolution precedence", () => {
 		expect(stdout).toContain(SENTINEL_LOCAL_OTHER)
 		expect(stdout).not.toContain(SENTINEL_LOCAL_TEST)
 		expect(stdout).not.toContain(SENTINEL_LOCAL_DEFAULT)
+	})
+})
+
+// =============================================================================
+// PHASE 1 RED: Local scope must hard-fail (profiles are global-only)
+// =============================================================================
+
+describe("local scope hard-fail (global-only profiles)", () => {
+	it("profile show without --global must hard-fail", async () => {
+		// Default scope is local, which is no longer supported.
+		// Must produce a non-zero exit and a clear error.
+		const { exitCode, output } = await runCLI(["profile", "show", "default"], testDir)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toMatch(/local.*profile.*unsupported|local.*not.*supported|global.*required/i)
+	})
+
+	it("profile list without --global must hard-fail", async () => {
+		const { exitCode, output } = await runCLI(["profile", "list"], testDir)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toMatch(/local.*profile.*unsupported|local.*not.*supported|global.*required/i)
+	})
+
+	it("profile remove without --global must hard-fail", async () => {
+		const { exitCode, output } = await runCLI(["profile", "remove", "test-profile"], testDir)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toMatch(/local.*profile.*unsupported|local.*not.*supported|global.*required/i)
+	})
+
+	it("profile add without --global must hard-fail", async () => {
+		const { exitCode, output } = await runCLI(["profile", "add", "new-profile"], testDir)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toMatch(/local.*profile.*unsupported|local.*not.*supported|global.*required/i)
+	})
+
+	it("profile move without --global must hard-fail", async () => {
+		const { exitCode, output } = await runCLI(
+			["profile", "move", "test-profile", "renamed"],
+			testDir,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toMatch(/local.*profile.*unsupported|local.*not.*supported|global.*required/i)
+	})
+})
+
+// =============================================================================
+// Profile hint text must include --global consistently
+// =============================================================================
+
+describe("profile hint text includes --global", () => {
+	it("profile add 'already exists' hint includes --global", async () => {
+		// "default" already exists from beforeEach fixture
+		const { exitCode, output } = await runCLI(["profile", "add", "default", "--global"], testDir)
+
+		expect(exitCode).toBe(6) // CONFLICT
+		expect(output).toContain("already exists")
+		expect(output).toContain("ocx profile rm default --global")
+	})
+
+	it("profile add --clone 'already exists' hint includes --global", async () => {
+		// "default" already exists; cloning "test-profile" into "default" should conflict
+		const { exitCode, output } = await runCLI(
+			["profile", "add", "default", "--clone", "test-profile", "--global"],
+			testDir,
+		)
+
+		expect(exitCode).toBe(6) // CONFLICT
+		expect(output).toContain("already exists")
+		expect(output).toContain("ocx profile rm default --global")
 	})
 })

@@ -51,8 +51,8 @@ Validation checks:
 | `ocx profile add omo --source kit/omo --from https://ocx-kit.kdco.dev --global` | README.md L44 | ✅ Pass | Exact match |
 | `ocx oc -p omo` | README.md L48 | ✅ Pass | Exact match |
 | `export OCX_PROFILE=omo` | README.md L51 | ✅ Pass | Exact match |
-| `ocx profile list` | README.md L70, CLI.md L906 | ✅ Pass | Exact match |
-| `ocx profile show omo` | CLI.md L1107 | ✅ Pass | Matches usage pattern |
+| `ocx profile list --global` | README.md L70, CLI.md L906 | ✅ Pass | Exact match |
+| `ocx profile show omo --global` | CLI.md L1107 | ✅ Pass | Matches usage pattern |
 
 ### profiles/overview.mdx
 
@@ -202,8 +202,8 @@ Validation checks:
 | Snippet | Source | Status | Notes |
 |---------|--------|--------|-------|
 | Before/After table | MIGRATION-v1.4.0.md L9-L13 | ✅ Pass | Exact match |
-| `ocx ghost migrate` | MIGRATION-v1.4.0.md L24 | ✅ Pass | Exact match |
-| Manual rename loop | MIGRATION-v1.4.0.md L39-L43 | ✅ Pass | Exact match |
+| No automatic migration (manual only) | MIGRATION-v1.4.0.md L21 | ✅ Pass | Exact match |
+| Manual rename loop | MIGRATION-v1.4.0.md L28-L33 | ✅ Pass | Exact match |
 | `mv .ghost .opencode` | MIGRATION-v1.4.0.md L48 | ✅ Pass | Exact match |
 | Verify commands (profile list, config show, opencode -p default) | MIGRATION-v1.4.0.md L59-L65 | ✅ Pass | Exact match |
 

@@ -898,41 +898,42 @@ ocx p <subcommand>  # Short alias for profile commands
 
 ### ocx profile list
 
-List all available global profiles.
+List all available global profiles (`--global` required).
 
 #### Usage
 
 ```bash
-ocx profile list [options]
-ocx p ls [options]  # alias
+ocx profile list --global [options]
+ocx p ls --global [options]  # alias
 ```
 
 #### Options
 
 | Option | Description |
 |--------|-------------|
+| `-g, --global` | List global profiles (required) |
 | `--json` | Output as JSON |
 
 #### Examples
 
 ```bash
 # List all profiles
-ocx profile list
+ocx profile list --global
 
 # List with JSON output
-ocx p ls --json
+ocx p ls --global --json
 ```
 
 #### Output
 
 ```bash
-$ ocx profile list
+$ ocx profile list --global
 Global profiles:
   default
   work
   client-x
 
-$ ocx profile list --json
+$ ocx profile list --global --json
 {
   "profiles": ["default", "work", "client-x"],
   "initialized": true
@@ -962,10 +963,10 @@ ocx p add <name> [options]  # alias
 
 | Option | Description |
 |--------|-------------|
-| `--clone <profile>` | Clone from existing profile (local or global scope) |
+| `--clone <profile>` | Clone from existing profile (global scope) |
 | `--source <name/component>` | Install profile from registry component (requires `--global`) |
 | `--from <url>` | Ephemeral registry URL for profile installation (used with `--source`) |
-| `-g, --global` | Create global profile (default is local) |
+| `-g, --global` | Create global profile (required; local profiles unsupported) |
 
 #### Examples
 
@@ -995,16 +996,17 @@ ocx p add personal --global
 
 - Profile names must be valid filesystem names
 - Spaces are automatically converted to hyphens
-- `--clone` accepts: existing profile name (same scope as target)
+- `--clone` accepts: existing global profile name
 - `--source` accepts: `registry/component` shorthand for profile components
 - `--from` (with `--source`) provides ephemeral registry URL without saving to config
-- To overwrite an existing profile, remove it first with `ocx profile rm <name>`, then add again
+- `--global` is required; local profiles are not supported
+- To overwrite an existing profile, remove it first with `ocx profile rm <name> --global`, then add again
 
 ---
 
 ### ocx profile remove
 
-Delete a profile (local by default, global with `--global`).
+Delete a profile (`--global` required).
 
 #### Usage
 
@@ -1023,15 +1025,12 @@ ocx p rm <name> [options]  # alias
 
 | Option | Description |
 |--------|-------------|
-| `-g, --global` | Remove global profile (default: local) |
+| `-g, --global` | Remove global profile (required) |
 
 #### Examples
 
 ```bash
-# Remove a local profile
-ocx profile remove old-profile
-
-# Remove a global profile
+# Remove a profile
 ocx profile remove old-profile --global
 ```
 
@@ -1039,13 +1038,13 @@ ocx profile remove old-profile --global
 
 - Deletion is immediate (Cargo-style, no confirmation prompt)
 - Cannot delete the last remaining profile
-- Default is local profiles; use `--global` for global profiles
+- `--global` is required; local profiles are not supported
 
 ---
 
 ### ocx profile move
 
-Rename a profile (local by default, global with `--global`).
+Rename a profile (`--global` required).
 
 #### Usage
 
@@ -1065,19 +1064,16 @@ ocx p mv <old-name> <new-name> [options]  # alias
 
 | Option | Description |
 |--------|-------------|
-| `-g, --global` | Move global profile (default: local) |
+| `-g, --global` | Move global profile (required) |
 
 #### Examples
 
 ```bash
-# Rename a local profile
-ocx profile move work client-work
-
-# Rename a global profile
+# Rename a profile
 ocx profile move work client-work --global
 
 # Using alias
-ocx p mv personal home
+ocx p mv personal home --global
 ```
 
 #### Notes
@@ -1086,26 +1082,26 @@ ocx p mv personal home
 - Cannot rename to a name that already exists (remove target first)
 - Warns if renaming the active profile (update `OCX_PROFILE` env var)
 - Self-rename (same old and new name) is a silent no-op
-- Default is local profiles; use `--global` for global profiles
+- `--global` is required; local profiles are not supported
 
 #### Errors
 
 | Error                           | Cause                    | Solution                                             |
 | ------------------------------- | ------------------------ | ---------------------------------------------------- |
-| `Profile "X" not found`         | Source profile not found | Check name with `ocx profile list`                   |
-| `Cannot move: profile "Y" already exists` | Target name conflicts    | Remove existing profile first with `ocx profile rm Y` |
+| `Profile "X" not found`         | Source profile not found | Check name with `ocx profile list --global`                   |
+| `Cannot move: profile "Y" already exists` | Target name conflicts    | Remove existing profile first with `ocx profile rm Y --global` |
 
 ---
 
 ### ocx profile show
 
-Display profile configuration and contents.
+Display profile configuration and contents (`--global` required).
 
 #### Usage
 
 ```bash
-ocx profile show [name] [options]
-ocx p show [name] [options]  # alias
+ocx profile show [name] --global [options]
+ocx p show [name] --global [options]  # alias
 ```
 
 #### Arguments
@@ -1118,25 +1114,26 @@ ocx p show [name] [options]  # alias
 
 | Option | Description |
 |--------|-------------|
+| `-g, --global` | Show global profile (required) |
 | `--json` | Output as JSON |
 
 #### Examples
 
 ```bash
 # Show current profile (uses resolved profile)
-ocx profile show
+ocx profile show --global
 
 # Show work profile config
-ocx profile show work
+ocx profile show work --global
 
 # Get JSON output
-ocx p show work --json
+ocx p show work --global --json
 ```
 
 #### Output
 
 ```bash
-$ ocx profile show work
+$ ocx profile show work --global
 Profile: work
 Path: /Users/username/.config/opencode/profiles/work/
 
@@ -1284,9 +1281,9 @@ ocx oc [options] [args...]  # alias
 
 Profiles are resolved in this order (first match wins):
 
-1. **`--profile` / `-p` flag** - Explicit CLI specification
-2. **`OCX_PROFILE` environment variable** - Session-level profile
-3. **`profile` field in `.opencode/ocx.jsonc`** - Project-specific profile
+1. **`profile` field in `.opencode/ocx.jsonc`** - Project-specific profile
+2. **`--profile` / `-p` flag** - Explicit CLI specification
+3. **`OCX_PROFILE` environment variable** - Session-level profile
 4. **`default` profile** - If it exists
 5. **No profile** - Base configs only
 
@@ -1316,11 +1313,10 @@ ocx oc -- --help
 ### How It Works
 
 1. **Profile Resolution**: Resolves profile using priority order
-2. **Profile Layering**: If both global and local profiles exist with same name, merges them
-3. **Config Merging**: Deep merges profile configs (global + local)
-4. **Instruction Discovery**: Discovers instruction files in priority order
-5. **Pattern Filtering**: Applies exclude/include patterns from merged profile
-6. **Launch OpenCode**: Spawns with merged config and discovered instructions
+2. **Config Merging**: Deep merges profile configs (global)
+3. **Instruction Discovery**: Discovers instruction files in priority order
+4. **Pattern Filtering**: Applies exclude/include patterns from profile
+5. **Launch OpenCode**: Spawns with merged config and discovered instructions
 
 ### Custom OpenCode Binary
 
@@ -1339,19 +1335,17 @@ To use a custom OpenCode binary (e.g., development build), set the `bin` option 
 
 ### Configuration Merging
 
-**OCX configs (`ocx.jsonc`) merge when using profiles:**
-- Global profile `ocx.jsonc` (base layer)
-- Local profile `ocx.jsonc` (overlay layer, if exists)
-- Deep merge with local winning on conflicts
+**OCX configs (`ocx.jsonc`) with profiles:**
+- Global profile `ocx.jsonc` provides settings
+- Deep merge with local project config if present
 
 **OpenCode configs (`opencode.jsonc`) cascade:**
 1. Global profile's `opencode.jsonc`
-2. Local profile's `opencode.jsonc` (if exists, deep merged)
-3. Local `.opencode/opencode.jsonc` (if not excluded, deep merged)
+2. Local `.opencode/opencode.jsonc` (if not excluded, deep merged)
 
 **Registry Isolation:**
 Global base config registries (`~/.config/opencode/ocx.jsonc`) are ONLY used for downloading profiles, never for components.
-When using a profile, registries come from merged profile config.
+When using a profile, registries come from profile config.
 
 **Security:** This isolation prevents global registries from injecting components into all projects.
 

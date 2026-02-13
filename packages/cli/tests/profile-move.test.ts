@@ -142,7 +142,7 @@ describe("ocx profile move", () => {
 		// Conflict = exit 6
 		expect(exitCode).toBe(6)
 		expect(output).toContain(
-			`Cannot move: profile "bar" already exists. Remove it first with 'ocx p rm bar'.`,
+			`Cannot move: profile "bar" already exists. Remove it first with 'ocx profile rm bar --global'.`,
 		)
 
 		// Atomicity: BOTH dirs still exist with UNCHANGED content

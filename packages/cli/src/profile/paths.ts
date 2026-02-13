@@ -53,6 +53,7 @@ export function getProfileDir(name: string): string {
 
 /**
  * Get a specific local profile's directory path.
+ * Used only for detecting local profile presence (guard in getLayered).
  * @param name - Profile name
  * @param cwd - Working directory (defaults to process.cwd())
  * @returns Absolute path to the local profile directory
@@ -71,16 +72,6 @@ export function getProfileOcxConfig(name: string): string {
 }
 
 /**
- * Get the path to a local profile's ocx.jsonc file.
- * @param name - Profile name
- * @param cwd - Working directory (defaults to process.cwd())
- * @returns Absolute path to ocx.jsonc
- */
-export function getLocalProfileOcxConfig(name: string, cwd = process.cwd()): string {
-	return path.join(getLocalProfileDir(name, cwd), "ocx.jsonc")
-}
-
-/**
  * Get the path to a profile's opencode.jsonc file.
  * @param name - Profile name
  * @returns Absolute path to opencode.jsonc
@@ -90,32 +81,12 @@ export function getProfileOpencodeConfig(name: string): string {
 }
 
 /**
- * Get the path to a local profile's opencode.jsonc file.
- * @param name - Profile name
- * @param cwd - Working directory (defaults to process.cwd())
- * @returns Absolute path to opencode.jsonc
- */
-export function getLocalProfileOpencodeConfig(name: string, cwd = process.cwd()): string {
-	return path.join(getLocalProfileDir(name, cwd), "opencode.jsonc")
-}
-
-/**
  * Get the path to a profile's AGENTS.md file.
  * @param name - Profile name
  * @returns Absolute path to AGENTS.md
  */
 export function getProfileAgents(name: string): string {
 	return path.join(getProfileDir(name), "AGENTS.md")
-}
-
-/**
- * Get the path to a local profile's AGENTS.md file.
- * @param name - Profile name
- * @param cwd - Working directory (defaults to process.cwd())
- * @returns Absolute path to AGENTS.md
- */
-export function getLocalProfileAgents(name: string, cwd = process.cwd()): string {
-	return path.join(getLocalProfileDir(name, cwd), "AGENTS.md")
 }
 
 // =============================================================================

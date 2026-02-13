@@ -37,8 +37,8 @@ describe("Integration: Global Workflow", () => {
 		)
 		expect(addGlobal.exitCode).toBe(0)
 
-		// Step 3: Create a new profile
-		const addProfile = await runCLI(["profile", "add", "work"], testDir, { env })
+		// Step 3: Create a new profile (global-only profiles)
+		const addProfile = await runCLI(["profile", "add", "work", "--global"], testDir, { env })
 		expect(addProfile.exitCode).toBe(0)
 
 		// V2: Create profile ocx.jsonc (profile add doesn't create it)

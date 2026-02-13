@@ -36,60 +36,20 @@ Each profile lives in `~/.config/opencode/profiles/<name>/` and contains:
 - `opencode.jsonc` — OpenCode configuration
 - `AGENTS.md` — Instructions for AI agents
 
-### Profile Layering
-
-When a local profile has the same name as a global profile, they **merge together**:
-
-- Global profile provides base settings.
-- Local profile overlays on top (local wins on conflicts).
-
-| Type | Merge Behavior |
-|------|---------------|
-| Objects (registries) | Deep merge (local adds to/overrides global) |
-| Arrays (exclude/include) | Local replaces global completely |
-| `plugin[]`, `instructions[]` | Concatenated and deduplicated |
-| Scalars | Local wins |
-
-**Example:**
-
-```jsonc
-// Global: ~/.config/opencode/profiles/work/ocx.jsonc
-{
-  "exclude": ["**/CLAUDE.md"],
-  "registries": { "kdco": { "url": "https://registry.kdco.dev" } }
-}
-
-// Local: .opencode/profiles/work/ocx.jsonc
-{
-  "exclude": ["**/CLAUDE.md", "**/AGENTS.md"],
-  "registries": { "internal": { "url": "https://internal.company.com" } }
-}
-
-// Merged result when using -p work:
-{
-  "exclude": ["**/CLAUDE.md", "**/AGENTS.md"],  // Local replaces
-  "registries": {
-    "kdco": { "url": "https://registry.kdco.dev" },      // From global
-    "internal": { "url": "https://internal.company.com" } // From local (added)
-  }
-}
-```
-
 ## How It Works
 
-1. **Profile Resolution**: OCX resolves the active profile using a priority chain (CLI flag → env var → local config → default profile → none).
-2. **Layer Merging**: If both global and local profiles exist with the same name, they deep merge.
-3. **Instruction Discovery**: OCX discovers instruction files walking up from the project directory to the git root.
-4. **Pattern Filtering**: Exclude/include patterns from the active profile filter which project instruction files OpenCode receives.
-5. **Launch**: OpenCode starts with the merged configuration and filtered instructions.
+1. **Profile Resolution**: OCX resolves the active profile using a priority chain (local config → CLI flag → env var → default profile → none).
+2. **Instruction Discovery**: OCX discovers instruction files walking up from the project directory to the git root.
+3. **Pattern Filtering**: Exclude/include patterns from the active profile filter which project instruction files OpenCode receives.
+4. **Launch**: OpenCode starts with the profile configuration and filtered instructions.
 
 ### Profile Selection Priority
 
 Profiles are resolved in this order:
 
-1. `--profile <name>` / `-p <name>` flag (explicit override)
-2. `OCX_PROFILE` environment variable
-3. `profile` field in `.opencode/ocx.jsonc` (project-specific profile)
+1. `profile` field in `.opencode/ocx.jsonc` (project-specific profile)
+2. `--profile <name>` / `-p <name>` flag (explicit override)
+3. `OCX_PROFILE` environment variable
 4. `default` profile (if it exists)
 5. No profile (base configurations only)
 
@@ -115,7 +75,7 @@ Profiles are resolved in this order:
 
 ```text
 .opencode/                    # Local config
-├── ocx.jsonc                 # Local OCX config (can specify profile)
+├── ocx.jsonc                 # Local OCX config
 └── opencode.jsonc            # Local OpenCode config
 ```
 

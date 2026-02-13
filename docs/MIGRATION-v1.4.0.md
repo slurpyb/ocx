@@ -16,22 +16,9 @@ OCX v1.4.0 introduces the **Unified Profile System**, replacing the legacy "ghos
 
 - **OpenCode v1.1.29 or later** is required for profile system support
 
-### Automatic Migration
-
-Run the migration command to automatically convert your configuration:
-
-```bash
-ocx ghost migrate
-```
-
-This will:
-1. Rename `ghost.jsonc` → `ocx.jsonc` in all profiles
-2. Update any internal references
-3. Preserve all your settings
-
 ### Manual Migration
 
-If you prefer to migrate manually:
+There is no automatic migration command — v1.4.0 is a clean break from ghost mode. Follow the steps below to migrate manually.
 
 1. Rename your config files:
    ```bash
@@ -56,7 +43,7 @@ After migrating, verify your setup:
 
 ```bash
 # List profiles
-ocx profile list
+ocx profile list --global
 
 # Show merged config
 ocx config show

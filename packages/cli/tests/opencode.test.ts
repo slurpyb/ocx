@@ -106,28 +106,26 @@ describe("resolveOpenCodeBinary", () => {
 })
 
 describe("buildOpenCodeEnv", () => {
-	it("sets OPENCODE_DISABLE_PROJECT_CONFIG when disableProjectConfig is true", () => {
+	it("sets OPENCODE_DISABLE_PROJECT_CONFIG when profile is active", () => {
 		const result = buildOpenCodeEnv({
 			baseEnv: {},
-			disableProjectConfig: true,
+			profileName: "work",
 		})
 		expect(result.OPENCODE_DISABLE_PROJECT_CONFIG).toBe("true")
 	})
 
-	it("does NOT set OPENCODE_DISABLE_PROJECT_CONFIG when false", () => {
+	it("does NOT set OPENCODE_DISABLE_PROJECT_CONFIG when no profile active", () => {
 		const result = buildOpenCodeEnv({
 			baseEnv: {},
-			disableProjectConfig: false,
 		})
 		expect(result.OPENCODE_DISABLE_PROJECT_CONFIG).toBeUndefined()
 	})
 
-	it("sets OPENCODE_CONFIG_DIR to global config path", () => {
+	it("sets OPENCODE_CONFIG_DIR to global config path when no profile active", () => {
 		const result = buildOpenCodeEnv({
 			baseEnv: {},
-			disableProjectConfig: true,
 		})
-		// Should always use getGlobalConfigPath() - no longer accepts profileDir
+		// When no profile is active, should use getGlobalConfigPath()
 		expect(result.OPENCODE_CONFIG_DIR).toBeDefined()
 		// Can't test exact value since it's XDG-aware, but should be set
 		expect(typeof result.OPENCODE_CONFIG_DIR).toBe("string")
@@ -138,7 +136,6 @@ describe("buildOpenCodeEnv", () => {
 		const result = buildOpenCodeEnv({
 			baseEnv: {},
 			configContent: JSON.stringify(config),
-			disableProjectConfig: true,
 		})
 		// Parse and compare objects - NOT string comparison
 		expect(result.OPENCODE_CONFIG_CONTENT).toBeDefined()
@@ -149,7 +146,6 @@ describe("buildOpenCodeEnv", () => {
 		const result = buildOpenCodeEnv({
 			baseEnv: {},
 			profileName: "work",
-			disableProjectConfig: true,
 		})
 		expect(result.OCX_PROFILE).toBe("work")
 	})
@@ -163,7 +159,6 @@ describe("buildOpenCodeEnv", () => {
 		const result = buildOpenCodeEnv({
 			baseEnv,
 			profileName: "work",
-			disableProjectConfig: true,
 		})
 		// Preserved keys
 		expect(result.PATH).toBe("/usr/bin")
@@ -180,7 +175,6 @@ describe("buildOpenCodeEnv", () => {
 		const result = buildOpenCodeEnv({
 			baseEnv,
 			profileName: "new-profile",
-			disableProjectConfig: true,
 		})
 		// Overwritten keys
 		expect(result.OCX_PROFILE).toBe("new-profile")
@@ -198,7 +192,6 @@ describe("buildOpenCodeEnv", () => {
 		buildOpenCodeEnv({
 			baseEnv,
 			profileName: "new",
-			disableProjectConfig: true,
 		})
 
 		// baseEnv should be unchanged
@@ -210,7 +203,6 @@ describe("buildOpenCodeEnv", () => {
 		const baseEnv = { PATH: "/usr/bin" }
 		const result = buildOpenCodeEnv({
 			baseEnv,
-			disableProjectConfig: false,
 		})
 		expect(result).not.toBe(baseEnv)
 	})
@@ -440,5 +432,76 @@ describe("oc command CLI contract", () => {
 		} finally {
 			await cleanupTempDir(testDir)
 		}
+	})
+
+	// =============================================================================
+	// PHASE 1 RED: Global-only profiles, hard-error local profiles
+	// =============================================================================
+
+	it("fails fast when .opencode/profiles/<name> exists (local profiles unsupported)", async () => {
+		const testDir = await createTempDir("oc-local-profile-hard-error")
+		try {
+			await createProfile(testDir, "work")
+
+			// Create a LOCAL profile directory — this is unsupported
+			const localProfileDir = join(testDir, ".opencode", "profiles", "work")
+			await mkdir(localProfileDir, { recursive: true })
+			await Bun.write(join(localProfileDir, "ocx.jsonc"), "{}")
+
+			const result = await runCLIIsolated(["oc", "--no-rename", "--profile", "work"], testDir, {
+				OPENCODE_BIN: "true",
+			})
+
+			// Must hard error, not silently proceed
+			expect(result.exitCode).not.toBe(0)
+			expect(result.output).toMatch(/local.*profile.*unsupported|local.*profile.*not.*allowed/i)
+		} finally {
+			await cleanupTempDir(testDir)
+		}
+	})
+})
+
+// =============================================================================
+// PHASE 1 RED: buildOpenCodeEnv profile-aware behavior
+// =============================================================================
+
+describe("buildOpenCodeEnv (global-only profiles)", () => {
+	it("sets OPENCODE_CONFIG_DIR to profile-specific dir when profile active", () => {
+		// When a profile is active, OPENCODE_CONFIG_DIR must point to the
+		// profile-specific directory, not the global root config path.
+		const result = buildOpenCodeEnv({
+			baseEnv: {},
+			profileName: "work",
+		})
+
+		// Must contain the profile-specific path segment
+		expect(result.OPENCODE_CONFIG_DIR).toContain("profiles/work")
+	})
+
+	it("OPENCODE_DISABLE_PROJECT_CONFIG is true only when profile is active", () => {
+		// Active profile: MUST set OPENCODE_DISABLE_PROJECT_CONFIG
+		const withProfile = buildOpenCodeEnv({
+			baseEnv: {},
+			profileName: "work",
+		})
+		expect(withProfile.OPENCODE_DISABLE_PROJECT_CONFIG).toBe("true")
+
+		// No profile: MUST NOT set OPENCODE_DISABLE_PROJECT_CONFIG
+		const noProfile = buildOpenCodeEnv({
+			baseEnv: {},
+		})
+		expect(noProfile.OPENCODE_DISABLE_PROJECT_CONFIG).toBeUndefined()
+	})
+
+	it("omits OPENCODE_DISABLE_PROJECT_CONFIG when no profile active", () => {
+		// disableProjectConfig is no longer a parameter — it's derived from
+		// profile presence. When no profileName is provided, the flag is omitted.
+		const result = buildOpenCodeEnv({
+			baseEnv: {},
+			// No profileName — no profile active
+		})
+
+		// OPENCODE_DISABLE_PROJECT_CONFIG should be omitted when no profile is active
+		expect(result.OPENCODE_DISABLE_PROJECT_CONFIG).toBeUndefined()
 	})
 })

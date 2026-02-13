@@ -9,7 +9,7 @@
 
 import type { Command } from "commander"
 import { ConfigResolver } from "../config/resolver"
-import { getProfileOpencodeConfig } from "../profile/paths"
+import { getProfileDir, getProfileOpencodeConfig } from "../profile/paths"
 import { ConfigError } from "../utils/errors"
 import { getGitInfo } from "../utils/git-context"
 import { handleError, logger } from "../utils/index"
@@ -72,20 +72,26 @@ export function resolveOpenCodeBinary(opts: { configBin?: string; envBin?: strin
  * Behavior:
  * - Preserves all keys from baseEnv
  * - Overwrites OCX_PROFILE, OPENCODE_* keys with new values
- * - OPENCODE_DISABLE_PROJECT_CONFIG always set to "true" when disableProjectConfig is true
- * - OPENCODE_CONFIG_DIR always set to base config dir (XDG-aware), never respects user-provided value
+ * - OPENCODE_DISABLE_PROJECT_CONFIG: set to "true" ONLY when a profile is active
+ *   (profileName is provided). When no profile, project config is NOT disabled.
+ * - OPENCODE_CONFIG_DIR: when profile active → profile-specific dir;
+ *   when no profile → global config dir (XDG-aware)
  * - configContent is a pre-serialized JSON string (already token-resolved)
  */
 export function buildOpenCodeEnv(opts: {
 	baseEnv: Record<string, string | undefined>
 	profileName?: string
 	configContent?: string
-	disableProjectConfig: boolean
 }): Record<string, string | undefined> {
+	// Profile presence gates both OPENCODE_DISABLE_PROJECT_CONFIG and OPENCODE_CONFIG_DIR
+	const hasProfile = Boolean(opts.profileName)
+
 	return {
 		...opts.baseEnv,
-		...(opts.disableProjectConfig && { OPENCODE_DISABLE_PROJECT_CONFIG: "true" }),
-		OPENCODE_CONFIG_DIR: getGlobalConfigPath(),
+		...(hasProfile && { OPENCODE_DISABLE_PROJECT_CONFIG: "true" }),
+		OPENCODE_CONFIG_DIR: hasProfile
+			? getProfileDir(opts.profileName as string)
+			: getGlobalConfigPath(),
 		...(opts.configContent && { OPENCODE_CONFIG_CONTENT: opts.configContent }),
 		...(opts.profileName && { OCX_PROFILE: opts.profileName }),
 	}
@@ -234,7 +240,6 @@ async function runOpencode(args: string[], options: OpencodeOptions): Promise<vo
 			baseEnv: process.env as Record<string, string | undefined>,
 			profileName: config.profileName ?? undefined,
 			configContent,
-			disableProjectConfig: true,
 		}),
 		stdin: "inherit",
 		stdout: "inherit",

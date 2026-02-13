@@ -120,10 +120,10 @@ Before marking any test as `covered-good`, verify:
 | P1-012 | `ocx config show` | CLI.md | documented | TBD | - | - | - | Show merged config |
 | P1-013 | `ocx config show --origin` | CLI.md | documented | TBD | - | - | - | Show with source annotations |
 | P1-014 | `ocx config edit` | CLI.md | documented | TBD | - | - | - | Open config in $EDITOR |
-| P1-015 | `ocx profile list` | CLI.md | documented | TBD | - | - | - | List all profiles |
-| P1-016 | `ocx profile show <name>` | CLI.md | documented | TBD | - | - | - | Display profile contents |
-| P1-017 | `ocx profile move <old> <new>` | CLI.md | documented | TBD | - | - | - | Rename profile |
-| P1-018 | `ocx profile remove <name>` | CLI.md | documented | TBD | - | - | - | Delete profile |
+| P1-015 | `ocx profile list --global` | CLI.md | documented | TBD | - | - | - | List all profiles |
+| P1-016 | `ocx profile show <name> --global` | CLI.md | documented | TBD | - | - | - | Display profile contents |
+| P1-017 | `ocx profile move <old> <new> --global` | CLI.md | documented | TBD | - | - | - | Rename profile |
+| P1-018 | `ocx profile remove <name> --global` | CLI.md | documented | TBD | - | - | - | Delete profile |
 | P1-019 | `ocx oc` with `OCX_PROFILE` env | CLI.md | documented | TBD | - | - | - | Environment variable resolution |
 | P1-020 | `ocx oc` with custom binary | CLI.md | documented | TBD | - | - | - | Profile `bin` or `OPENCODE_BIN` env |
 | P1-021 | `ocx self update` | CLI.md | documented | TBD | - | - | - | Update OCX to latest |
@@ -140,7 +140,7 @@ Before marking any test as `covered-good`, verify:
 | P2-003 | `ocx build --out <dir>` | CLI.md | documented | TBD | - | - | - | Custom output directory |
 | P2-004 | Registry deployment (Cloudflare Workers) | CREATING_REGISTRIES.md | documented | TBD | - | - | - | Deploy to production |
 | P2-005 | Local registry testing with `wrangler dev` | CREATING_REGISTRIES.md | documented | TBD | - | - | - | Development server |
-| P2-006 | Profile layering (global + local) | PROFILES.md | documented | TBD | - | - | - | Deep merge behavior |
+| P2-006 | Profile config merging with project | PROFILES.md | documented | TBD | - | - | - | Profile + project config |
 | P2-007 | Exclude/include pattern matching | PROFILES.md | documented | TBD | - | - | - | File discovery filtering |
 | P2-008 | Instruction file discovery (deepest-first) | PROFILES.md | documented | TBD | - | - | - | AGENTS.md priority |
 

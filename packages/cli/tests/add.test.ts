@@ -261,6 +261,10 @@ describe("ocx add --profile", () => {
 		testDir = await createTempDir("add-profile")
 		process.env.XDG_CONFIG_HOME = testDir
 
+		// Create .git marker to prevent findLocalConfigDir from walking up
+		// to the repo root and finding .opencode/profiles/
+		await mkdir(join(testDir, ".git"), { recursive: true })
+
 		// Create profile directory with ocx.jsonc containing registry
 		profileDir = join(testDir, "opencode", "profiles", "test-profile")
 		await mkdir(profileDir, { recursive: true })

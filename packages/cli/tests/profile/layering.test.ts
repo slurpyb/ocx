@@ -7,6 +7,11 @@
  * - Scalar field override behavior
  * - Array replacement vs concatenation
  * - AGENTS.md discovery from both layers
+ *
+ * PHASE 1 RED: Local profile layering is being removed.
+ * All tests that depend on local profile directories are marked with
+ * `.todo` to indicate they conflict with the global-only profiles plan.
+ * These tests will either be removed or rewritten in Phase 2 (GREEN).
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
@@ -90,10 +95,35 @@ describe.serial("Profile Layering - getLayered()", () => {
 				/Profile "nonexistent" not found/,
 			)
 		})
+
+		// PHASE 1 RED: getLayered must reject when local profile directory exists
+		it("should hard error when local profile directory exists", async () => {
+			const manager = ProfileManager.create(projectDir)
+			await manager.initialize()
+
+			const globalProfileDir = getProfileDir("default")
+			await writeFile(
+				join(globalProfileDir, "ocx.jsonc"),
+				JSON.stringify({
+					registries: { "global-reg": { url: "https://global.com" } },
+				}),
+			)
+
+			// Create local profile directory — this must trigger a hard error
+			const localProfileDir = getLocalProfileDir("default", projectDir)
+			await mkdir(localProfileDir, { recursive: true })
+			await writeFile(join(localProfileDir, "ocx.jsonc"), JSON.stringify({ registries: {} }))
+
+			// getLayered must throw because local profiles are unsupported
+			expect(manager.getLayered("default", projectDir)).rejects.toThrow(
+				/local.*profile.*unsupported|local.*profile.*not.*allowed/i,
+			)
+		})
 	})
 
 	describe("Registry Merging", () => {
-		it("should merge global and local registries (no conflicts)", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should merge global and local registries (no conflicts)", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 
@@ -126,7 +156,8 @@ describe.serial("Profile Layering - getLayered()", () => {
 			})
 		})
 
-		it("should override global registry with same name", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should override global registry with same name", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 
@@ -158,7 +189,8 @@ describe.serial("Profile Layering - getLayered()", () => {
 	})
 
 	describe("Scalar Field Overrides", () => {
-		it("should override componentPath with local value", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should override componentPath with local value", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 
@@ -188,7 +220,8 @@ describe.serial("Profile Layering - getLayered()", () => {
 			expect(profile.ocx.componentPath).toBe("local-components")
 		})
 
-		it("should override renameWindow with local value", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should override renameWindow with local value", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 
@@ -218,7 +251,8 @@ describe.serial("Profile Layering - getLayered()", () => {
 			expect(profile.ocx.renameWindow).toBe(false)
 		})
 
-		it("should override bin with local value", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should override bin with local value", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 
@@ -250,7 +284,8 @@ describe.serial("Profile Layering - getLayered()", () => {
 	})
 
 	describe("Array Field Behavior", () => {
-		it("should replace exclude array (not concatenate)", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should replace exclude array (not concatenate)", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 
@@ -280,7 +315,8 @@ describe.serial("Profile Layering - getLayered()", () => {
 			expect(profile.ocx.exclude).toEqual(["*.cache"])
 		})
 
-		it("should replace include array (not concatenate)", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should replace include array (not concatenate)", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 
@@ -310,7 +346,8 @@ describe.serial("Profile Layering - getLayered()", () => {
 			expect(profile.ocx.include).toEqual(["*.critical"])
 		})
 
-		it("should use schema defaults when local doesn't explicitly set arrays", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should use schema defaults when local doesn't explicitly set arrays", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 
@@ -355,7 +392,8 @@ describe.serial("Profile Layering - getLayered()", () => {
 	})
 
 	describe("OpenCode Config Plugin Array Concatenation", () => {
-		it("should concatenate plugin arrays from global and local", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should concatenate plugin arrays from global and local", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 
@@ -386,7 +424,8 @@ describe.serial("Profile Layering - getLayered()", () => {
 			expect(profile.opencode?.plugin).toEqual(["global-plugin", "local-plugin"])
 		})
 
-		it("should deduplicate plugin arrays", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should deduplicate plugin arrays", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 
@@ -419,7 +458,8 @@ describe.serial("Profile Layering - getLayered()", () => {
 			expect(profile.opencode?.plugin).toEqual(["global-only", "shared-plugin", "local-only"])
 		})
 
-		it("should concatenate instructions arrays from global and local", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should concatenate instructions arrays from global and local", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 
@@ -455,7 +495,8 @@ describe.serial("Profile Layering - getLayered()", () => {
 	})
 
 	describe("AGENTS.md Discovery", () => {
-		it("should discover both global and local AGENTS.md files", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should discover both global and local AGENTS.md files", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 
@@ -484,19 +525,16 @@ describe.serial("Profile Layering - getLayered()", () => {
 			const globalProfile = await manager.get("default")
 			expect(globalProfile.hasAgents).toBe(true)
 
-			// Create local profile without AGENTS.md
-			const localProfileDir = getLocalProfileDir("default", projectDir)
-			await mkdir(localProfileDir, { recursive: true })
-			await writeFile(join(localProfileDir, "ocx.jsonc"), JSON.stringify({ registries: {} }))
-
-			// Get layered profile
+			// With global-only profiles, getLayered returns global profile directly
+			// No local profile directory should exist
 			const profile = await manager.getLayered("default", projectDir)
 
 			// hasAgents should be true (global has it)
 			expect(profile.hasAgents).toBe(true)
 		})
 
-		it("should detect AGENTS.md when only local has it", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should detect AGENTS.md when only local has it", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 
@@ -519,7 +557,8 @@ describe.serial("Profile Layering - getLayered()", () => {
 	})
 
 	describe("Complex Merging Scenarios", () => {
-		it("should correctly merge complex nested opencode config", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should correctly merge complex nested opencode config", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 
@@ -567,7 +606,8 @@ describe.serial("Profile Layering - getLayered()", () => {
 			expect(profile.opencode?.plugin).toEqual(["global-plugin", "local-plugin"])
 		})
 
-		it("should handle minimal local profile gracefully", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should handle minimal local profile gracefully", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 
@@ -607,7 +647,8 @@ describe.serial("Profile Layering - getLayered()", () => {
 			expect(profile.ocx.bin).toBe("/local/opencode")
 		})
 
-		it("should handle local profile completely overriding global", async () => {
+		// PHASE 1 RED: Local profiles are unsupported — this test expects local overlay merging
+		it.todo("should handle local profile completely overriding global", async () => {
 			const manager = ProfileManager.create(projectDir)
 			await manager.initialize()
 

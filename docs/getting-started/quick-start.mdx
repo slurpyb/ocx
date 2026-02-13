@@ -55,7 +55,7 @@ ocx oc
 List your installed profiles:
 
 ```bash
-ocx profile list
+ocx profile list --global
 ```
 
 You should see:
@@ -68,7 +68,7 @@ Global profiles:
 Inspect the profile configuration:
 
 ```bash
-ocx profile show omo
+ocx profile show omo --global
 ```
 
 ## What Profiles Control
@@ -86,7 +86,7 @@ An empty exclude list includes all project instruction files. The default profil
 | `ocx profile add <name> --source <registry/profile> --from <url> --global` | Install a profile from a registry |
 | `ocx profile add <name> --clone <existing> --global` | Clone an existing profile |
 | `ocx oc -p <name>` | Launch OpenCode with a profile |
-| `ocx profile list` | List your profiles |
+| `ocx profile list --global` | List your profiles |
 | `ocx config edit --global` | Edit your global configuration |
 
 ## Next Steps

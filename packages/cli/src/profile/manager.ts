@@ -1,24 +1,19 @@
 import { mkdir, readdir, rename, rm, stat } from "node:fs/promises"
 import { type ParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser"
-import { mergeOpencodeConfig } from "../registry/merge"
 import type { ProfileOcxConfig } from "../schemas/ocx"
 import { profileOcxConfigSchema } from "../schemas/ocx"
-import type { NormalizedOpencodeConfig } from "../schemas/registry"
 import {
 	ConfigError,
 	ConflictError,
 	InvalidProfileNameError,
+	LocalProfileUnsupportedError,
 	ProfileExistsError,
 	ProfileNotFoundError,
 	ProfilesNotInitializedError,
 } from "../utils/errors"
 import { atomicWrite } from "./atomic"
 import {
-	getLocalProfileAgents,
 	getLocalProfileDir,
-	getLocalProfileOcxConfig,
-	getLocalProfileOpencodeConfig,
-	getLocalProfilesDir,
 	getProfileAgents,
 	getProfileDir,
 	getProfileOcxConfig,
@@ -134,9 +129,13 @@ function requireNonEmptyProfileName(profileName: string, sourceDescription: stri
 }
 
 /**
- * Manages OCX profiles.
+ * Manages OCX profiles (global-only).
+ *
+ * All profiles are stored in the global config directory (~/.config/opencode/profiles/).
+ * Local profiles are unsupported; any local profile directory presence triggers a hard error
+ * via getLayered().
+ *
  * Uses static factory pattern for consistent construction.
- * Supports both global (~/.config/opencode/profiles/) and local (.opencode/profiles/) profiles.
  */
 export class ProfileManager {
 	private constructor(private readonly cwd: string = process.cwd()) {}
@@ -191,39 +190,25 @@ export class ProfileManager {
 	}
 
 	/**
-	 * List all profile names.
-	 * @param global - Whether to list global profiles (default: true for backward compatibility)
-	 * @returns Array of profile names
+	 * List all global profile names.
+	 * @returns Array of profile names, sorted alphabetically
 	 */
-	async list(global = true): Promise<string[]> {
+	async list(): Promise<string[]> {
 		await this.ensureInitialized()
-		const targetDir = global ? this.profilesDir : getLocalProfilesDir(this.cwd)
 
-		try {
-			const entries = await readdir(targetDir, { withFileTypes: true, encoding: "utf8" })
-			return entries
-				.filter((e) => e.isDirectory() && !e.name.startsWith("."))
-				.map((e) => e.name)
-				.sort()
-		} catch (error) {
-			// Local profiles directory may not exist yet; treat as empty list.
-			if (!global && error instanceof Error && "code" in error) {
-				const code = (error as NodeJS.ErrnoException).code
-				if (code === "ENOENT") {
-					return []
-				}
-			}
-			throw error
-		}
+		const entries = await readdir(this.profilesDir, { withFileTypes: true, encoding: "utf8" })
+		return entries
+			.filter((e) => e.isDirectory() && !e.name.startsWith("."))
+			.map((e) => e.name)
+			.sort()
 	}
 
 	/**
-	 * Check if a profile exists.
+	 * Check if a global profile exists.
 	 * @param name - Profile name
-	 * @param global - Whether to check global location (default: true for backward compatibility with existing commands)
 	 */
-	async exists(name: string, global = true): Promise<boolean> {
-		const dir = global ? getProfileDir(name) : getLocalProfileDir(name, this.cwd)
+	async exists(name: string): Promise<boolean> {
+		const dir = getProfileDir(name)
 		try {
 			const stats = await stat(dir)
 			return stats.isDirectory()
@@ -233,18 +218,17 @@ export class ProfileManager {
 	}
 
 	/**
-	 * Load a profile by name.
+	 * Load a global profile by name.
 	 * @param name - Profile name
-	 * @param global - Whether to load from global location (default: true for backward compatibility with existing commands)
 	 * @returns Loaded and validated profile
 	 */
-	async get(name: string, global = true): Promise<Profile> {
-		if (!(await this.exists(name, global))) {
+	async get(name: string): Promise<Profile> {
+		if (!(await this.exists(name))) {
 			throw new ProfileNotFoundError(name)
 		}
 
 		// Check ocx.jsonc exists with descriptive error
-		const ocxPath = global ? getProfileOcxConfig(name) : getLocalProfileOcxConfig(name, this.cwd)
+		const ocxPath = getProfileOcxConfig(name)
 		const ocxFile = Bun.file(ocxPath)
 
 		if (!(await ocxFile.exists())) {
@@ -256,9 +240,7 @@ export class ProfileManager {
 		const ocx = parseProfileOcxConfigOrThrow(ocxRaw, ocxPath, name)
 
 		// Load opencode.jsonc (optional)
-		const opencodePath = global
-			? getProfileOpencodeConfig(name)
-			: getLocalProfileOpencodeConfig(name, this.cwd)
+		const opencodePath = getProfileOpencodeConfig(name)
 		const opencodeFile = Bun.file(opencodePath)
 		let opencode: Record<string, unknown> | undefined
 		if (await opencodeFile.exists()) {
@@ -268,7 +250,7 @@ export class ProfileManager {
 		}
 
 		// Check for AGENTS.md
-		const agentsPath = global ? getProfileAgents(name) : getLocalProfileAgents(name, this.cwd)
+		const agentsPath = getProfileAgents(name)
 		const agentsFile = Bun.file(agentsPath)
 		const hasAgents = await agentsFile.exists()
 
@@ -281,21 +263,20 @@ export class ProfileManager {
 	}
 
 	/**
-	 * Load a profile with global + local layering.
-	 * Global profile is base, local profile overlays on top.
-	 * Matches OpenCode's config merge behavior.
+	 * Load a global-only profile. Hard errors if a local profile directory exists.
+	 *
+	 * Local profiles are unsupported. If a local profile directory is detected
+	 * for the active profile, a LocalProfileUnsupportedError is thrown immediately
+	 * (Law 4: Fail Fast, Fail Loud).
 	 *
 	 * @param name - Profile name
-	 * @param cwd - Current working directory (for local profile lookup)
-	 * @returns Merged profile (global base + local overlay)
+	 * @param cwd - Current working directory (for local profile detection)
+	 * @returns Global profile
 	 * @throws ProfileNotFoundError if global profile doesn't exist
+	 * @throws LocalProfileUnsupportedError if local profile directory exists
 	 */
 	async getLayered(name: string, cwd: string): Promise<Profile> {
-		// 1. Load global profile (required - base layer)
-		const globalProfile = await this.get(name)
-
-		// 2. Check for local profile (optional - overlay layer)
-		// Check for local profile using the cwd parameter (not this.cwd)
+		// Guard: Reject local profile directory presence (Law 1: Early Exit)
 		const localDir = getLocalProfileDir(name, cwd)
 		let localExists = false
 		try {
@@ -304,117 +285,19 @@ export class ProfileManager {
 		} catch {
 			localExists = false
 		}
-		if (!localExists) {
-			return globalProfile // No local overlay
+		if (localExists) {
+			throw new LocalProfileUnsupportedError(name, localDir)
 		}
 
-		// 3. Load local profile
-		const localProfile = await this.loadFromLocal(name, cwd)
-
-		// 4. Merge: local wins on conflicts
-		return this.mergeProfiles(globalProfile, localProfile)
+		// Load global profile (the only supported source)
+		return this.get(name)
 	}
 
 	/**
-	 * Load a profile from local directory.
-	 * @param name - Profile name
-	 * @param cwd - Current working directory
-	 */
-	private async loadFromLocal(name: string, cwd: string): Promise<Profile> {
-		const ocxPath = getLocalProfileOcxConfig(name, cwd)
-		const ocxFile = Bun.file(ocxPath)
-
-		if (!(await ocxFile.exists())) {
-			throw new ConfigError(`Local profile "${name}" is missing ocx.jsonc. Expected at: ${ocxPath}`)
-		}
-
-		const ocxContent = await ocxFile.text()
-		const ocxRaw = parseJsoncOrThrow(ocxContent, ocxPath)
-		const ocx = parseProfileOcxConfigOrThrow(ocxRaw, ocxPath, name)
-
-		// Load opencode.jsonc (optional)
-		const opencodePath = getLocalProfileOpencodeConfig(name, cwd)
-		const opencodeFile = Bun.file(opencodePath)
-		let opencode: Record<string, unknown> | undefined
-		if (await opencodeFile.exists()) {
-			const opencodeContent = await opencodeFile.text()
-			const opencodeRaw = parseJsoncOrThrow(opencodeContent, opencodePath)
-			opencode = parseProfileOpencodeConfigOrThrow(opencodeRaw, opencodePath, name)
-		}
-
-		// Check for AGENTS.md
-		const agentsPath = getLocalProfileAgents(name, cwd)
-		const agentsFile = Bun.file(agentsPath)
-		const hasAgents = await agentsFile.exists()
-
-		return {
-			name,
-			ocx,
-			opencode,
-			hasAgents,
-		}
-	}
-
-	/**
-	 * Merge two profiles (global base + local overlay).
-	 * Uses deep merge for objects, local wins on conflicts.
-	 * Matches OpenCode's merge behavior:
-	 * - Objects: deep merge recursively
-	 * - Arrays: local replaces global (except plugin/instructions which concatenate)
-	 * - Scalars: local wins
-	 */
-	private mergeProfiles(base: Profile, overlay: Profile): Profile {
-		return {
-			name: base.name,
-			ocx: this.deepMergeOcx(base.ocx, overlay.ocx),
-			opencode: mergeOpencodeConfig(
-				(base.opencode ?? {}) as NormalizedOpencodeConfig,
-				(overlay.opencode ?? {}) as NormalizedOpencodeConfig,
-			) as Record<string, unknown>,
-			hasAgents: base.hasAgents || overlay.hasAgents,
-		}
-	}
-
-	/**
-	 * Deep merge OCX configs.
-	 * Objects merge deeply, arrays replace, scalars replace.
-	 */
-	private deepMergeOcx(base: ProfileOcxConfig, overlay: ProfileOcxConfig): ProfileOcxConfig {
-		const result: ProfileOcxConfig = { ...base }
-
-		// Merge registries (deep merge - local adds to/overrides global)
-		if (overlay.registries) {
-			result.registries = { ...base.registries, ...overlay.registries }
-		}
-
-		// Replace arrays (local wins)
-		if (overlay.exclude !== undefined) {
-			result.exclude = overlay.exclude
-		}
-		if (overlay.include !== undefined) {
-			result.include = overlay.include
-		}
-
-		// Replace scalars (local wins)
-		if (overlay.componentPath !== undefined) {
-			result.componentPath = overlay.componentPath
-		}
-		if (overlay.renameWindow !== undefined) {
-			result.renameWindow = overlay.renameWindow
-		}
-		if (overlay.bin !== undefined) {
-			result.bin = overlay.bin
-		}
-
-		return result
-	}
-
-	/**
-	 * Create a new profile.
+	 * Create a new global profile.
 	 * @param name - Profile name (validated)
-	 * @param global - Whether to create global profile (default: false for local-first)
 	 */
-	async add(name: string, global = false): Promise<void> {
+	async add(name: string): Promise<void> {
 		// Validate name
 		const result = profileNameSchema.safeParse(name)
 		if (!result.success) {
@@ -422,32 +305,30 @@ export class ProfileManager {
 		}
 
 		// Check doesn't exist
-		if (await this.exists(name, global)) {
+		if (await this.exists(name)) {
 			throw new ProfileExistsError(name)
 		}
 
 		// Create directory with secure permissions
-		const dir = global ? getProfileDir(name) : getLocalProfileDir(name, this.cwd)
+		const dir = getProfileDir(name)
 		await mkdir(dir, { recursive: true, mode: 0o700 })
 
 		// Create ocx.jsonc with create-if-missing (uses JSONC template with commented AGENTS.md)
-		const ocxPath = global ? getProfileOcxConfig(name) : getLocalProfileOcxConfig(name, this.cwd)
+		const ocxPath = getProfileOcxConfig(name)
 		const ocxFile = Bun.file(ocxPath)
 		if (!(await ocxFile.exists())) {
 			await Bun.write(ocxPath, DEFAULT_OCX_CONFIG_TEMPLATE, { mode: 0o600 })
 		}
 
 		// Create opencode.jsonc with create-if-missing
-		const opencodePath = global
-			? getProfileOpencodeConfig(name)
-			: getLocalProfileOpencodeConfig(name, this.cwd)
+		const opencodePath = getProfileOpencodeConfig(name)
 		const opencodeFile = Bun.file(opencodePath)
 		if (!(await opencodeFile.exists())) {
 			await atomicWrite(opencodePath, {})
 		}
 
 		// Create AGENTS.md with create-if-missing
-		const agentsPath = global ? getProfileAgents(name) : getLocalProfileAgents(name, this.cwd)
+		const agentsPath = getProfileAgents(name)
 		const agentsFile = Bun.file(agentsPath)
 		if (!(await agentsFile.exists())) {
 			const agentsContent = `# Profile Instructions
@@ -460,39 +341,30 @@ export class ProfileManager {
 	}
 
 	/**
-	 * Remove a profile.
+	 * Remove a global profile.
 	 * @param name - Profile name
-	 * @param global - Whether to remove global profile (default: true for backward compatibility)
 	 */
-	async remove(name: string, global = true): Promise<void> {
-		if (!(await this.exists(name, global))) {
+	async remove(name: string): Promise<void> {
+		if (!(await this.exists(name))) {
 			throw new ProfileNotFoundError(name)
 		}
 
-		// Only apply last-profile check when removing global profiles
-		if (global) {
-			const profiles = await this.list()
-			if (profiles.length <= 1) {
-				throw new Error("Cannot delete the last profile. At least one profile must exist.")
-			}
+		const profiles = await this.list()
+		if (profiles.length <= 1) {
+			throw new Error("Cannot delete the last profile. At least one profile must exist.")
 		}
 
-		const dir = global ? getProfileDir(name) : getLocalProfileDir(name, this.cwd)
+		const dir = getProfileDir(name)
 		await rm(dir, { recursive: true })
 	}
 
 	/**
-	 * Move (rename) a profile atomically.
+	 * Move (rename) a global profile atomically.
 	 * @param oldName - Current profile name
 	 * @param newName - New profile name
-	 * @param global - Whether to move global profile (default: true for backward compatibility)
 	 * @returns Object indicating if active profile warning should be shown
 	 */
-	async move(
-		oldName: string,
-		newName: string,
-		global = true,
-	): Promise<{ warnActiveProfile: boolean }> {
+	async move(oldName: string, newName: string): Promise<{ warnActiveProfile: boolean }> {
 		// 1. Validate oldName format
 		const oldResult = profileNameSchema.safeParse(oldName)
 		if (!oldResult.success) {
@@ -515,7 +387,7 @@ export class ProfileManager {
 		await this.ensureInitialized()
 
 		// 4. Check source exists
-		if (!(await this.exists(oldName, global))) {
+		if (!(await this.exists(oldName))) {
 			throw new ProfileNotFoundError(oldName)
 		}
 
@@ -525,9 +397,9 @@ export class ProfileManager {
 		}
 
 		// 6. Check target doesn't exist
-		if (await this.exists(newName, global)) {
+		if (await this.exists(newName)) {
 			throw new ConflictError(
-				`Cannot move: profile "${newName}" already exists. Remove it first with 'ocx p rm ${newName}'.`,
+				`Cannot move: profile "${newName}" already exists. Remove it first with 'ocx profile rm ${newName} --global'.`,
 			)
 		}
 
@@ -535,8 +407,8 @@ export class ProfileManager {
 		const warnActiveProfile = process.env.OCX_PROFILE === oldName
 
 		// 8. Atomic rename (with race condition handling)
-		const oldDir = global ? getProfileDir(oldName) : getLocalProfileDir(oldName, this.cwd)
-		const newDir = global ? getProfileDir(newName) : getLocalProfileDir(newName, this.cwd)
+		const oldDir = getProfileDir(oldName)
+		const newDir = getProfileDir(newName)
 		try {
 			await rename(oldDir, newDir)
 		} catch (error) {
@@ -545,7 +417,7 @@ export class ProfileManager {
 				const code = (error as NodeJS.ErrnoException).code
 				if (code === "EEXIST" || code === "ENOTEMPTY") {
 					throw new ConflictError(
-						`Cannot move: profile "${newName}" already exists. Remove it first with 'ocx p rm ${newName}'.`,
+						`Cannot move: profile "${newName}" already exists. Remove it first with 'ocx profile rm ${newName} --global'.`,
 					)
 				}
 				if (code === "ENOENT") {
@@ -563,15 +435,14 @@ export class ProfileManager {
 	 * Priority: override (from -p flag) > OCX_PROFILE env > "default"
 	 *
 	 * @param override - Optional override from --profile flag
-	 * @param global - Whether to resolve against global profiles (default: true)
 	 * @returns Resolved profile name (validated to exist)
 	 * @throws ProfileNotFoundError if resolved profile doesn't exist
 	 */
-	async resolveProfile(override?: string, global = true): Promise<string> {
+	async resolveProfile(override?: string): Promise<string> {
 		// Priority 1: Explicit override from -p/--profile flag
 		if (override !== undefined) {
 			const profileName = requireNonEmptyProfileName(override, "CLI option --profile")
-			if (!(await this.exists(profileName, global))) {
+			if (!(await this.exists(profileName))) {
 				throw new ProfileNotFoundError(profileName)
 			}
 			return profileName
@@ -581,7 +452,7 @@ export class ProfileManager {
 		const envProfile = process.env.OCX_PROFILE
 		if (envProfile !== undefined) {
 			const profileName = requireNonEmptyProfileName(envProfile, "environment variable OCX_PROFILE")
-			if (!(await this.exists(profileName, global))) {
+			if (!(await this.exists(profileName))) {
 				throw new ProfileNotFoundError(profileName)
 			}
 			return profileName
@@ -589,7 +460,7 @@ export class ProfileManager {
 
 		// Priority 3: Fall back to "default" profile
 		const defaultProfile = "default"
-		if (!(await this.exists(defaultProfile, global))) {
+		if (!(await this.exists(defaultProfile))) {
 			throw new ProfileNotFoundError(defaultProfile)
 		}
 		return defaultProfile
@@ -603,7 +474,7 @@ export class ProfileManager {
 		// Create profiles directory
 		await mkdir(this.profilesDir, { recursive: true, mode: 0o700 })
 
-		// Create default profile (global)
-		await this.add("default", true)
+		// Create default profile
+		await this.add("default")
 	}
 }

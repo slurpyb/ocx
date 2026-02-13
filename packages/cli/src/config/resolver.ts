@@ -1,14 +1,15 @@
 /**
- * ConfigResolver - V2 Profile Layering with Scope Resolution
+ * ConfigResolver - Global Profile Resolution
  *
- * V2 Changes:
- * - Profile selection via `.opencode/ocx.jsonc` field: `{ "profile": "work" }`
- * - Profiles layer: global base + local overlay of same name; overlay wins
- * - Visibility controlled by profile `ocx.jsonc` include/exclude patterns
- * - OCX configs (ocx.jsonc) remain ISOLATED per scope - they do NOT merge
- * - OpenCode configs (opencode.jsonc) ALWAYS merge: profile → local
- *   Local opencode.jsonc always participates regardless of exclude/include
- *   patterns, matching OpenCode's native layering semantics.
+ * Profile selection via `.opencode/ocx.jsonc` field: `{ "profile": "work" }`
+ * Profiles are global-only (~/.config/opencode/profiles/). Local profiles are
+ * unsupported and produce a hard error via ProfileManager.getLayered().
+ *
+ * Visibility controlled by profile `ocx.jsonc` include/exclude patterns.
+ * OCX configs (ocx.jsonc) remain ISOLATED per scope - they do NOT merge.
+ * OpenCode configs (opencode.jsonc) ALWAYS merge: profile → local.
+ * Local opencode.jsonc always participates regardless of exclude/include
+ * patterns, matching OpenCode's native layering semantics.
  *
  * This is controlled by exclude/include patterns from the profile.
  *
@@ -31,7 +32,6 @@ import { type ParseError, parse as parseJsonc, printParseErrorCode } from "jsonc
 import { ProfileManager } from "../profile/manager"
 import {
 	findLocalConfigDir,
-	getLocalProfileAgents,
 	getProfileDir,
 	LOCAL_CONFIG_DIR,
 	OCX_CONFIG_FILE,
@@ -46,7 +46,6 @@ import { ConfigError, ProfileNotFoundError, ProfilesNotInitializedError } from "
 import { resolveGitRootSync } from "../utils/git-root"
 import { resolveRegistryInstructionPaths } from "../utils/instruction-paths"
 import { getGlobalConfigPath } from "../utils/paths"
-import { isPlainObject } from "../utils/type-guards"
 
 // =============================================================================
 // TYPES
@@ -351,12 +350,12 @@ export class ConfigResolver {
 	}
 
 	/**
-	 * V2: Create a ConfigResolver for the given directory.
+	 * Create a ConfigResolver for the given directory.
 	 *
 	 * Parses configuration at the boundary (Law 2: Parse Don't Validate).
 	 * After construction, all getter methods are synchronous.
 	 *
-	 * V2 Profile Resolution:
+	 * Profile Resolution:
 	 * 1. Check local `.opencode/ocx.jsonc` for `profile` field
 	 * 2. Fall back to options.profile
 	 * 3. Fall back to OCX_PROFILE env var
@@ -459,14 +458,12 @@ export class ConfigResolver {
 	}
 
 	/**
-	 * V2: Resolve configuration with profile layering.
+	 * Resolve configuration with global profile support.
 	 *
-	 * V2 Changes:
-	 * - Profiles layer: global base + local overlay of same name (overlay wins)
 	 * - Registries: Profile OR local (isolated, not merged)
 	 * - OpenCode config: Always merged (profile + local) to match OpenCode layering.
-	 *   Local opencode.jsonc always participates regardless of exclude/include patterns,
-	 *   because exclude/include controls instruction file discovery, not config merging.
+	 *   Local opencode.jsonc always participates in merge regardless of exclude/include
+	 *   patterns, because exclude/include controls instruction file discovery, not config merging.
 	 *
 	 * Uses memoization - first call computes, subsequent calls return cached result.
 	 * Pure function (Law 3: Atomic Predictability) - same instance always returns same result.
@@ -496,8 +493,7 @@ export class ConfigResolver {
 		// 3. Check exclude/include patterns (for instruction files and OCX registries only)
 		const shouldLoadLocalOcx = this.shouldLoadLocalConfig()
 
-		// 4. V2: Apply local OCX registries ONLY when no profile active (isolation)
-		// This maintains registry isolation as before
+		// 4. Apply local OCX registries ONLY when no profile active (isolation)
 		if (!this.profile && shouldLoadLocalOcx && this.localConfigDir) {
 			const localOcxConfig = this.loadLocalOcxConfig()
 			if (localOcxConfig) {
@@ -505,10 +501,9 @@ export class ConfigResolver {
 			}
 		}
 
-		// 5. V2: Apply local OpenCode config (ALWAYS merges with profile)
+		// 5. Apply local OpenCode config (ALWAYS merges with profile)
 		// Local opencode.jsonc always participates in merge regardless of exclude/include
-		// patterns. This matches OpenCode's layering semantics where local project config
-		// always overlays on top of global/profile config.
+		// patterns to match OpenCode's layering semantics.
 		if (this.localConfigDir) {
 			const localOpencodeConfig = this.loadLocalOpencodeConfig()
 			if (localOpencodeConfig) {
@@ -690,7 +685,6 @@ export class ConfigResolver {
 	 * 2. Global Profile AGENTS.md (when profile active)
 	 * 3. Registry-provided instructions (from installed components - resolved to absolute)
 	 * 4. Local (Project) files - first file type wins (AGENTS.md > CLAUDE.md > CONTEXT.md)
-	 * 5. Local Profile AGENTS.md (when local profile active - highest priority)
 	 *
 	 * exclude/include patterns apply ONLY to LOCAL (project) files.
 	 *
@@ -740,14 +734,6 @@ export class ConfigResolver {
 		const projectInstructions = filteredFiles.map((f) => join(gitRoot, f))
 		instructions.push(...projectInstructions)
 
-		// 5. Local Profile AGENTS.md (when local profile active - highest priority)
-		if (this.profileName && this.localConfigDir) {
-			const localProfileAgents = getLocalProfileAgents(this.profileName, this.cwd)
-			if (existsSync(localProfileAgents)) {
-				instructions.push(localProfileAgents)
-			}
-		}
-
 		return instructions
 	}
 
@@ -779,36 +765,6 @@ export class ConfigResolver {
 			target as NormalizedOpencodeConfig,
 			source as NormalizedOpencodeConfig,
 		) as Record<string, unknown>
-	}
-
-	/**
-	 * Deep merge for non-OpenCode object merging.
-	 * Arrays are replaced (not concatenated), objects are recursively merged, scalars last-wins.
-	 * NOTE: For OpenCode configs, use mergeOpencode() instead.
-	 */
-	private deepMerge(
-		target: Record<string, unknown>,
-		source: Record<string, unknown>,
-	): Record<string, unknown> {
-		const result = { ...target }
-
-		for (const key of Object.keys(source)) {
-			const sourceValue = source[key]
-			const targetValue = result[key]
-
-			// If both are plain objects, recurse
-			if (isPlainObject(sourceValue) && isPlainObject(targetValue)) {
-				result[key] = this.deepMerge(
-					targetValue as Record<string, unknown>,
-					sourceValue as Record<string, unknown>,
-				)
-			} else {
-				// Arrays and scalars: source wins (last-write-wins)
-				result[key] = sourceValue
-			}
-		}
-
-		return result
 	}
 
 	// =========================================================================

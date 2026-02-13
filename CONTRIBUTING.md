@@ -94,8 +94,8 @@ Use the `ocx-dev` profile to keep testing completely separate.
 #### Setup ocx-dev Profile (One-time)
 
 ```bash
-# Create a LOCAL profile for isolated testing (not --global, intentionally project-scoped)
-./packages/cli/dist/index.js profile add ocx-dev
+# Create a global profile for isolated testing
+./packages/cli/dist/index.js profile add ocx-dev --global
 ```
 
 #### Quick Feature Testing

@@ -192,3 +192,21 @@ export class ProfilesNotInitializedError extends OCXError {
 		this.name = "ProfilesNotInitializedError"
 	}
 }
+
+export class LocalProfileUnsupportedError extends OCXError {
+	constructor(
+		public readonly profile: string,
+		public readonly localDir: string,
+	) {
+		super(
+			`Local profile directory unsupported: "${localDir}"\n\n` +
+				`Local profiles are not supported. Profiles must be global only.\n` +
+				`Remove the local profile directory and use global profiles instead:\n` +
+				`  rm -rf "${localDir}"\n` +
+				`  ocx profile show ${profile} --global`,
+			"CONFIG_ERROR",
+			EXIT_CODES.CONFIG,
+		)
+		this.name = "LocalProfileUnsupportedError"
+	}
+}

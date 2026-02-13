@@ -1,13 +1,14 @@
 /**
  * Profile Remove Command
  *
- * Delete a profile (local by default, or global with --global flag).
+ * Delete a profile.
+ * Profiles are global-only; local scope is unsupported and produces a hard error.
  * Uses Cargo-style CLI pattern: no interactive confirmation.
  */
 
 import type { Command } from "commander"
 import { ProfileManager } from "../../profile/manager"
-import { ProfileNotFoundError } from "../../utils/errors"
+import { ConfigError, ProfileNotFoundError } from "../../utils/errors"
 import { handleError, logger, outputJson } from "../../utils/index"
 
 interface RemoveOptions {
@@ -19,8 +20,8 @@ export function registerProfileRemoveCommand(parent: Command): void {
 	parent
 		.command("remove <name>")
 		.alias("rm")
-		.description("Delete a profile")
-		.option("-g, --global", "Remove global profile (default: local)")
+		.description("Delete a profile (use --global; local profiles are unsupported)")
+		.option("-g, --global", "Remove global profile (required — local profiles are unsupported)")
 		.option("--json", "Output as JSON")
 		.action(async (name: string, options: RemoveOptions) => {
 			try {
@@ -37,20 +38,26 @@ export function registerProfileRemoveCommand(parent: Command): void {
 async function runProfileRemove(
 	name: string,
 	options: RemoveOptions,
-): Promise<{ name: string; scope: "local" | "global" }> {
+): Promise<{ name: string; scope: "global" }> {
+	// Guard: local scope is unsupported (Law 1: Early Exit, Law 4: Fail Fast)
+	if (!options.global) {
+		throw new ConfigError(
+			"Local profiles are unsupported. Use --global to remove a global profile.\n\n" +
+				"  ocx profile remove <name> --global",
+		)
+	}
+
 	const manager = await ProfileManager.requireInitialized()
-	const global = options.global ?? false
 
 	// Verify profile exists first (fail fast)
-	if (!(await manager.exists(name, global))) {
+	if (!(await manager.exists(name))) {
 		throw new ProfileNotFoundError(name)
 	}
 
-	await manager.remove(name, global)
-	const scope = global ? "global" : "local"
+	await manager.remove(name)
 	if (!options.json) {
-		logger.success(`Deleted ${scope} profile "${name}"`)
+		logger.success(`Deleted global profile "${name}"`)
 	}
 
-	return { name, scope }
+	return { name, scope: "global" }
 }

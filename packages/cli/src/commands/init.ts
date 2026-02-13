@@ -228,7 +228,7 @@ async function runInitGlobal(options: InitOptions): Promise<void> {
 				logger.info("  1. Edit your profile config: ocx config edit -p default")
 				logger.info("  2. Add registries: ocx registry add <url> --name <name> --global")
 				logger.info("  3. Launch OpenCode: ocx opencode")
-				logger.info("  4. Create more profiles: ocx profile add <name>")
+				logger.info("  4. Create more profiles: ocx profile add <name> --global")
 			} else {
 				logger.info("Global profiles already initialized (all files exist)")
 			}

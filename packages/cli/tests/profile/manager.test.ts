@@ -159,8 +159,8 @@ describe("ProfileManager.list", () => {
 	it("should return all profile names sorted", async () => {
 		const manager = ProfileManager.create()
 		await manager.initialize()
-		await manager.add("zebra", true)
-		await manager.add("alpha", true)
+		await manager.add("zebra")
+		await manager.add("alpha")
 
 		const profiles = await manager.list()
 
@@ -335,7 +335,7 @@ describe("ProfileManager.add", () => {
 		const manager = ProfileManager.create()
 		await manager.initialize()
 
-		await manager.add("myprofile", true)
+		await manager.add("myprofile")
 
 		const profileDir = getProfileDir("myprofile")
 		const stats = await stat(profileDir)
@@ -346,7 +346,7 @@ describe("ProfileManager.add", () => {
 		const manager = ProfileManager.create()
 		await manager.initialize()
 
-		await manager.add("myprofile", true)
+		await manager.add("myprofile")
 
 		const profile = await manager.get("myprofile")
 		expect(profile.ocx).toBeDefined()
@@ -356,46 +356,46 @@ describe("ProfileManager.add", () => {
 	it("should throw ProfileExistsError for duplicate names", async () => {
 		const manager = ProfileManager.create()
 		await manager.initialize()
-		await manager.add("duplicate", true)
+		await manager.add("duplicate")
 
-		expect(manager.add("duplicate", true)).rejects.toThrow(ProfileExistsError)
+		expect(manager.add("duplicate")).rejects.toThrow(ProfileExistsError)
 	})
 
 	it("should throw InvalidProfileNameError for empty names", async () => {
 		const manager = ProfileManager.create()
 		await manager.initialize()
 
-		expect(manager.add("", true)).rejects.toThrow(InvalidProfileNameError)
+		expect(manager.add("")).rejects.toThrow(InvalidProfileNameError)
 	})
 
 	it("should throw InvalidProfileNameError for names starting with number", async () => {
 		const manager = ProfileManager.create()
 		await manager.initialize()
 
-		expect(manager.add("123profile", true)).rejects.toThrow(InvalidProfileNameError)
+		expect(manager.add("123profile")).rejects.toThrow(InvalidProfileNameError)
 	})
 
 	it("should throw InvalidProfileNameError for names with path traversal", async () => {
 		const manager = ProfileManager.create()
 		await manager.initialize()
 
-		expect(manager.add("../../../etc", true)).rejects.toThrow(InvalidProfileNameError)
+		expect(manager.add("../../../etc")).rejects.toThrow(InvalidProfileNameError)
 	})
 
 	it("should throw InvalidProfileNameError for names with slashes", async () => {
 		const manager = ProfileManager.create()
 		await manager.initialize()
 
-		expect(manager.add("a/b/c", true)).rejects.toThrow(InvalidProfileNameError)
+		expect(manager.add("a/b/c")).rejects.toThrow(InvalidProfileNameError)
 	})
 
 	it("should accept valid names with dots, underscores, and hyphens", async () => {
 		const manager = ProfileManager.create()
 		await manager.initialize()
 
-		await manager.add("my.profile", true)
-		await manager.add("my_profile", true)
-		await manager.add("my-profile", true)
+		await manager.add("my.profile")
+		await manager.add("my_profile")
+		await manager.add("my-profile")
 
 		expect(await manager.exists("my.profile")).toBe(true)
 		expect(await manager.exists("my_profile")).toBe(true)
@@ -428,7 +428,7 @@ describe("ProfileManager.remove", () => {
 	it("should delete profile directory", async () => {
 		const manager = ProfileManager.create()
 		await manager.initialize()
-		await manager.add("toremove", true)
+		await manager.add("toremove")
 
 		await manager.remove("toremove")
 
@@ -454,7 +454,7 @@ describe("ProfileManager.remove", () => {
 	it("should allow deleting when multiple profiles exist", async () => {
 		const manager = ProfileManager.create()
 		await manager.initialize()
-		await manager.add("other", true)
+		await manager.add("other")
 
 		// Now we can delete default since "other" exists
 		await manager.remove("default")
@@ -505,7 +505,7 @@ describe("ProfileManager.resolveProfile", () => {
 	it("should respect OCX_PROFILE env var", async () => {
 		const manager = ProfileManager.create()
 		await manager.initialize()
-		await manager.add("envprofile", true)
+		await manager.add("envprofile")
 
 		process.env.OCX_PROFILE = "envprofile"
 
@@ -526,8 +526,8 @@ describe("ProfileManager.resolveProfile", () => {
 	it("should use override parameter over env var", async () => {
 		const manager = ProfileManager.create()
 		await manager.initialize()
-		await manager.add("override", true)
-		await manager.add("envval", true)
+		await manager.add("override")
+		await manager.add("envval")
 
 		process.env.OCX_PROFILE = "envval"
 
@@ -546,7 +546,7 @@ describe("ProfileManager.resolveProfile", () => {
 	it("should use override over default when no env var set", async () => {
 		const manager = ProfileManager.create()
 		await manager.initialize()
-		await manager.add("myprofile", true)
+		await manager.add("myprofile")
 
 		const profile = await manager.resolveProfile("myprofile")
 

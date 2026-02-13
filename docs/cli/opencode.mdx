@@ -68,38 +68,22 @@ ocx oc -- --help
 
 Profiles are resolved in this order (first match wins):
 
-1. **`--profile` / `-p` flag** — Explicit CLI specification
-2. **`OCX_PROFILE` environment variable** — Session-level profile
-3. **`profile` field in `.opencode/ocx.jsonc`** — Project-specific profile
+1. **`profile` field in `.opencode/ocx.jsonc`** — Project-specific profile
+2. **`--profile` / `-p` flag** — Explicit CLI specification
+3. **`OCX_PROFILE` environment variable** — Session-level profile
 4. **`default` profile** — If it exists
 5. **No profile** — Base configurations only
 
 ## How It Works
 
 1. **Profile Resolution**: Resolves profile using the priority order above.
-2. **Profile Layering**: If both global and local profiles exist with the same name, merges them.
-3. **Config Merging**: Deep merges profile configs (global + local).
-4. **Instruction Discovery**: Discovers instruction files in priority order.
-5. **Pattern Filtering**: Applies exclude/include patterns from merged profile.
-6. **Launch OpenCode**: Spawns with merged configuration and discovered instructions.
-
-## Configuration Merging
-
-**OCX configs** (`ocx.jsonc`) merge when using profiles:
-
-- Global profile `ocx.jsonc` (base layer)
-- Local profile `ocx.jsonc` (overlay layer, if exists)
-- Deep merge with local winning on conflicts
-
-**OpenCode configs** (`opencode.jsonc`) cascade:
-
-1. Global profile's `opencode.jsonc`
-2. Local profile's `opencode.jsonc` (if exists, deep merged)
-3. Local `.opencode/opencode.jsonc` (if not excluded, deep merged)
+2. **Instruction Discovery**: Discovers instruction files in priority order.
+3. **Pattern Filtering**: Applies exclude/include patterns from profile.
+4. **Launch OpenCode**: Spawns with profile configuration and discovered instructions.
 
 **Registry Isolation:**
 
-Global base config registries (`~/.config/opencode/ocx.jsonc`) are **only** used for downloading profiles, never for components. When using a profile, registries come from the merged profile config. This isolation prevents global registries from injecting components into all projects.
+Global base config registries (`~/.config/opencode/ocx.jsonc`) are **only** used for downloading profiles, never for components. When using a profile, registries come from the profile config. This isolation prevents global registries from injecting components into all projects.
 
 ## Custom OpenCode Binary
 

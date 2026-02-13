@@ -473,7 +473,7 @@ describe("ocx profile add (conflict detection)", () => {
 		expect(exitCode).toBe(6)
 		// Verify error message contains key information for user action
 		expect(output).toContain("already exists")
-		expect(output).toContain("ocx profile rm existing-profile")
+		expect(output).toContain("ocx profile rm existing-profile --global")
 	})
 
 	it("allows adding profile after explicit removal", async () => {
@@ -699,7 +699,8 @@ describe("ocx profile add --clone (profile cloning)", () => {
 		expect(clonedConfig.exclude).toContain("**/SECRET.md")
 	})
 
-	it("clones settings from existing local profile (local to local)", async () => {
+	// Local profiles are unsupported — local-to-local cloning is no longer valid
+	it.todo("clones settings from existing local profile (local to local)", async () => {
 		// Setup global config
 		const globalConfigDir = join(testDir, "opencode")
 		const profilesDir = join(globalConfigDir, "profiles")
@@ -809,7 +810,8 @@ describe("ocx profile add --clone (profile cloning)", () => {
 		expect(clonedConfig.exclude).toContain("**/SECRET.md")
 	})
 
-	it("preserves raw ocx.jsonc bytes exactly when cloning local profile to local profile", async () => {
+	// Local profiles are unsupported — local-to-local byte preservation is no longer valid
+	it.todo("preserves raw ocx.jsonc bytes exactly when cloning local profile to local profile", async () => {
 		// Setup global config
 		const globalConfigDir = join(testDir, "opencode")
 		const profilesDir = join(globalConfigDir, "profiles")
@@ -924,7 +926,8 @@ describe("ocx profile add --clone (profile cloning)", () => {
 		expect(clonedRaw).toBe(sourceRawBeforeClone)
 	})
 
-	it("fails when source profile exists only in wrong scope", async () => {
+	// Local profiles are unsupported — scope mismatch concept is no longer valid
+	it.todo("fails when source profile exists only in wrong scope", async () => {
 		// Setup global config
 		const globalConfigDir = join(testDir, "opencode")
 		const profilesDir = join(globalConfigDir, "profiles")

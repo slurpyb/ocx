@@ -1,12 +1,12 @@
 /**
  * Profile Add Command
  *
- * Create a new profile (local by default, or global with --global flag).
+ * Create a new profile (global only — local profiles are unsupported).
  * Optionally clone settings from an existing profile or install from registry.
  *
- * V2 Contract:
- * - Empty profile: `ocx profile add <name> [--global]`
- * - Clone profile: `ocx profile add <name> --clone <profile-name> [--global]`
+ * Contract:
+ * - Empty profile: `ocx profile add <name> --global`
+ * - Clone profile: `ocx profile add <name> --clone <profile-name> --global`
  * - Install from configured registry: `ocx profile add <name> --source <namespace/component> --global`
  * - Install from ephemeral registry: `ocx profile add <name> --source <namespace/component> --from <registry-url> --global`
  */
@@ -15,7 +15,7 @@ import type { Command } from "commander"
 import { parse as parseJsonc } from "jsonc-parser"
 import { atomicCopy } from "../../profile/atomic"
 import { ProfileManager } from "../../profile/manager"
-import { getGlobalConfig, getLocalProfileOcxConfig, getProfileOcxConfig } from "../../profile/paths"
+import { getGlobalConfig, getProfileOcxConfig } from "../../profile/paths"
 import type { ProfileOcxConfig } from "../../schemas/ocx"
 import { profileOcxConfigSchema } from "../../schemas/ocx"
 import {
@@ -171,21 +171,19 @@ export function registerProfileAddCommand(parent: Command): void {
 	parent
 		.command("add <name>")
 		.description(
-			"Create a new profile (local by default), clone from existing, or install from registry",
+			"Create a new profile (--global required), clone from existing, or install from registry",
 		)
-		.option("--clone <profile>", "Clone from existing profile (same scope as target)")
+		.option("--clone <profile>", "Clone from existing global profile")
 		.option("--source <namespace/component>", "Install from registry (requires --global)")
 		.option("--from <url>", "Ephemeral registry URL for --source (does not persist)")
-		.option("-g, --global", "Create global profile (default: local overlay)")
+		.option("-g, --global", "Create global profile (required — local profiles are unsupported)")
 		.option("--json", "Output as JSON")
 		.addHelpText(
 			"after",
 			`
 Examples:
-  $ ocx profile add work                                              # Create local profile (.opencode/profiles/work/)
   $ ocx profile add work --global                                     # Create global profile (~/.config/opencode/profiles/work/)
-  $ ocx profile add work --clone dev                                  # Clone from existing (local by default)
-  $ ocx profile add work --clone dev --global                         # Clone to global profile
+  $ ocx profile add work --clone dev --global                         # Clone from existing global profile
   $ ocx profile add work --source kdco/minimal --global               # Install from configured registry
   $ ocx profile add work --source kdco/minimal --from http://r.com --global  # Install from ephemeral registry
 `,
@@ -207,11 +205,11 @@ Examples:
 // =============================================================================
 
 async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<ProfileAddResult> {
-	const scope = options.global ? "global" : "local"
 	const quiet = options.json === true
 
 	// ==========================================================================
 	// Guard: Validate option combinations (Law 1: Early Exit, Law 4: Fail Fast)
+	// These fire before the --global guard so their specific messages are preserved.
 	// ==========================================================================
 
 	// Guard: --clone cannot be used with --source or --from
@@ -219,7 +217,7 @@ async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<
 		throw new ValidationError(
 			"--clone cannot be used with --source or --from.\n\n" +
 				"Use one of:\n" +
-				"  ocx profile add <name> --clone <profile>        # Clone existing profile\n" +
+				"  ocx profile add <name> --clone <profile> --global   # Clone existing profile\n" +
 				"  ocx profile add <name> --source <ns/comp> --global  # Install from registry",
 		)
 	}
@@ -276,7 +274,7 @@ async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<
 		throw new ValidationError(
 			`Invalid option: --from requires --source.\n\n` +
 				`Did you mean to clone a profile?\n\n` +
-				`  ocx profile add ${name} --clone ${fromValue}`,
+				`  ocx profile add ${name} --clone ${fromValue} --global`,
 		)
 	}
 
@@ -324,6 +322,18 @@ async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<
 	}
 
 	// ==========================================================================
+	// Guard: Local profiles are unsupported (catch-all after specific guards)
+	// ==========================================================================
+	if (!options.global) {
+		throw new ConfigError(
+			"Local profiles are unsupported. Use --global to create a global profile.\n\n" +
+				`  ocx profile add ${name} --global`,
+		)
+	}
+
+	const scope = "global" as const
+
+	// ==========================================================================
 	// Route to appropriate handler
 	// ==========================================================================
 
@@ -331,7 +341,7 @@ async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<
 
 	// Route: --clone (profile cloning)
 	if (options.clone) {
-		await cloneFromLocalProfile(manager, name, options.clone, options.global ?? false, quiet)
+		await cloneFromGlobalProfile(manager, name, options.clone, quiet)
 		return {
 			name,
 			scope,
@@ -382,7 +392,7 @@ async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<
 	}
 
 	// Route: No options (empty profile creation)
-	await createEmptyProfile(manager, name, options.global ?? false, quiet)
+	await createEmptyProfile(manager, name, quiet)
 
 	return {
 		name,
@@ -397,45 +407,42 @@ async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<
 async function createEmptyProfile(
 	manager: ProfileManager,
 	name: string,
-	global: boolean,
 	quiet: boolean,
 ): Promise<void> {
-	const exists = await manager.exists(name, global)
+	const exists = await manager.exists(name)
 	if (exists) {
-		throw new ProfileExistsError(name, `Remove it first with 'ocx profile rm ${name}'.`)
+		throw new ProfileExistsError(name, `Remove it first with 'ocx profile rm ${name} --global'.`)
 	}
-	await manager.add(name, global)
-	const scope = global ? "global" : "local"
+	await manager.add(name)
 	if (!quiet) {
-		logger.success(`Created ${scope} profile "${name}"`)
+		logger.success(`Created global profile "${name}"`)
 	}
 }
 
 /**
- * Clone settings from an existing local profile.
+ * Clone settings from an existing global profile.
  */
-async function cloneFromLocalProfile(
+async function cloneFromGlobalProfile(
 	manager: ProfileManager,
 	name: string,
 	sourceName: string,
-	global: boolean,
 	quiet: boolean,
 ): Promise<void> {
 	// Guard: check if target profile already exists (Fail Fast)
-	const exists = await manager.exists(name, global)
+	const exists = await manager.exists(name)
 	if (exists) {
-		throw new ProfileExistsError(name, `Remove it first with 'ocx profile rm ${name}'.`)
+		throw new ProfileExistsError(name, `Remove it first with 'ocx profile rm ${name} --global'.`)
 	}
 
-	// Load source from same scope as target
+	// Load source from global scope
 	try {
-		await manager.get(sourceName, global)
+		await manager.get(sourceName)
 	} catch (error) {
 		// Re-throw known errors with enhanced scope context
 		if (error instanceof ProfileNotFoundError) {
 			throw new ProfileNotFoundError(
 				sourceName,
-				`Profile '${sourceName}' not found in ${global ? "global" : "local"} scope.`,
+				`Profile '${sourceName}' not found in global scope.`,
 			)
 		}
 		if (error instanceof OCXError) {
@@ -447,17 +454,14 @@ async function cloneFromLocalProfile(
 		)
 	}
 
-	await manager.add(name, global)
+	await manager.add(name)
 
 	// Copy OCX config from source (byte-for-byte)
-	const sourceOcxPath = global
-		? getProfileOcxConfig(sourceName)
-		: getLocalProfileOcxConfig(sourceName)
-	const targetOcxPath = global ? getProfileOcxConfig(name) : getLocalProfileOcxConfig(name)
+	const sourceOcxPath = getProfileOcxConfig(sourceName)
+	const targetOcxPath = getProfileOcxConfig(name)
 	await atomicCopy(sourceOcxPath, targetOcxPath)
 
-	const scope = global ? "global" : "local"
 	if (!quiet) {
-		logger.success(`Created ${scope} profile "${name}" (cloned from "${sourceName}")`)
+		logger.success(`Created global profile "${name}" (cloned from "${sourceName}")`)
 	}
 }

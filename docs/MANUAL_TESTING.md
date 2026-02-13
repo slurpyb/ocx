@@ -1077,32 +1077,32 @@ All subcommands from CLI.md lines 879-1153.
 
 ### 10.4 `ocx profile add work` (Empty Profile)
 
-- [ ] **Setup:** Local config initialized
+- [ ] **Setup:** Global profiles initialized
 - [ ] **Commands:**
   ```bash
-  $OCX_BIN profile add work
+  $OCX_BIN profile add work --global
   # Pin to free Zen model for manual testing
-  echo '{"model": "opencode/big-pickle", "small_model": "opencode/big-pickle"}' > .opencode/profiles/work/opencode.jsonc
+  echo '{"model": "opencode/big-pickle", "small_model": "opencode/big-pickle"}' > $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc
   ```
-- [ ] **Expected:** Creates new empty profile with template files and model pins
+- [ ] **Expected:** Creates new global profile with template files and model pins
 - [ ] **Verify:**
   ```bash
-  $OCX_BIN p ls  # Should show work
-  ls .opencode/profiles/work/
-  cat .opencode/profiles/work/opencode.jsonc  # Should contain model pins
+  $OCX_BIN p ls --global  # Should show work
+  ls $XDG_CONFIG_HOME/opencode/profiles/work/
+  cat $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc  # Should contain model pins
   ```
 - [ ] **Last tested:** _v2.0.0 on 2026-02-12_
 
 ### 10.5 `ocx profile add` Clone from Existing
 
-- [ ] **Setup:** Profile "work" exists
-- [ ] **Command:** `$OCX_BIN profile add client-x --clone work`
+- [ ] **Setup:** Global profile "work" exists
+- [ ] **Command:** `$OCX_BIN profile add client-x --clone work --global`
 - [ ] **Expected:** Clones work profile to client-x
 - [ ] **Verify:**
   ```bash
-  $OCX_BIN p ls  # Should show both work and client-x
-  diff .opencode/profiles/work/ocx.jsonc \
-       .opencode/profiles/client-x/ocx.jsonc
+  $OCX_BIN p ls --global  # Should show both work and client-x
+  diff $XDG_CONFIG_HOME/opencode/profiles/work/ocx.jsonc \
+       $XDG_CONFIG_HOME/opencode/profiles/client-x/ocx.jsonc
   ```
 - [ ] **Last tested:** _v2.0.0 on 2026-02-12_
 
@@ -1148,27 +1148,28 @@ All subcommands from CLI.md lines 879-1153.
 
 ### 10.9 `ocx p add` (Alias)
 
-- [ ] **Setup:** Local config initialized
-- [ ] **Command:** `$OCX_BIN p add personal`
-- [ ] **Expected:** Creates new profile (same as `profile add`)
+- [ ] **Setup:** Global profiles initialized
+- [ ] **Command:** `$OCX_BIN p add personal --global`
+- [ ] **Expected:** Creates new global profile (same as `profile add --global`)
 - [ ] **Verify:**
   ```bash
-  $OCX_BIN p ls  # Should show personal
+  $OCX_BIN p ls --global  # Should show personal
+  ls $XDG_CONFIG_HOME/opencode/profiles/personal/
   ```
 - [ ] **Last tested:** _v2.0.0 on 2026-02-12_
 
-### 10.10 `ocx profile remove work` (Local Default)
+### 10.10 `ocx profile remove work` (Global)
 
-- [ ] **Setup:** Local profile "work" exists
+- [ ] **Setup:** Global profile "work" exists
 - [ ] **Commands:**
   ```bash
-  $OCX_BIN profile add work  # Create local profile first
-  $OCX_BIN profile remove work
+  $OCX_BIN profile add work --global  # Create global profile first
+  $OCX_BIN profile remove work --global
   ```
-- [ ] **Expected:** Deletes local profile immediately (no confirmation)
+- [ ] **Expected:** Deletes global profile immediately (no confirmation)
 - [ ] **Verify:**
   ```bash
-  ls .opencode/profiles/  # work/ should be gone
+  ls $XDG_CONFIG_HOME/opencode/profiles/  # work/ should be gone
   ```
 - [ ] **Last tested:** _v2.0.0 on 2026-02-12_
 
@@ -1203,18 +1204,18 @@ All subcommands from CLI.md lines 879-1153.
   ```
 - [ ] **Last tested:** _v2.0.0 on 2026-02-12_
 
-### 10.13 `ocx profile move work client-work` (Local Default)
+### 10.13 `ocx profile move work client-work` (Global)
 
-- [ ] **Setup:** Local profile "work" exists
+- [ ] **Setup:** Global profile "work" exists
 - [ ] **Commands:**
   ```bash
-  $OCX_BIN profile add work  # Ensure local work profile exists
-  $OCX_BIN profile move work client-work
+  $OCX_BIN profile add work --global  # Ensure global work profile exists
+  $OCX_BIN profile move work client-work --global
   ```
-- [ ] **Expected:** Renames local profile from work to client-work
+- [ ] **Expected:** Renames global profile from work to client-work
 - [ ] **Verify:**
   ```bash
-  ls .opencode/profiles/  # client-work/ exists, work/ gone
+  ls $XDG_CONFIG_HOME/opencode/profiles/  # client-work/ exists, work/ gone
   ```
 - [ ] **Last tested:** _v2.0.0 on 2026-02-12_
 
@@ -1751,72 +1752,100 @@ From PROFILES.md - advanced profile behaviors.
 - [ ] **Verify:** Profile AGENTS.md overrides project
 - [ ] **Last tested:** _v2.0.0 on 2026-02-12_
 
-### 13.11 Local vs Global Profile Distinction
+### 13.11 Global-Only Profile Model
 
-#### Test: Default creates local profile
-- [ ] **Setup:** In a project directory with `.opencode/` initialized
-- [ ] **Commands:**
-  ```bash
-  # Cleanup: remove test-local profile from prior runs to avoid collisions
-  rm -rf .opencode/profiles/test-local $XDG_CONFIG_HOME/opencode/profiles/test-local
-  $OCX_BIN profile add test-local
-  ```
-- [ ] **Expected:** Creates local profile at `.opencode/profiles/test-local/`
-- [ ] **Verify:**
-  ```bash
-  ls .opencode/profiles/test-local/  # Should exist
-  ls $XDG_CONFIG_HOME/opencode/profiles/test-local/  # Should NOT exist
-  ```
+Profiles are now global-only. All profile commands require `--global` flag or operate on the global profile directory by default. Local profile directories (`.opencode/profiles/*`) are not supported.
 
-#### Test: --global creates global profile
+#### Test: Profile add requires --global flag
+- [ ] **Setup:** In a project directory without global initialization
+- [ ] **Command:** `$OCX_BIN profile add test-local`
+- [ ] **Expected:** Fails with error requiring `--global` flag
+- [ ] **Verify:** Error message indicates profiles are global-only and `--global` is required
+
+#### Test: Profile list requires --global flag
+- [ ] **Setup:** No global profiles initialized
+- [ ] **Command:** `$OCX_BIN profile list`
+- [ ] **Expected:** Fails with error requiring `--global` flag
+- [ ] **Verify:** Error message indicates `--global` is required
+
+#### Test: Creates global profile with --global flag
 - [ ] **Setup:** Global config initialized
 - [ ] **Commands:**
   ```bash
   # Cleanup: remove test-global profile from prior runs to avoid collisions
-  rm -rf .opencode/profiles/test-global $XDG_CONFIG_HOME/opencode/profiles/test-global
+  rm -rf $XDG_CONFIG_HOME/opencode/profiles/test-global
   $OCX_BIN profile add test-global --global
   ```
 - [ ] **Expected:** Creates global profile at `$XDG_CONFIG_HOME/opencode/profiles/test-global/`
 - [ ] **Verify:**
   ```bash
   ls $XDG_CONFIG_HOME/opencode/profiles/test-global/  # Should exist
-  ls .opencode/profiles/test-global/  # Should NOT exist
   ```
 
-#### Test: ocx profile list shows only global profiles
-- [ ] **Setup:** Both local and global profiles exist
+#### Test: ocx profile list --global shows global profiles
+- [ ] **Setup:** Global profiles exist
 - [ ] **Command:** `$OCX_BIN profile list --global`
-- [ ] **Expected:** Shows only global profiles, not local ones
-- [ ] **Verify:** Local profile name should NOT appear in list
+- [ ] **Expected:** Shows all global profiles
+- [ ] **Verify:** Output contains expected profile names
 
-#### Test: Profile merging when both global and local exist
-- [ ] **Setup:** Create both global and local profiles with same name
+### 13.12 Negative Tests: Local Profile Hard-Fail
+
+These tests verify that local profile usage produces hard errors.
+
+#### Test: profile add without --global fails
+- [ ] **Setup:** Fresh environment, no global init
+- [ ] **Command:** `$OCX_BIN profile add local-profile`
+- [ ] **Expected:** Hard error with message indicating `--global` flag is required
+- [ ] **Verify:**
+  - Exit code is non-zero
+  - Error message mentions `--global` flag requirement
+  - No `.opencode/profiles/` directory is created
+
+#### Test: profile list without --global fails
+- [ ] **Setup:** Fresh environment
+- [ ] **Command:** `$OCX_BIN profile list`
+- [ ] **Expected:** Hard error requiring `--global` flag
+- [ ] **Verify:**
+  - Exit code is non-zero
+  - Error message indicates profiles are global-only
+
+#### Test: profile remove without --global fails
+- [ ] **Setup:** Fresh environment
+- [ ] **Command:** `$OCX_BIN profile remove some-profile`
+- [ ] **Expected:** Hard error requiring `--global` flag
+- [ ] **Verify:**
+  - Exit code is non-zero
+  - Error message indicates `--global` is required
+
+#### Test: profile move without --global fails
+- [ ] **Setup:** Fresh environment
+- [ ] **Command:** `$OCX_BIN profile move old new`
+- [ ] **Expected:** Hard error requiring `--global` flag
+- [ ] **Verify:**
+  - Exit code is non-zero
+  - Error message indicates `--global` is required
+
+#### Test: profile show without --global fails (when no local profile exists)
+- [ ] **Setup:** Fresh environment
+- [ ] **Command:** `$OCX_BIN profile show some-profile`
+- [ ] **Expected:** Hard error requiring `--global` flag
+- [ ] **Verify:**
+  - Exit code is non-zero
+  - Error message indicates `--global` is required
+
+#### Test: No local profiles directory is created
+- [ ] **Setup:** Run any profile command without --global in a project
 - [ ] **Commands:**
   ```bash
-  # Cleanup: remove test profile from prior runs to avoid collisions
-  rm -rf .opencode/profiles/test $XDG_CONFIG_HOME/opencode/profiles/test
-  $OCX_BIN init --global
-  $OCX_BIN profile add test --global
-  # Add to global profile ocx.jsonc: {"registries": {"global-reg": {"url": "https://global.com"}}}
-  echo '{"registries": {"global-reg": {"url": "https://global.com"}}}' > $XDG_CONFIG_HOME/opencode/profiles/test/ocx.jsonc
-
   cd /tmp/ocx-v2-test-project
-  # Idempotent: init only if local config does not exist (sequential runs)
   test -f .opencode/ocx.jsonc || $OCX_BIN init
-  # Clear any lingering local profile override from earlier sections (local config wins over -p)
-  echo '{}' > .opencode/ocx.jsonc
-  $OCX_BIN profile add test  # Local with same name (local is default)
-  # Verify local profile directory exists before writing
-  test -d .opencode/profiles/test && echo "OK: Local profile directory exists" || echo "FAIL: Local profile directory missing"
-  # Add to local profile ocx.jsonc: {"registries": {"local-reg": {"url": "https://local.com"}}}
-  echo '{"registries": {"local-reg": {"url": "https://local.com"}}}' > .opencode/profiles/test/ocx.jsonc
-
-  $OCX_BIN config show -p test
+  $OCX_BIN profile add test 2>/dev/null || true
   ```
-- [ ] **Expected:** Both registries appear in merged config
+- [ ] **Expected:** Command fails and no `.opencode/profiles/` directory exists
 - [ ] **Verify:**
-  - Config contains both `global-reg` and `local-reg`
-  - Deep merge occurred (not simple replacement)
+  ```bash
+  test -d .opencode/profiles && echo "FAIL: profiles dir exists" || echo "OK: No local profiles"
+  ```
 
 ---
 
@@ -1900,8 +1929,8 @@ Common errors from CLI.md error tables.
 
 ### 14.8 Error: Profile Not Found (Move)
 
-- [ ] **Setup:** Profiles initialized
-- [ ] **Command:** `$OCX_BIN profile move nonexistent new-name`
+- [ ] **Setup:** Global profiles initialized
+- [ ] **Command:** `$OCX_BIN profile move nonexistent new-name --global`
 - [ ] **Expected:** Error: "Profile 'nonexistent' not found"
 - [ ] **Verify:** Exit code 66 (NOT_FOUND)
 - [ ] **Last tested:** _v2.0.0 on 2026-02-12_
@@ -1953,17 +1982,18 @@ Master summary for full test sessions.
 - [ ] ocx search (Section 7): 7 test cases
 - [ ] ocx registry (Section 8): 10 test cases
 - [ ] ocx build (Section 9): 4 test cases
-- [ ] ocx profile (Section 10): 19 test cases
+- [ ] ocx profile (Section 10): 15 test cases (revised for global-only model)
 - [ ] ocx config (Section 11): 7 test cases
 - [ ] ocx opencode (Section 12): 12 test cases
 
 ### 15.3 Profile System Verified
 
-- [ ] Profile Layering (Section 13): 11 test cases
+- [ ] Profile Layering (Section 13): 6 test cases (revised for global-only model)
 
 ### 15.4 Error Paths Verified
 
 - [ ] Common Errors (Section 14): 10 test cases
+- [ ] Negative Profile Tests (Section 13.12): 6 test cases
 
 ### 15.5 Documentation Sync
 

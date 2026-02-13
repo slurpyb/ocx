@@ -67,7 +67,7 @@ Profiles control what OpenCode sees through `exclude`/`include` patterns. Each p
 | `ocx profile add <name> --source <registry/profile> --from <url> --global` | Install a profile from a registry |
 | `ocx profile add <name> --clone <existing> --global` | Clone an existing profile |
 | `ocx oc -p <name>` | Launch OpenCode with a profile |
-| `ocx profile list` | List your profiles |
+| `ocx profile list --global` | List your profiles |
 | `ocx config edit --global` | Edit your global config |
 
 **[Full CLI Reference →](./docs/CLI.md)**

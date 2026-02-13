@@ -10,6 +10,7 @@ import * as fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { ConfigResolver } from "../../src/config/resolver"
+import { getLocalProfileDir } from "../../src/profile/paths"
 import {
 	ConfigError,
 	ProfileNotFoundError,
@@ -264,6 +265,27 @@ describe("ConfigResolver", () => {
 
 			const resolver = await ConfigResolver.create(tmp.path)
 			expect(() => resolver.resolve()).toThrow(ConfigError)
+		})
+
+		// =============================================================================
+		// PHASE 1 RED: Local profile directory presence must trigger hard error
+		// =============================================================================
+
+		it("hard errors when local .opencode/profiles/<name> directory exists", async () => {
+			await using tmp = await tmpdir({
+				git: true,
+				profile: { name: "work", ocxConfig: { registries: {} } },
+			})
+
+			// Create a LOCAL profile directory — this should be unsupported and cause a hard error
+			const localProfileDir = getLocalProfileDir("work", tmp.path)
+			await fs.mkdir(localProfileDir, { recursive: true })
+			await Bun.write(path.join(localProfileDir, "ocx.jsonc"), JSON.stringify({ registries: {} }))
+
+			// ConfigResolver.create should throw because local profiles are unsupported
+			await expect(ConfigResolver.create(tmp.path, { profile: "work" })).rejects.toThrow(
+				/local.*profile.*unsupported|local.*profile.*not.*allowed/i,
+			)
 		})
 
 		it("does not swallow corrupted implicit default profile", async () => {

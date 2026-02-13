@@ -103,7 +103,7 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 
 	if (profileExists) {
 		throw new ConflictError(
-			`Profile "${profileName}" already exists. Remove it first with 'ocx profile rm ${profileName}'.`,
+			`Profile "${profileName}" already exists. Remove it first with 'ocx profile rm ${profileName} --global'.`,
 		)
 	}
 
@@ -133,7 +133,7 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 		fetchSpin?.fail(`Invalid component type`)
 		throw new ValidationError(
 			`Component "${qualifiedName}" is type "${manifest.type}", not "profile".\n\n` +
-				`Only profile components can be installed with 'ocx profile add --from'.`,
+				`Only profile components can be installed with 'ocx profile add --source <ns/comp> --global'.`,
 		)
 	}
 

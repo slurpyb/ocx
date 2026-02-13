@@ -122,7 +122,7 @@ describe("Error Cases", () => {
 			const globalDir = await mkdtemp(join(tmpdir(), "ocx-global-"))
 			try {
 				await runCLI(["init", "--global"], testDir, { env: { XDG_CONFIG_HOME: globalDir } })
-				const result = await runCLI(["profile", "show", "nonexistent"], testDir, {
+				const result = await runCLI(["profile", "show", "nonexistent", "--global"], testDir, {
 					env: { XDG_CONFIG_HOME: globalDir },
 				})
 				expect(result.exitCode).toBe(66) // NOT_FOUND error
@@ -195,9 +195,13 @@ describe("Error Cases", () => {
 			const globalDir = await mkdtemp(join(tmpdir(), "ocx-global-"))
 			try {
 				await runCLI(["init", "--global"], testDir, { env: { XDG_CONFIG_HOME: globalDir } })
-				const result = await runCLI(["profile", "show", "nonexistent", "--json"], testDir, {
-					env: { XDG_CONFIG_HOME: globalDir },
-				})
+				const result = await runCLI(
+					["profile", "show", "nonexistent", "--global", "--json"],
+					testDir,
+					{
+						env: { XDG_CONFIG_HOME: globalDir },
+					},
+				)
 				expect(result.exitCode).toBe(66)
 				const json = expectJsonError(result.stdout, {
 					code: "NOT_FOUND",

@@ -30,77 +30,22 @@ Each profile lives in `~/.config/opencode/profiles/<name>/` and contains:
 3. **Context switching** - Maintain separate configs for work, personal, clients
 4. **Zero footprint** - No `.opencode/` directory pollution in projects
 
-## Local vs Global Profiles
+## Global Profiles
 
-By default, `ocx profile add` creates a **local** profile in `.opencode/profiles/<name>/`.
-For portable profiles that work across repositories, use the `--global` flag:
+Profiles are **global-only**. The `--global` flag is required for all profile commands; local profiles are not supported.
 
 ```bash
-# Local profile (project-specific, layers over global)
-ocx profile add myprofile
-
-# Global profile (portable, reusable across repos)  
+# Create a global profile (portable, reusable across repos)
 ocx profile add myprofile --global
-```
-
-### Profile Layering
-
-When a local profile has the same name as a global profile, they **merge together**:
-- Global profile provides base settings
-- Local profile overlays on top (local wins on conflicts)
-
-This enables per-project customization of global profiles without modifying the original.
-
-**Most use cases only need global profiles.** Local profiles are for advanced per-project customization.
-
-## Profile Layering Behavior
-
-When using `-p work` (or `OCX_PROFILE=work`), OCX checks for:
-
-1. **Global profile**: `~/.config/opencode/profiles/work/` (base layer)
-2. **Local profile**: `.opencode/profiles/work/` (overlay layer, optional)
-
-If both exist, they are **deeply merged**:
-
-| Type | Merge Behavior |
-|------|---------------|
-| Objects (registries) | Deep merge (local adds to/overrides global) |
-| Arrays (exclude/include) | Local replaces global completely |
-| `plugin[]`, `instructions[]` | Concatenated + deduplicated |
-| Scalars | Local wins |
-
-**Example:**
-
-```jsonc
-// Global: ~/.config/opencode/profiles/work/ocx.jsonc
-{
-  "exclude": ["**/CLAUDE.md"],
-  "registries": { "kdco": { "url": "https://registry.kdco.dev" } }
-}
-
-// Local: .opencode/profiles/work/ocx.jsonc
-{
-  "exclude": ["**/CLAUDE.md", "**/AGENTS.md"],
-  "registries": { "internal": { "url": "https://internal.company.com" } }
-}
-
-// Merged result when using -p work:
-{
-  "exclude": ["**/CLAUDE.md", "**/AGENTS.md"],  // Local replaces
-  "registries": {
-    "kdco": { "url": "https://registry.kdco.dev" },      // From global
-    "internal": { "url": "https://internal.company.com" } // From local (added)
-  }
-}
 ```
 
 ### Profile Selection Priority
 
 Profiles are resolved in this order:
 
-1. `--profile <name>` / `-p <name>` flag (explicit override)
-2. `OCX_PROFILE` environment variable
-3. `profile` field in `.opencode/ocx.jsonc` (project-specific profile)
+1. `profile` field in `.opencode/ocx.jsonc` (project-specific profile)
+2. `--profile <name>` / `-p <name>` flag (explicit override)
+3. `OCX_PROFILE` environment variable
 4. `default` profile (if it exists)
 5. No profile (base configs only)
 
@@ -195,8 +140,7 @@ OCX discovers instruction files in this exact order (low to high priority), matc
 | ----- | --------------- | -------------------------------------------- | -------- | --------- |
 | 1     | Global          | `~/.config/opencode/AGENTS.md`                 | Lowest   | Always included |
 | 2     | Global Profile  | `~/.config/opencode/profiles/<name>/AGENTS.md` | ↓        | Always included |
-| 3     | Local (Project) | `./AGENTS.md`, `./src/AGENTS.md`, etc.         | ↓        | Filtered by patterns |
-| 4     | Local Profile   | `.opencode/profiles/<name>/AGENTS.md`          | Highest  | Always included |
+| 3     | Local (Project) | `./AGENTS.md`, `./src/AGENTS.md`, etc.         | Highest  | Filtered by patterns |
 
 **Discovery details:**
 - Local project files are discovered **deepest-first** (walking up from current directory to git root)
@@ -251,11 +195,11 @@ ocx opencode  # Uses ~/.config/opencode/profiles/default/ if exists
 
 | Command | Alias | Description |
 |---------|-------|-------------|
-| `ocx profile list` | `ocx p ls` | List all global profiles |
-| `ocx profile add <name>` | `ocx p add` | Create new profile or install from registry |
-| `ocx profile remove <name>` | `ocx p rm` | Delete profile |
-| `ocx profile move <old> <new>` | `ocx p mv` | Rename a profile |
-| `ocx profile show [name]` | `ocx p show` | Display profile contents |
+| `ocx profile list --global` | `ocx p ls --global` | List all global profiles |
+| `ocx profile add <name> --global` | `ocx p add` | Create new profile or install from registry |
+| `ocx profile remove <name> --global` | `ocx p rm` | Delete profile |
+| `ocx profile move <old> <new> --global` | `ocx p mv` | Rename a profile |
+| `ocx profile show [name] --global` | `ocx p show` | Display profile contents |
 
 ### Creating Profiles
 
@@ -288,36 +232,36 @@ ocx profile add client-x --clone work --global
 **List all profiles:**
 
 ```bash
-ocx profile list
+ocx profile list --global
 # or
-ocx p ls
+ocx p ls --global
 ```
 
 **View profile contents:**
 
 ```bash
-ocx profile show work
+ocx profile show work --global
 # or
-ocx p show work
+ocx p show work --global
 
 # Show active profile (from resolution)
-ocx p show
+ocx p show --global
 ```
 
 **Rename a profile:**
 
 ```bash
-ocx profile move work work-old
+ocx profile move work work-old --global
 # or
-ocx p mv work work-old
+ocx p mv work work-old --global
 ```
 
 **Delete a profile:**
 
 ```bash
-ocx profile remove work-old
+ocx profile remove work-old --global
 # or
-ocx p rm work-old
+ocx p rm work-old --global
 ```
 
 ## Config Commands
@@ -445,21 +389,15 @@ You can specify which profile to use in your project's `.opencode/ocx.jsonc`:
 }
 ```
 
-This enables profile layering: the global `work` profile provides defaults, and the local config can override settings.
+This uses the global `work` profile when working in this project.
 
 ## Configuration Isolation
 
 ### Configuration Merging
 
-**OCX configs (`ocx.jsonc`) merge when using profiles:**
-- Global profile `ocx.jsonc` (base layer)
-- Local profile `ocx.jsonc` (overlay layer, if exists)
-- Deep merge with local winning on conflicts
-
 **OpenCode configs (`opencode.jsonc`) cascade:**
 1. Global profile's `opencode.jsonc`
-2. Local profile's `opencode.jsonc` (if exists, deep merged)
-3. Local `.opencode/opencode.jsonc` (if not excluded, deep merged)
+2. Local `.opencode/opencode.jsonc` (if not excluded, deep merged)
 
 **Registry Isolation:**
 Global base config registries (`~/.config/opencode/ocx.jsonc`) are ONLY used for downloading profiles, never for components.
@@ -590,10 +528,10 @@ ocx profile add client-new --clone work --global
 ocx config edit -p client-new
 ```
 
-## Key Differences from Local Mode
+## Key Differences: Project Config vs Profile Mode
 
-| Aspect | Local Mode | Profile Mode |
-|--------|------------|--------------|
+| Aspect | Project Config | Profile Mode |
+|--------|----------------|--------------|
 | Config location | `./.opencode/` | `~/.config/opencode/profiles/<name>/` |
 | Modifies repo | Yes | No |
 | Per-project settings | Yes | Profile-isolated |
@@ -602,7 +540,7 @@ ocx config edit -p client-new
 | Registry scope | Project-only | Profile-isolated |
 | Best for | Single project customization | Multi-project workflows |
 
-**When to use local mode:**
+**When to use project config:**
 - Project has its own component registry
 - Team shares `.opencode/` in version control
 - Project-specific OpenCode settings
