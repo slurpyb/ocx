@@ -10,11 +10,9 @@
 import type { Command } from "commander"
 import { ConfigResolver } from "../config/resolver"
 import { getProfileDir, getProfileOpencodeConfig } from "../profile/paths"
-import { ConfigError } from "../utils/errors"
 import { getGitInfo } from "../utils/git-context"
 import { handleError, logger } from "../utils/index"
 import { getGlobalConfigPath } from "../utils/paths"
-import { resolveConfigPatterns } from "../utils/resolve-config"
 import {
 	formatTerminalName,
 	restoreTerminalTitle,
@@ -76,7 +74,8 @@ export function resolveOpenCodeBinary(opts: { configBin?: string; envBin?: strin
  *   (profileName is provided). When no profile, project config is NOT disabled.
  * - OPENCODE_CONFIG_DIR: when profile active → profile-specific dir;
  *   when no profile → global config dir (XDG-aware)
- * - configContent is a pre-serialized JSON string (already token-resolved)
+ * - configContent is a pre-serialized JSON string; upstream OpenCode handles
+ *   {env:...} / {file:...} token resolution in OPENCODE_CONFIG_CONTENT
  */
 export function buildOpenCodeEnv(opts: {
 	baseEnv: Record<string, string | undefined>
@@ -216,22 +215,7 @@ async function runOpencode(args: string[], options: OpencodeOptions): Promise<vo
 	})
 
 	// Spawn OpenCode directly in the project directory with config via environment
-	// TODO: Remove resolveConfigPatterns() call once upstream OpenCode resolves
-	// {env:...} / {file:...} tokens in OPENCODE_CONFIG_CONTENT.
-	const configContent = configToPass
-		? resolveConfigPatterns(JSON.stringify(configToPass), getGlobalConfigPath())
-		: undefined
-
-	// Validate resolved config is still valid JSON after token substitution
-	if (configContent) {
-		try {
-			JSON.parse(configContent)
-		} catch {
-			throw new ConfigError(
-				"Resolved config content is not valid JSON. Check that {env:...} and {file:...} token values do not break JSON syntax.",
-			)
-		}
-	}
+	const configContent = configToPass ? JSON.stringify(configToPass) : undefined
 
 	proc = Bun.spawn({
 		cmd: [bin, ...args],
