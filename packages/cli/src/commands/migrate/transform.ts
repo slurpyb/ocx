@@ -20,6 +20,7 @@ export type MigrateStatus =
 	| "nothing_to_migrate"
 	| "already_v2"
 	| "preview"
+	| "preview_with_errors"
 	| "migrated"
 	| "partial_failure"
 

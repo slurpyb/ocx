@@ -95,8 +95,24 @@ async function runGlobalMigrate(options: MigrateOptions): Promise<void> {
 		const targetResults: TargetResult[] = []
 
 		for (const { label, path: targetPath } of targets) {
-			const result = await analyzeTarget(targetPath, true)
-			targetResults.push({ ...result, target: label })
+			try {
+				const result = await analyzeTarget(targetPath, true)
+				targetResults.push({ ...result, target: label })
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				targetResults.push({
+					target: label,
+					status: "error",
+					count: 0,
+					components: [],
+					configActions: [],
+					error: errorMessage,
+				})
+
+				if (!options.json && !options.quiet) {
+					logger.error(`[global:${label}] Preview failed: ${errorMessage}`)
+				}
+			}
 		}
 
 		const aggregated = aggregateResults(targetResults, "global", false)
@@ -317,7 +333,7 @@ function aggregateResults(
 
 	let overallStatus: MigrateResult["status"]
 	if (hasError) {
-		overallStatus = isApply ? "partial_failure" : "preview"
+		overallStatus = isApply ? "partial_failure" : "preview_with_errors"
 	} else if (allAlready) {
 		// Distinguish between "all already_v2" vs "all nothing_to_migrate"
 		const allNothing = targetResults.every((t) => t.status === "nothing_to_migrate")
@@ -558,7 +574,13 @@ function logGlobalPreview(targetResults: TargetResult[], aggregated: MigrateResu
 	}
 
 	logger.break()
-	logger.info("No changes made. Run with --apply to perform migration.")
+
+	if (aggregated.status === "preview_with_errors") {
+		logger.warn("[global] Preview completed with errors on some targets. See above for details.")
+		logger.info("No changes made. Run with --apply to perform migration.")
+	} else {
+		logger.info("No changes made. Run with --apply to perform migration.")
+	}
 }
 
 function logGlobalApplySummary(targetResults: TargetResult[], hasFailure: boolean): void {

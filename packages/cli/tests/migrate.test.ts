@@ -1575,4 +1575,115 @@ describe("ocx migrate", () => {
 			expect(json.status).toBeDefined()
 		})
 	})
+
+	// =========================================================================
+	// Global preview per-target error handling
+	// =========================================================================
+
+	describe("global preview per-target error handling", () => {
+		it("should log per-target error detail in non-JSON preview mode", async () => {
+			await using tmp = await tmpdir({ git: true })
+
+			// Root: valid setup with lock
+			await setupGlobalDir(tmp.path)
+
+			// Profile "conflict": has ocx.jsonc in BOTH root AND .opencode/
+			// This causes findOcxConfig to throw a conflict error
+			const profilesDir = join(tmp.path, "profiles")
+			await mkdir(profilesDir, { recursive: true })
+			const conflictDir = join(profilesDir, "conflict")
+			await mkdir(conflictDir, { recursive: true })
+			await writeFile(
+				join(conflictDir, "ocx.jsonc"),
+				JSON.stringify({ registries: { kdco: { url: "https://ocx.kdco.dev" } } }, null, 2),
+			)
+			const conflictDotOpencode = join(conflictDir, ".opencode")
+			await mkdir(conflictDotOpencode, { recursive: true })
+			await writeFile(
+				join(conflictDotOpencode, "ocx.jsonc"),
+				JSON.stringify({ registries: { kdco: { url: "https://ocx.kdco.dev" } } }, null, 2),
+			)
+			await writeFile(join(conflictDir, "ocx.lock"), createLegacyLock())
+
+			// Preview mode without --json: should log error detail for the failed target
+			const { exitCode, output } = await runCLI(
+				["migrate", "--global", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			// Should contain the target label and error message in output
+			expect(output).toContain("profile:conflict")
+			expect(output).toContain("Preview failed")
+			expect(output).toContain("consolidate")
+		})
+
+		it("should not abort whole preview when one target throws (dual config conflict)", async () => {
+			await using tmp = await tmpdir({ git: true })
+
+			// Root: valid setup with lock
+			await setupGlobalDir(tmp.path)
+
+			// Profile "good": valid setup with lock
+			const profilesDir = join(tmp.path, "profiles")
+			await mkdir(profilesDir, { recursive: true })
+			const goodDir = join(profilesDir, "good")
+			await mkdir(goodDir, { recursive: true })
+			await writeFile(
+				join(goodDir, "ocx.jsonc"),
+				JSON.stringify({ registries: { kdco: { url: "https://ocx.kdco.dev" } } }, null, 2),
+			)
+			await writeFile(join(goodDir, "ocx.lock"), createLegacyLock())
+
+			// Profile "conflict": has ocx.jsonc in BOTH root AND .opencode/
+			// This causes findOcxConfig to throw a conflict error
+			const conflictDir = join(profilesDir, "conflict")
+			await mkdir(conflictDir, { recursive: true })
+			await writeFile(
+				join(conflictDir, "ocx.jsonc"),
+				JSON.stringify({ registries: { kdco: { url: "https://ocx.kdco.dev" } } }, null, 2),
+			)
+			const conflictDotOpencode = join(conflictDir, ".opencode")
+			await mkdir(conflictDotOpencode, { recursive: true })
+			await writeFile(
+				join(conflictDotOpencode, "ocx.jsonc"),
+				JSON.stringify({ registries: { kdco: { url: "https://ocx.kdco.dev" } } }, null, 2),
+			)
+			await writeFile(join(conflictDir, "ocx.lock"), createLegacyLock())
+
+			// Preview mode with --json: should NOT abort
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+
+			// Top-level status should reflect preview-with-errors
+			expect(json.success).toBe(false)
+			expect(json.status).toBe("preview_with_errors")
+
+			// The conflict target should have status: "error"
+			const conflictTarget = json.targets.find(
+				(t: { target: string }) => t.target === "profile:conflict",
+			)
+			expect(conflictTarget).toBeDefined()
+			expect(conflictTarget.status).toBe("error")
+			expect(conflictTarget.error).toBeDefined()
+			expect(conflictTarget.error).toContain("consolidate")
+			expect(conflictTarget.count).toBe(0)
+
+			// The good profile should still be processed
+			const goodTarget = json.targets.find((t: { target: string }) => t.target === "profile:good")
+			expect(goodTarget).toBeDefined()
+			expect(goodTarget.status).toBe("preview")
+			expect(goodTarget.count).toBe(2)
+
+			// Root should also be processed
+			const rootTarget = json.targets.find((t: { target: string }) => t.target === "root")
+			expect(rootTarget).toBeDefined()
+			expect(rootTarget.status).toBe("preview")
+		})
+	})
 })
