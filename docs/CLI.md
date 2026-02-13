@@ -42,6 +42,7 @@ All other options use long-form only. This keeps the CLI predictable and reduces
 - [`ocx verify`](#ocx-verify) - Verify component integrity
 - [`ocx registry`](#ocx-registry) - Manage registries (local-first)
 - [`ocx build`](#ocx-build) - Build a registry from source
+- [`ocx migrate`](#ocx-migrate) - Migrate legacy ocx.lock to V2 receipt format
 - [`ocx self update`](#ocx-self-update) - Update OCX to latest version
 - [`ocx self uninstall`](#ocx-self-uninstall) - Remove OCX configuration and binary
 - [`ocx profile`](#ocx-profile) - Manage global profiles
@@ -642,6 +643,46 @@ my-registry/
 | Error | Cause | Solution |
 |-------|-------|----------|
 | Build errors | Invalid registry.jsonc or missing files | Check error messages for details |
+
+---
+
+## ocx migrate
+
+Migrate a legacy `ocx.lock` project to the V2 `.ocx/receipt.jsonc` format.
+
+### Usage
+
+```bash
+ocx migrate [options]
+```
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--apply` | Apply migration (default is dry-run preview) |
+| `--cwd <path>` | Working directory (default: current directory) |
+| `--json` | Output as JSON |
+| `-q, --quiet` | Suppress output |
+
+### Behavior
+
+- **Default (no flags):** Dry-run preview. Shows which components would be migrated without writing any files.
+- **`--apply`:** Writes `.ocx/receipt.jsonc` and renames the legacy `ocx.lock` to `ocx.lock.bak` (or `ocx.lock.bak.N` if `.bak` already exists).
+- **Already migrated:** If `.ocx/receipt.jsonc` already exists, prints "Already migrated to V2 receipt format." and exits 0 without modifying files.
+
+### Examples
+
+```bash
+# Dry-run: see what would be migrated
+ocx migrate
+
+# Apply migration
+ocx migrate --apply
+
+# Verify integrity after migration
+ocx verify
+```
 
 ---
 

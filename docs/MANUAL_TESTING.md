@@ -336,7 +336,7 @@ Test cases from README.md lines 34-53.
 
 ## 3. README: Quick Start Components
 
-Test cases from README.md lines 75-90.
+Test cases from README.md lines 77-94.
 
 ### 3.1 `ocx init` (Local)
 
@@ -1046,7 +1046,7 @@ All variations from CLI.md lines 559-645.
 
 ## 10. CLI Reference: ocx profile
 
-All subcommands from CLI.md lines 879-1153.
+All subcommands from CLI.md lines 919-1193.
 
 ### 10.1 `ocx profile list`
 
@@ -1314,7 +1314,7 @@ All subcommands from CLI.md lines 879-1153.
 
 ## 11. CLI Reference: ocx config
 
-All subcommands from CLI.md lines 1156-1260.
+All subcommands from CLI.md lines 1196-1300.
 
 ### 11.1 `ocx config show` (Current Scope)
 
@@ -1385,7 +1385,7 @@ All subcommands from CLI.md lines 1156-1260.
 
 ## 12. CLI Reference: ocx opencode
 
-All variations from CLI.md lines 1263-1397.
+All variations from CLI.md lines 1303-1437.
 
 ### 12.1 `ocx opencode` (Default Profile)
 
@@ -1965,16 +1965,58 @@ Common errors from CLI.md error tables.
 
 ---
 
-## 15. Verification Checklist
+## 15. CLI Reference: ocx migrate
+
+Smoke tests for the v1.4.6 → v2 receipt migration command.
+
+### 15.1 Preview Mode (No Writes)
+
+- [x] **Setup:** Project with legacy `ocx.lock` (at `.opencode/ocx.lock` or root `ocx.lock`; install a component with an older OCX version, or create a minimal v1 lock file manually)
+- [x] **Command:** `$OCX_BIN migrate`
+- [x] **Expected:** Prints migration plan without modifying any files
+- [x] **Verify:**
+  ```bash
+  # Files must be unchanged after preview
+  md5sum .opencode/ocx.lock  # Same hash as before command
+  test ! -f .ocx/receipt.jsonc && echo "OK: No receipt created" || echo "FAIL: receipt.jsonc should not exist yet"
+  ```
+- [x] **Last tested:** _v2.0.0 on 2026-02-12_
+
+### 15.2 Apply Migration
+
+- [x] **Setup:** Same v1 project as 15.1 (re-create if needed)
+- [x] **Command:** `$OCX_BIN migrate --apply`
+- [x] **Expected:** Creates `.ocx/receipt.jsonc` and backs up lock file to `.bak` (or `.bak.N` if `.bak` already exists)
+- [x] **Verify:**
+  ```bash
+  test -f .ocx/receipt.jsonc && echo "OK: receipt.jsonc created" || echo "FAIL: receipt.jsonc missing"
+  ls .opencode/ocx.lock.bak* 2>/dev/null && echo "OK: lock backup exists" || echo "FAIL: lock backup missing"
+  ```
+- [x] **Last tested:** _v2.0.0 on 2026-02-12_
+
+### 15.3 Rerun Is Safe (Already Migrated)
+
+- [x] **Setup:** Project already migrated (Section 15.2 completed)
+- [x] **Command:** `$OCX_BIN migrate --apply`
+- [x] **Expected:** Prints "Already migrated to V2 receipt format." and exits 0 without modifying files
+- [x] **Verify:**
+  ```bash
+  cat .ocx/receipt.jsonc  # Should be unchanged from 15.2
+  ```
+- [x] **Last tested:** _v2.0.0 on 2026-02-12_
+
+---
+
+## 16. Verification Checklist
 
 Master summary for full test sessions.
 
-### 15.1 All README Commands Verified
+### 16.1 All README Commands Verified
 
 - [ ] Quick Start Profiles (Section 2): 6 test cases
 - [ ] Quick Start Components (Section 3): 4 test cases
 
-### 15.2 All CLI.md Commands Verified
+### 16.2 All CLI.md Commands Verified
 
 - [ ] ocx init (Section 4): 8 test cases
 - [ ] ocx add (Section 5): 11 test cases
@@ -1986,16 +2028,20 @@ Master summary for full test sessions.
 - [ ] ocx config (Section 11): 7 test cases
 - [ ] ocx opencode (Section 12): 12 test cases
 
-### 15.3 Profile System Verified
+### 16.3 Profile System Verified
 
 - [ ] Profile Layering (Section 13): 6 test cases (revised for global-only model)
 
-### 15.4 Error Paths Verified
+### 16.4 Error Paths Verified
 
 - [ ] Common Errors (Section 14): 10 test cases
 - [ ] Negative Profile Tests (Section 13.12): 6 test cases
 
-### 15.5 Documentation Sync
+### 16.5 Migration Verified
+
+- [x] ocx migrate (Section 15): 3 test cases
+
+### 16.6 Documentation Sync
 
 - [ ] All README examples tested
 - [ ] All CLI.md examples tested
@@ -2005,11 +2051,11 @@ Master summary for full test sessions.
 
 ---
 
-## 16. Sync Checklist
+## 17. Sync Checklist
 
 For maintainability when commands change.
 
-### 16.1 When to Update This Document
+### 17.1 When to Update This Document
 
 - [ ] New command added to CLI
 - [ ] New option added to existing command
@@ -2018,32 +2064,33 @@ For maintainability when commands change.
 - [ ] Before major releases
 - [ ] After significant refactoring
 
-### 16.2 Cross-Reference Links
+### 17.2 Cross-Reference Links
 
 | Section | Source Document | Lines |
 |---------|----------------|-------|
 | Section 2 | [README.md](../README.md) | 34-53 |
-| Section 3 | [README.md](../README.md) | 75-90 |
+| Section 3 | [README.md](../README.md) | 77-94 |
 | Section 4 | [CLI.md](./CLI.md) | 53-91 |
 | Section 5 | [CLI.md](./CLI.md) | 94-147 |
 | Section 6 | [CLI.md](./CLI.md) | 195-244 |
 | Section 7 | [CLI.md](./CLI.md) | 247-320 |
 | Section 8 | [CLI.md](./CLI.md) | 362-556 |
 | Section 9 | [CLI.md](./CLI.md) | 559-645 |
-| Section 10 | [CLI.md](./CLI.md) | 879-1153 |
-| Section 11 | [CLI.md](./CLI.md) | 1156-1260 |
-| Section 12 | [CLI.md](./CLI.md) | 1263-1397 |
+| Section 10 | [CLI.md](./CLI.md) | 919-1193 |
+| Section 11 | [CLI.md](./CLI.md) | 1196-1300 |
+| Section 12 | [CLI.md](./CLI.md) | 1303-1437 |
 | Section 13 | [PROFILES.md](./PROFILES.md) | Full document |
 | Section 14 | [CLI.md](./CLI.md) | Error tables throughout |
+| Section 15 | [README.md](../README.md), [CLI.md](./CLI.md) | 96-104, 649-687 |
 
-### 16.3 Version Tracking
+### 17.3 Version Tracking
 
 - [ ] Update `ocx_version` in metadata after testing
 - [ ] Update `last_full_test` date when complete session finishes
 - [ ] Note platform tested (macOS, Linux)
 - [ ] Track any skipped tests and reasons
 
-### 16.4 Automated Test Coverage
+### 17.4 Automated Test Coverage
 
 For reference, automated tests exist in:
 
@@ -2088,8 +2135,8 @@ When adding new test cases:
 2. Include checkbox for QA tracking
 3. Add "Last tested" placeholder
 4. Reference source documentation (file + line numbers)
-5. Update Section 15 verification checklist
-6. Update Section 16 sync checklist with cross-references
+5. Update Section 16 verification checklist
+6. Update Section 17 sync checklist with cross-references
 
 ### Exit Codes Reference
 

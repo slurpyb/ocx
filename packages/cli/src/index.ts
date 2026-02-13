@@ -11,6 +11,7 @@ import { registerAddCommand } from "./commands/add"
 import { registerBuildCommand } from "./commands/build"
 import { registerConfigCommand } from "./commands/config/index"
 import { registerInitCommand } from "./commands/init"
+import { registerMigrateCommand } from "./commands/migrate/index"
 import { registerOpencodeCommand } from "./commands/opencode"
 import { registerProfileCommand } from "./commands/profile/index"
 import { registerRegistryCommand } from "./commands/registry"
@@ -44,6 +45,9 @@ async function main() {
 	// V2: Receipt-based component management
 	registerVerifyCommand(program)
 	registerRemoveCommand(program)
+
+	// Migration
+	registerMigrateCommand(program)
 
 	// New top-level commands (Phase 5)
 	registerProfileCommand(program)
