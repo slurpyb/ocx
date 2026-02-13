@@ -196,10 +196,10 @@ ocx opencode  # Uses ~/.config/opencode/profiles/default/ if exists
 | Command | Alias | Description |
 |---------|-------|-------------|
 | `ocx profile list --global` | `ocx p ls --global` | List all global profiles |
-| `ocx profile add <name> --global` | `ocx p add` | Create new profile or install from registry |
-| `ocx profile remove <name> --global` | `ocx p rm` | Delete profile |
-| `ocx profile move <old> <new> --global` | `ocx p mv` | Rename a profile |
-| `ocx profile show [name] --global` | `ocx p show` | Display profile contents |
+| `ocx profile add <name> --global` | `ocx p add <name> --global` | Create new profile or install from registry |
+| `ocx profile remove <name> --global` | `ocx p rm <name> --global` | Delete profile |
+| `ocx profile move <old> <new> --global` | `ocx p mv <old> <new> --global` | Rename a profile |
+| `ocx profile show [name] --global` | `ocx p show [name] --global` | Display profile contents |
 
 ### Creating Profiles
 

@@ -1754,7 +1754,7 @@ From PROFILES.md - advanced profile behaviors.
 
 ### 13.11 Global-Only Profile Model
 
-Profiles are now global-only. All profile commands require `--global` flag or operate on the global profile directory by default. Local profile directories (`.opencode/profiles/*`) are not supported.
+Profiles are global-only. All profile commands require the `--global` flag. Local profile directories (`.opencode/profiles/*`) are not supported.
 
 #### Test: Profile add requires --global flag
 - [ ] **Setup:** In a project directory without global initialization
