@@ -1998,7 +1998,7 @@ Smoke tests for the v1.4.6 → v2 receipt migration command.
 
 - [x] **Setup:** Project already migrated (Section 15.2 completed)
 - [x] **Command:** `$OCX_BIN migrate --apply`
-- [x] **Expected:** Prints "Already migrated to V2 receipt format." and exits 0 without modifying files
+- [x] **Expected:** Prints "Already migrated to receipt format (.ocx/receipt.jsonc)." and exits 0 without modifying files
 - [x] **Verify:**
   ```bash
   cat .ocx/receipt.jsonc  # Should be unchanged from 15.2

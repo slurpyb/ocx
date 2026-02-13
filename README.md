@@ -95,7 +95,7 @@ See [Components & Registries](./docs/REGISTRIES.md) for more.
 
 ### Upgrading from v1.4.6
 
-If you have an existing v1.4.6 project, migrate to the v2 receipt format:
+If you have an existing v1.4.6 project, migrate to the receipt format (`.ocx/receipt.jsonc`):
 
 ```bash
 ocx migrate          # Dry-run: shows what would be migrated (no files written)

@@ -1,7 +1,7 @@
 /**
  * OCX CLI - migrate command
  *
- * Converts legacy ocx.lock state to V2 .ocx/receipt.jsonc format.
+ * Converts legacy ocx.lock state to .ocx/receipt.jsonc format.
  * Default: preview/dry-run (no writes). Use --apply to perform migration.
  */
 
@@ -29,7 +29,7 @@ export interface MigrateOptions {
 export function registerMigrateCommand(program: Command): void {
 	program
 		.command("migrate")
-		.description("Migrate legacy ocx.lock to V2 receipt format")
+		.description("Migrate legacy ocx.lock to receipt format (.ocx/receipt.jsonc)")
 		.option("--apply", "Apply migration (default is dry-run preview)")
 		.option("--json", "Output as JSON")
 		.option("-q, --quiet", "Suppress output")
@@ -68,7 +68,7 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
 		}
 
 		if (!options.quiet) {
-			logger.success("Already migrated to V2 receipt format.")
+			logger.success("Already migrated to receipt format (.ocx/receipt.jsonc).")
 		}
 		return
 	}
@@ -163,7 +163,7 @@ async function runMigrate(options: MigrateOptions): Promise<void> {
 	}
 
 	if (!options.quiet) {
-		logger.success(`Migrated ${count} component(s) to V2 receipt format.`)
+		logger.success(`Migrated ${count} component(s) to receipt format (.ocx/receipt.jsonc).`)
 		logger.break()
 
 		for (const comp of components) {
