@@ -2,7 +2,8 @@
  * Migration module: Legacy ocx.lock → V2 .ocx/receipt.jsonc
  *
  * Isolated transform logic for converting v1.4.6 lock entries into
- * canonical receipt entries. No side effects — pure data transform.
+ * canonical receipt entries, plus registry config normalization.
+ * No side effects — pure data transform.
  */
 
 import type { InstalledComponent, OcxConfig, OcxLock, Receipt } from "../../schemas/config"
@@ -13,11 +14,21 @@ import { ConfigError } from "../../utils/errors"
 // TYPES
 // =============================================================================
 
+export type MigrateScope = "local" | "global"
+
 export type MigrateStatus = "nothing_to_migrate" | "already_v2" | "preview" | "migrated"
+
+/** Describes a single registry config normalization action */
+export interface ConfigNormalizationAction {
+	registry: string
+	field: string
+	action: "remove_deprecated"
+}
 
 export interface MigrateResult {
 	success: boolean
 	status: MigrateStatus
+	scope: MigrateScope
 	count: number
 	components: Array<{
 		legacyKey: string
@@ -25,6 +36,7 @@ export interface MigrateResult {
 		name: string
 		registryName: string
 	}>
+	configActions: ConfigNormalizationAction[]
 }
 
 // =============================================================================
@@ -140,4 +152,53 @@ export function buildReceiptFromLock(
 	}
 
 	return { receipt, components }
+}
+
+// =============================================================================
+// REGISTRY CONFIG NORMALIZATION (Pure, deterministic)
+// =============================================================================
+
+/** Known deprecated fields from legacy v1.4.6 registry config */
+const DEPRECATED_REGISTRY_FIELDS = ["version"] as const
+
+/**
+ * Detect deprecated `version` fields in registry config entries.
+ *
+ * Legacy v1.4.6 allowed `registries.<alias>.version` for pinning.
+ * Current schema only allows `url` and `headers`. This function
+ * inspects raw config data (pre-Zod-parse) to find deprecated keys.
+ *
+ * Pure function: returns planned actions, never mutates.
+ *
+ * @param rawConfig - Raw config object (may contain extra keys stripped by Zod)
+ * @returns Array of normalization actions to apply
+ */
+export function detectConfigNormalization(
+	rawConfig: Record<string, unknown>,
+): ConfigNormalizationAction[] {
+	const registries = rawConfig.registries
+	if (!registries || typeof registries !== "object" || Array.isArray(registries)) {
+		return []
+	}
+
+	const actions: ConfigNormalizationAction[] = []
+	const registryMap = registries as Record<string, unknown>
+
+	for (const alias of Object.keys(registryMap).sort()) {
+		const entry = registryMap[alias]
+		if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue
+
+		const entryRecord = entry as Record<string, unknown>
+		for (const field of DEPRECATED_REGISTRY_FIELDS) {
+			if (field in entryRecord) {
+				actions.push({
+					registry: alias,
+					field,
+					action: "remove_deprecated",
+				})
+			}
+		}
+	}
+
+	return actions
 }

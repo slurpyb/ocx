@@ -3,7 +3,8 @@
  *
  * TDD: Tests written first to define the migration contract.
  * Covers: help registration, no-op states, dry-run preview,
- * apply write+backup, json output, rerun idempotency.
+ * apply write+backup, json output, rerun idempotency,
+ * --global scope, registry config normalization.
  */
 
 import { describe, expect, it } from "bun:test"
@@ -49,7 +50,7 @@ function createLegacyLock(overrides?: {
 /** Set up a project with ocx.jsonc config containing registries */
 async function setupProjectWithConfig(
 	dir: string,
-	registries?: Record<string, { url: string }>,
+	registries?: Record<string, { url: string; version?: string }>,
 ): Promise<void> {
 	const configDir = join(dir, ".opencode")
 	await mkdir(configDir, { recursive: true })
@@ -74,6 +75,45 @@ async function writeLegacyLock(dir: string, content?: string): Promise<string> {
 	return lockPath
 }
 
+/**
+ * Set up a global-like directory structure for --global tests.
+ * Global mode uses flattened paths (lock at root, config at .opencode/).
+ */
+async function setupGlobalDir(
+	dir: string,
+	options?: {
+		registries?: Record<string, { url: string; version?: string }>
+		lock?: string | false
+		receipt?: boolean
+	},
+): Promise<void> {
+	const configDir = join(dir, ".opencode")
+	await mkdir(configDir, { recursive: true })
+
+	// Create .git directory for git-root detection
+	await mkdir(join(dir, ".git"), { recursive: true })
+
+	const registries = options?.registries ?? {
+		kdco: { url: "https://ocx.kdco.dev" },
+	}
+	await writeFile(join(configDir, "ocx.jsonc"), JSON.stringify({ registries }, null, 2))
+
+	// Global mode: lock at root (flattened)
+	if (options?.lock !== false) {
+		const lockContent = options?.lock ?? createLegacyLock()
+		await writeFile(join(dir, "ocx.lock"), lockContent)
+	}
+
+	if (options?.receipt) {
+		const receiptDir = join(dir, ".ocx")
+		await mkdir(receiptDir, { recursive: true })
+		await writeFile(
+			join(receiptDir, "receipt.jsonc"),
+			JSON.stringify({ version: 1, installed: {} }, null, 2),
+		)
+	}
+}
+
 // =============================================================================
 // Command registration
 // =============================================================================
@@ -95,6 +135,14 @@ describe("ocx migrate", () => {
 			expect(exitCode).toBe(0)
 			expect(output).toContain("--apply")
 			expect(output).toContain("--json")
+		})
+
+		it("should show --global in migrate command help", async () => {
+			await using tmp = await tmpdir({ git: true })
+			const { exitCode, output } = await runCLI(["migrate", "--help"], tmp.path)
+
+			expect(exitCode).toBe(0)
+			expect(output).toContain("--global")
 		})
 	})
 
@@ -603,6 +651,499 @@ describe("ocx migrate", () => {
 			expect(oldBakContent).toBe("old backup content")
 			// New backup should be at .bak.1
 			expect(existsSync(`${lockPath}.bak.1`)).toBe(true)
+		})
+	})
+
+	// =========================================================================
+	// --global scope
+	// =========================================================================
+
+	describe("--global scope", () => {
+		it("should show nothing-to-migrate for empty global dir", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path, { lock: false })
+
+			const { exitCode, output } = await runCLI(
+				["migrate", "--global", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			expect(output.toLowerCase()).toContain("nothing to migrate")
+			// Should indicate global scope
+			expect(output.toLowerCase()).toContain("global")
+		})
+
+		it("should show already_v2 when global receipt exists and no deprecated config", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path, { lock: false, receipt: true })
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			expect(json.success).toBe(true)
+			expect(json.status).toBe("already_v2")
+			expect(json.scope).toBe("global")
+		})
+
+		it("should preview global lock migration without writing", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path)
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			expect(json.success).toBe(true)
+			expect(json.status).toBe("preview")
+			expect(json.scope).toBe("global")
+			expect(json.count).toBe(2)
+
+			// No receipt should be created
+			expect(existsSync(join(tmp.path, ".ocx", "receipt.jsonc"))).toBe(false)
+			// Lock should still exist at root (flattened)
+			expect(existsSync(join(tmp.path, "ocx.lock"))).toBe(true)
+		})
+
+		it("should apply global migration and create receipt + .bak", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path)
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--apply", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			expect(json.success).toBe(true)
+			expect(json.status).toBe("migrated")
+			expect(json.scope).toBe("global")
+			expect(json.count).toBe(2)
+
+			// Receipt should exist
+			expect(existsSync(join(tmp.path, ".ocx", "receipt.jsonc"))).toBe(true)
+
+			// Lock at root should be renamed to .bak
+			expect(existsSync(join(tmp.path, "ocx.lock"))).toBe(false)
+			expect(existsSync(join(tmp.path, "ocx.lock.bak"))).toBe(true)
+		})
+
+		it("should handle non-colliding .bak in global mode", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path)
+
+			// Pre-create .bak at root
+			await writeFile(join(tmp.path, "ocx.lock.bak"), "old backup")
+
+			const { exitCode } = await runCLI(
+				["migrate", "--global", "--apply", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			// Original lock gone
+			expect(existsSync(join(tmp.path, "ocx.lock"))).toBe(false)
+			// Old .bak preserved
+			const oldBak = await readFile(join(tmp.path, "ocx.lock.bak"), "utf-8")
+			expect(oldBak).toBe("old backup")
+			// New backup at .bak.1
+			expect(existsSync(join(tmp.path, "ocx.lock.bak.1"))).toBe(true)
+		})
+
+		it("should be idempotent on global rerun", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path)
+
+			// First apply
+			const first = await runCLI(["migrate", "--global", "--apply", "--cwd", tmp.path], tmp.path)
+			expect(first.exitCode).toBe(0)
+
+			// Second apply
+			const second = await runCLI(
+				["migrate", "--global", "--apply", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+			expect(second.exitCode).toBe(0)
+			const json = JSON.parse(second.stdout)
+			expect(json.status).toBe("already_v2")
+			expect(json.scope).toBe("global")
+		})
+	})
+
+	// =========================================================================
+	// Local mode unchanged without --global
+	// =========================================================================
+
+	describe("local mode unchanged without --global", () => {
+		it("should use local scope by default", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupProjectWithConfig(tmp.path)
+			await writeLegacyLock(tmp.path)
+
+			const { exitCode, stdout } = await runCLI(["migrate", "--json"], tmp.path)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			expect(json.scope).toBe("local")
+		})
+
+		it("should not pick up root-level lock without --global", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupProjectWithConfig(tmp.path)
+			// Put lock at root only (flattened style), not in .opencode/
+			await writeFile(join(tmp.path, "ocx.lock"), createLegacyLock())
+
+			const { exitCode, stdout } = await runCLI(["migrate", "--json"], tmp.path)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			// Local mode finds root lock as fallback, so it should see it
+			// (findOcxLock checks .opencode/ first, then root)
+			expect(json.scope).toBe("local")
+		})
+	})
+
+	// =========================================================================
+	// Registry config normalization
+	// =========================================================================
+
+	describe("registry config normalization", () => {
+		it("should detect deprecated version field in preview", async () => {
+			await using tmp = await tmpdir({ git: true })
+			// Config with legacy v1.4.6 version field
+			await setupProjectWithConfig(tmp.path, {
+				kdco: { url: "https://ocx.kdco.dev", version: "1.4.6" },
+			})
+
+			const { exitCode, stdout } = await runCLI(["migrate", "--json"], tmp.path)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			expect(json.success).toBe(true)
+			expect(json.configActions).toBeDefined()
+			expect(Array.isArray(json.configActions)).toBe(true)
+			expect(json.configActions.length).toBe(1)
+			expect(json.configActions[0].registry).toBe("kdco")
+			expect(json.configActions[0].field).toBe("version")
+			expect(json.configActions[0].action).toBe("remove_deprecated")
+		})
+
+		it("should not modify config file during preview", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupProjectWithConfig(tmp.path, {
+				kdco: { url: "https://ocx.kdco.dev", version: "1.4.6" },
+			})
+
+			const configPath = join(tmp.path, ".opencode", "ocx.jsonc")
+			const before = await readFile(configPath, "utf-8")
+
+			await runCLI(["migrate"], tmp.path)
+
+			const after = await readFile(configPath, "utf-8")
+			expect(after).toBe(before)
+		})
+
+		it("should remove deprecated version field on --apply", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupProjectWithConfig(tmp.path, {
+				kdco: { url: "https://ocx.kdco.dev", version: "1.4.6" },
+			})
+
+			const { exitCode } = await runCLI(["migrate", "--apply"], tmp.path)
+
+			expect(exitCode).toBe(0)
+
+			const configPath = join(tmp.path, ".opencode", "ocx.jsonc")
+			const config = parseJsonc(await readFile(configPath, "utf-8")) as {
+				registries: Record<string, Record<string, unknown>>
+			}
+
+			// version field should be gone
+			expect(config.registries.kdco.url).toBe("https://ocx.kdco.dev")
+			expect("version" in config.registries.kdco).toBe(false)
+		})
+
+		it("should be idempotent on config normalization rerun", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupProjectWithConfig(tmp.path, {
+				kdco: { url: "https://ocx.kdco.dev", version: "1.4.6" },
+			})
+
+			// First apply (normalizes config + shows no lock migration since no lock)
+			const first = await runCLI(["migrate", "--apply", "--json"], tmp.path)
+			expect(first.exitCode).toBe(0)
+			const firstJson = JSON.parse(first.stdout)
+			expect(firstJson.status).toBe("migrated")
+			expect(firstJson.configActions.length).toBe(1)
+
+			// Second apply (should find nothing to normalize, no lock, no receipt)
+			const second = await runCLI(["migrate", "--apply", "--json"], tmp.path)
+			expect(second.exitCode).toBe(0)
+			const secondJson = JSON.parse(second.stdout)
+			expect(secondJson.status).toBe("nothing_to_migrate")
+			expect(secondJson.configActions.length).toBe(0)
+		})
+
+		it("should handle multiple registries with version fields", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupProjectWithConfig(tmp.path, {
+				kdco: { url: "https://ocx.kdco.dev", version: "1.4.6" },
+				acme: { url: "https://acme.example.com", version: "2.0.0" },
+			})
+
+			const { exitCode, stdout } = await runCLI(["migrate", "--json"], tmp.path)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			expect(json.configActions.length).toBe(2)
+
+			// Should be sorted by alias
+			expect(json.configActions[0].registry).toBe("acme")
+			expect(json.configActions[1].registry).toBe("kdco")
+		})
+
+		it("should report no config actions when config has no deprecated fields", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupProjectWithConfig(tmp.path)
+			await writeLegacyLock(tmp.path)
+
+			const { exitCode, stdout } = await runCLI(["migrate", "--json"], tmp.path)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			expect(json.configActions).toEqual([])
+		})
+
+		it("should normalize config even when receipt already exists", async () => {
+			await using tmp = await tmpdir({ git: true })
+			// Config with deprecated version field
+			await setupProjectWithConfig(tmp.path, {
+				kdco: { url: "https://ocx.kdco.dev", version: "1.4.6" },
+			})
+
+			// Create receipt (already migrated)
+			const receiptDir = join(tmp.path, ".ocx")
+			await mkdir(receiptDir, { recursive: true })
+			await writeFile(
+				join(receiptDir, "receipt.jsonc"),
+				JSON.stringify({ version: 1, installed: {} }, null, 2),
+			)
+
+			// Preview should show config normalization needed
+			const { exitCode, stdout } = await runCLI(["migrate", "--json"], tmp.path)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			expect(json.status).toBe("preview")
+			expect(json.configActions.length).toBe(1)
+		})
+
+		it("should apply config normalization even when receipt already exists", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupProjectWithConfig(tmp.path, {
+				kdco: { url: "https://ocx.kdco.dev", version: "1.4.6" },
+			})
+
+			// Create receipt
+			const receiptDir = join(tmp.path, ".ocx")
+			await mkdir(receiptDir, { recursive: true })
+			await writeFile(
+				join(receiptDir, "receipt.jsonc"),
+				JSON.stringify({ version: 1, installed: {} }, null, 2),
+			)
+
+			const { exitCode, stdout } = await runCLI(["migrate", "--apply", "--json"], tmp.path)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			expect(json.status).toBe("migrated")
+			expect(json.configActions.length).toBe(1)
+
+			// Config should be normalized
+			const configPath = join(tmp.path, ".opencode", "ocx.jsonc")
+			const config = parseJsonc(await readFile(configPath, "utf-8")) as {
+				registries: Record<string, Record<string, unknown>>
+			}
+			expect("version" in config.registries.kdco).toBe(false)
+		})
+	})
+
+	// =========================================================================
+	// JSON output includes scope/action details
+	// =========================================================================
+
+	describe("JSON output contract", () => {
+		it("should include scope in all JSON outputs", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupProjectWithConfig(tmp.path)
+
+			// nothing_to_migrate
+			const { stdout } = await runCLI(["migrate", "--json"], tmp.path)
+			const json = JSON.parse(stdout)
+			expect(json.scope).toBe("local")
+		})
+
+		it("should include configActions array in all JSON outputs", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupProjectWithConfig(tmp.path)
+
+			const { stdout } = await runCLI(["migrate", "--json"], tmp.path)
+			const json = JSON.parse(stdout)
+			expect(Array.isArray(json.configActions)).toBe(true)
+		})
+
+		it("should include scope=global in JSON when --global", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path, { lock: false })
+
+			const { stdout } = await runCLI(
+				["migrate", "--global", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+			const json = JSON.parse(stdout)
+			expect(json.scope).toBe("global")
+		})
+
+		it("should include configActions detail in JSON when normalization detected", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupProjectWithConfig(tmp.path, {
+				kdco: { url: "https://ocx.kdco.dev", version: "1.4.6" },
+			})
+
+			const { stdout } = await runCLI(["migrate", "--json"], tmp.path)
+			const json = JSON.parse(stdout)
+			expect(json.configActions.length).toBeGreaterThan(0)
+
+			const action = json.configActions[0]
+			expect(action).toHaveProperty("registry")
+			expect(action).toHaveProperty("field")
+			expect(action).toHaveProperty("action")
+		})
+	})
+
+	// =========================================================================
+	// --global + config normalization combined
+	// =========================================================================
+
+	describe("--global + config normalization", () => {
+		it("should apply both lock migration and config normalization in global scope", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path, {
+				registries: {
+					kdco: { url: "https://ocx.kdco.dev", version: "1.4.6" },
+				},
+			})
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--apply", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			expect(json.success).toBe(true)
+			expect(json.status).toBe("migrated")
+			expect(json.scope).toBe("global")
+			expect(json.count).toBe(2)
+			expect(json.configActions.length).toBe(1)
+			expect(json.configActions[0].registry).toBe("kdco")
+			expect(json.configActions[0].field).toBe("version")
+
+			// Config should be normalized
+			const configPath = join(tmp.path, ".opencode", "ocx.jsonc")
+			const config = parseJsonc(await readFile(configPath, "utf-8")) as {
+				registries: Record<string, Record<string, unknown>>
+			}
+			expect(config.registries.kdco.url).toBe("https://ocx.kdco.dev")
+			expect("version" in config.registries.kdco).toBe(false)
+
+			// Receipt should exist
+			expect(existsSync(join(tmp.path, ".ocx", "receipt.jsonc"))).toBe(true)
+			// Lock should be backed up
+			expect(existsSync(join(tmp.path, "ocx.lock"))).toBe(false)
+			expect(existsSync(join(tmp.path, "ocx.lock.bak"))).toBe(true)
+		})
+
+		it("should normalize global config without lock migration when receipt already exists", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path, {
+				registries: {
+					kdco: { url: "https://ocx.kdco.dev", version: "1.4.6" },
+				},
+				lock: false,
+				receipt: true,
+			})
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--apply", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			expect(json.status).toBe("migrated")
+			expect(json.scope).toBe("global")
+			expect(json.count).toBe(0)
+			expect(json.configActions.length).toBe(1)
+
+			// Config should be normalized
+			const configPath = join(tmp.path, ".opencode", "ocx.jsonc")
+			const config = parseJsonc(await readFile(configPath, "utf-8")) as {
+				registries: Record<string, Record<string, unknown>>
+			}
+			expect("version" in config.registries.kdco).toBe(false)
+		})
+	})
+
+	// =========================================================================
+	// JSONC comment preservation
+	// =========================================================================
+
+	describe("JSONC comment preservation", () => {
+		it("should preserve comments when removing deprecated fields", async () => {
+			await using tmp = await tmpdir({ git: true })
+			const configDir = join(tmp.path, ".opencode")
+			await mkdir(configDir, { recursive: true })
+			await mkdir(join(tmp.path, ".git"), { recursive: true })
+
+			// Write config with JSONC comments
+			const jsoncContent = `{
+  // Registry configuration
+  "registries": {
+    // Primary registry
+    "kdco": {
+      "url": "https://ocx.kdco.dev",
+      "version": "1.4.6" // deprecated, should be removed
+    }
+  }
+}
+`
+			await writeFile(join(configDir, "ocx.jsonc"), jsoncContent)
+
+			const { exitCode } = await runCLI(["migrate", "--apply"], tmp.path)
+			expect(exitCode).toBe(0)
+
+			const result = await readFile(join(configDir, "ocx.jsonc"), "utf-8")
+
+			// Comments should be preserved
+			expect(result).toContain("// Registry configuration")
+			expect(result).toContain("// Primary registry")
+
+			// Deprecated field should be removed
+			expect(result).not.toContain('"version"')
+			expect(result).not.toContain("1.4.6")
+
+			// URL should still be present
+			expect(result).toContain('"url"')
+			expect(result).toContain("https://ocx.kdco.dev")
 		})
 	})
 })

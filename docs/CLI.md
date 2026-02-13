@@ -661,27 +661,42 @@ ocx migrate [options]
 | Option | Description |
 |--------|-------------|
 | `--apply` | Apply migration (default is dry-run preview) |
+| `-g, --global` | Migrate global config (~/.config/opencode) instead of local project |
 | `--cwd <path>` | Working directory (default: current directory) |
 | `--json` | Output as JSON |
 | `-q, --quiet` | Suppress output |
 
 ### Behavior
 
+#### Local mode (default)
+
 - **Default (no flags):** Dry-run preview. Shows which components would be migrated without writing any files.
 - **`--apply`:** Writes `.ocx/receipt.jsonc` and renames the legacy `ocx.lock` to `ocx.lock.bak` (or `ocx.lock.bak.N` if `.bak` already exists).
 - **Already migrated:** If `.ocx/receipt.jsonc` already exists, prints "Already migrated to receipt format (.ocx/receipt.jsonc)." and exits 0 without modifying files.
 
+#### Global mode (`--global`)
+
+- **`--global` (no `--apply`):** Dry-run preview of global config migration. Shows what would change without writing any files.
+- **`--global --apply`:** Applies migration to the global config scope (`~/.config/opencode`). Writes `.ocx/receipt.jsonc`, backs up the legacy lock file to `.bak` (or `.bak.N`), and normalizes legacy registry configuration (removes deprecated `registries.*.version` fields) when applicable.
+- **Already migrated:** If the global `.ocx/receipt.jsonc` already exists, prints the already-migrated message and exits 0 without modifying files.
+
 ### Examples
 
 ```bash
-# Dry-run: see what would be migrated
+# Dry-run: see what would be migrated (local)
 ocx migrate
 
-# Apply migration
+# Apply local migration
 ocx migrate --apply
 
 # Verify integrity after migration
 ocx verify
+
+# Dry-run: preview global config migration
+ocx migrate --global
+
+# Apply global config migration (receipt + lock backup + registry normalization)
+ocx migrate --global --apply
 ```
 
 ---

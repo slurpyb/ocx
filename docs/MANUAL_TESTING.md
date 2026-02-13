@@ -336,7 +336,7 @@ Test cases from README.md lines 34-53.
 
 ## 3. README: Quick Start Components
 
-Test cases from README.md lines 77-94.
+Test cases from README.md lines 79-96.
 
 ### 3.1 `ocx init` (Local)
 
@@ -1046,7 +1046,7 @@ All variations from CLI.md lines 559-645.
 
 ## 10. CLI Reference: ocx profile
 
-All subcommands from CLI.md lines 919-1193.
+All subcommands from CLI.md lines 933-1207.
 
 ### 10.1 `ocx profile list`
 
@@ -1314,7 +1314,7 @@ All subcommands from CLI.md lines 919-1193.
 
 ## 11. CLI Reference: ocx config
 
-All subcommands from CLI.md lines 1196-1300.
+All subcommands from CLI.md lines 1209-1314.
 
 ### 11.1 `ocx config show` (Current Scope)
 
@@ -1385,7 +1385,7 @@ All subcommands from CLI.md lines 1196-1300.
 
 ## 12. CLI Reference: ocx opencode
 
-All variations from CLI.md lines 1303-1437.
+All variations from CLI.md lines 1316-1448.
 
 ### 12.1 `ocx opencode` (Default Profile)
 
@@ -2005,6 +2005,59 @@ Smoke tests for the v1.4.6 → v2 receipt migration command.
   ```
 - [x] **Last tested:** _v2.0.0 on 2026-02-12_
 
+### 15.4 Global Preview Mode (No Writes)
+
+- [x] **Setup:** Global config with legacy `ocx.lock` (create a minimal v1 lock file at `$XDG_CONFIG_HOME/opencode/ocx.lock`)
+  ```bash
+  $OCX_BIN init --global 2>/dev/null || true
+  cat > $XDG_CONFIG_HOME/opencode/ocx.lock << 'EOF'
+  {"lockVersion":1,"installed":{"kdco/researcher":{"registry":"kdco","version":"1.0.0","hash":"abc123","files":[".opencode/agents/researcher.md"],"installedAt":"2025-06-01T00:00:00.000Z"}}}
+  EOF
+  echo '{"registries":{"kdco":{"url":"http://localhost:8787"}}}' > $XDG_CONFIG_HOME/opencode/ocx.jsonc
+  ```
+- [x] **Command:** `$OCX_BIN migrate --global`
+- [x] **Expected:** Prints migration plan without modifying any files
+- [x] **Verify:**
+  ```bash
+  test -f $XDG_CONFIG_HOME/opencode/ocx.lock && echo "OK: lock file unchanged" || echo "FAIL: lock file missing"
+  test ! -f $XDG_CONFIG_HOME/opencode/.ocx/receipt.jsonc && echo "OK: No receipt created" || echo "FAIL: receipt.jsonc should not exist yet"
+  ```
+- [x] **Last tested:** _v2.0.0 on 2026-02-13_
+
+### 15.5 Global Apply Migration
+
+- [x] **Setup:** Global config with legacy `ocx.lock` and a registry entry containing deprecated `version` field
+  ```bash
+  $OCX_BIN init --global 2>/dev/null || true
+  cat > $XDG_CONFIG_HOME/opencode/ocx.lock << 'EOF'
+  {"lockVersion":1,"installed":{"kdco/researcher":{"registry":"kdco","version":"1.0.0","hash":"abc123","files":[".opencode/agents/researcher.md"],"installedAt":"2025-06-01T00:00:00.000Z"}}}
+  EOF
+  # Add deprecated registries.*.version field to trigger normalization
+  echo '{"registries":{"kdco":{"url":"http://localhost:8787","version":"latest"}}}' > $XDG_CONFIG_HOME/opencode/ocx.jsonc
+  ```
+- [x] **Command:** `$OCX_BIN migrate --global --apply`
+- [x] **Expected:** Creates global `.ocx/receipt.jsonc`, backs up lock file to `.bak` (or `.bak.N`), and removes deprecated `registries.*.version` field from global config
+- [x] **Verify:**
+  ```bash
+  test -f $XDG_CONFIG_HOME/opencode/.ocx/receipt.jsonc && echo "OK: receipt.jsonc created" || echo "FAIL: receipt.jsonc missing"
+  ls $XDG_CONFIG_HOME/opencode/ocx.lock.bak* 2>/dev/null && echo "OK: lock backup exists" || echo "FAIL: lock backup missing"
+  # Verify deprecated version field was removed from registry config
+  cat $XDG_CONFIG_HOME/opencode/ocx.jsonc | grep -q '"version"' && echo "FAIL: deprecated version field still present" || echo "OK: version field removed"
+  ```
+- [x] **Last tested:** _v2.0.0 on 2026-02-13_
+
+### 15.6 Global Rerun Is Safe (Already Migrated)
+
+- [x] **Setup:** Global config already migrated (Section 15.5 completed)
+- [x] **Command:** `$OCX_BIN migrate --global --apply`
+- [x] **Expected:** Prints "Already migrated to receipt format (.ocx/receipt.jsonc)." and exits 0 without modifying files
+- [x] **Verify:**
+  ```bash
+  cat $XDG_CONFIG_HOME/opencode/.ocx/receipt.jsonc  # Should be unchanged from 15.5
+  cat $XDG_CONFIG_HOME/opencode/ocx.jsonc  # Should be unchanged from 15.5
+  ```
+- [x] **Last tested:** _v2.0.0 on 2026-02-13_
+
 ---
 
 ## 16. Verification Checklist
@@ -2039,7 +2092,7 @@ Master summary for full test sessions.
 
 ### 16.5 Migration Verified
 
-- [x] ocx migrate (Section 15): 3 test cases
+- [x] ocx migrate (Section 15): 6 test cases (3 local, 3 global)
 
 ### 16.6 Documentation Sync
 
@@ -2069,19 +2122,19 @@ For maintainability when commands change.
 | Section | Source Document | Lines |
 |---------|----------------|-------|
 | Section 2 | [README.md](../README.md) | 34-53 |
-| Section 3 | [README.md](../README.md) | 77-94 |
+| Section 3 | [README.md](../README.md) | 79-96 |
 | Section 4 | [CLI.md](./CLI.md) | 53-91 |
 | Section 5 | [CLI.md](./CLI.md) | 94-147 |
 | Section 6 | [CLI.md](./CLI.md) | 195-244 |
 | Section 7 | [CLI.md](./CLI.md) | 247-320 |
 | Section 8 | [CLI.md](./CLI.md) | 362-556 |
 | Section 9 | [CLI.md](./CLI.md) | 559-645 |
-| Section 10 | [CLI.md](./CLI.md) | 919-1193 |
-| Section 11 | [CLI.md](./CLI.md) | 1196-1300 |
-| Section 12 | [CLI.md](./CLI.md) | 1303-1437 |
+| Section 10 | [CLI.md](./CLI.md) | 933-1207 |
+| Section 11 | [CLI.md](./CLI.md) | 1209-1314 |
+| Section 12 | [CLI.md](./CLI.md) | 1316-1448 |
 | Section 13 | [PROFILES.md](./PROFILES.md) | Full document |
 | Section 14 | [CLI.md](./CLI.md) | Error tables throughout |
-| Section 15 | [README.md](../README.md), [CLI.md](./CLI.md) | 96-104, 649-687 |
+| Section 15 | [README.md](../README.md), [CLI.md](./CLI.md) | 98-113, 649-701 |
 
 ### 17.3 Version Tracking
 
