@@ -322,7 +322,14 @@ describe("self update --json curl strict output", () => {
 
 		const downloadedBytes = new Uint8Array([1, 2, 3])
 		const downloadedBinaryHash = createHash("sha256").update(downloadedBytes).digest("hex")
-		const checksumsContent = `${downloadedBinaryHash}  ocx-darwin-arm64\n${downloadedBinaryHash}  ocx-darwin-x64\n`
+		const checksumsContent = [
+			`${downloadedBinaryHash}  ocx-darwin-arm64`,
+			`${downloadedBinaryHash}  ocx-darwin-x64`,
+			`${downloadedBinaryHash}  ocx-linux-arm64`,
+			`${downloadedBinaryHash}  ocx-linux-x64`,
+			`${downloadedBinaryHash}  ocx-windows-x64.exe`,
+			"",
+		].join("\n")
 
 		spyOn(global, "fetch").mockImplementation(
 			mock(async (input: string | URL | Request) => {
