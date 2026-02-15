@@ -15,13 +15,18 @@ function clearCheckModuleCache(): void {
 
 /**
  * Dynamic import with cache busting to get fresh module state.
- * Required because checkForUpdate reads __VERSION__ at module load time.
+ *
+ * Uses a query-string cache buster with Bun.randomUUIDv7() to bypass any
+ * leaked mock.module registration from other test files (e.g. hook.test.ts).
+ * Bun treats each unique specifier as a separate module, so each unique
+ * query string always resolves to the REAL source, never a stale mock.
+ *
+ * The require.cache cleanup ensures the CommonJS side is also fresh.
  */
 async function importCheckModule() {
-	// Clear module cache to avoid cross-test mock poisoning
 	clearCheckModuleCache()
-
-	return import("../../src/self-update/check.js")
+	const uniqueId = Bun.randomUUIDv7()
+	return import(`../../src/self-update/check.js?t=${uniqueId}`)
 }
 
 // =============================================================================

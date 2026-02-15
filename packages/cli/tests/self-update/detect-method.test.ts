@@ -6,14 +6,32 @@
  * Focus is on testing return types and basic behavior.
  */
 
-import { describe, expect, it } from "bun:test"
+import { afterEach, describe, expect, it, mock } from "bun:test"
 import type { InstallMethod } from "../../src/self-update/detect-method"
-import {
-	detectInstallMethod,
-	getExecutablePath,
-	parseInstallMethod,
-} from "../../src/self-update/detect-method"
+
+// ---------------------------------------------------------------------------
+// Defense against leaked mock.module registrations from other test files.
+//
+// hook.test.ts mocks detect-method.js with inlined implementations.  If it
+// runs before this file (randomised order), Bun's mock.module registration
+// persists (mock.restore() is unreliable for module-level mocks).
+//
+// Dynamic import via a query-string cache buster ("?real") bypasses
+// mock.module matching entirely — Bun treats "detect-method.js?real" as a
+// different specifier from "detect-method.js", so we always get the real
+// module regardless of leaked mocks.
+// ---------------------------------------------------------------------------
+const { detectInstallMethod, getExecutablePath, parseInstallMethod } =
+	// @ts-expect-error TS2307 -- Bun resolves "?real" at runtime; TS has no declaration for query-string specifiers
+	await import("../../src/self-update/detect-method.js?real")
+
 import { SelfUpdateError } from "../../src/utils/errors"
+
+// Defensive cleanup: restore any mock.module registrations that may leak
+// between test files when running in randomised order.
+afterEach(() => {
+	mock.restore()
+})
 
 // =============================================================================
 // detectInstallMethod
