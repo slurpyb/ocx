@@ -502,6 +502,22 @@ async function runRegistryAddCore(
 	spin?.start()
 
 	try {
+		// Pre-validate registry indexes before resolution (fail fast on incompatible formats)
+		// This catches legacy/incompatible registries before individual component fetches,
+		// providing actionable errors instead of confusing packument parse failures.
+		const requestedRegistries = new Set<string>()
+		for (const name of componentNames) {
+			const { namespace } = parseQualifiedComponent(name)
+			requestedRegistries.add(namespace)
+		}
+
+		for (const registryAlias of requestedRegistries) {
+			const registryConfig = effectiveRegistries[registryAlias]
+			if (registryConfig) {
+				await fetchRegistryIndex(registryConfig.url)
+			}
+		}
+
 		// Resolve all dependencies across all configured registries
 		const resolved = await resolveDependencies(effectiveRegistries, componentNames)
 

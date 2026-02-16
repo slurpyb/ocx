@@ -743,3 +743,114 @@ describe("ocx add --json mixed-input contract", () => {
 		expect(payload.error?.message).toContain("conflicts")
 	})
 })
+
+describe("ocx add legacy registry compatibility", () => {
+	let testDir: string
+
+	afterEach(async () => {
+		if (testDir) {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("should fail with actionable error when registry returns legacy array format", async () => {
+		testDir = await createTempDir("add-legacy-registry")
+
+		// Start a server that returns legacy array format
+		const server = Bun.serve({
+			port: 0,
+			fetch() {
+				return Response.json([{ name: "button", type: "plugin", description: "A button" }])
+			},
+		})
+
+		try {
+			// Init and configure registry pointing to legacy server
+			await runCLI(["init"], testDir)
+			const configPath = join(testDir, ".opencode", "ocx.jsonc")
+			const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
+			config.registries = {
+				legacy: { url: `http://localhost:${server.port}` },
+			}
+			await writeFile(configPath, JSON.stringify(config, null, 2))
+
+			// Try to add a component from the legacy registry
+			const { exitCode, output } = await runCLI(["add", "legacy/button"], testDir)
+
+			expect(exitCode).not.toBe(0)
+			expect(output).toContain("incompatible format")
+			expect(output).toContain("ancient-format")
+			// Should NOT show raw Zod errors
+			expect(output).not.toMatch(/^Required$/m)
+		} finally {
+			server.stop()
+		}
+	})
+
+	it("should not bypass format incompatibility with --skip-compat-check", async () => {
+		testDir = await createTempDir("add-skip-compat-no-bypass")
+
+		// Start a server that returns legacy array format
+		const server = Bun.serve({
+			port: 0,
+			fetch() {
+				return Response.json([{ name: "button", type: "plugin", description: "A button" }])
+			},
+		})
+
+		try {
+			// Init and configure registry pointing to legacy server
+			await runCLI(["init"], testDir)
+			const configPath = join(testDir, ".opencode", "ocx.jsonc")
+			const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
+			config.registries = {
+				legacy: { url: `http://localhost:${server.port}` },
+			}
+			await writeFile(configPath, JSON.stringify(config, null, 2))
+
+			// --skip-compat-check should NOT bypass format incompatibility
+			const { exitCode, output } = await runCLI(
+				["add", "legacy/button", "--skip-compat-check"],
+				testDir,
+			)
+
+			expect(exitCode).not.toBe(0)
+			expect(output).toContain("incompatible format")
+			expect(output).toContain("ancient-format")
+		} finally {
+			server.stop()
+		}
+	})
+
+	it("should show compatibility error in JSON mode for add flow", async () => {
+		testDir = await createTempDir("add-legacy-json")
+
+		const server = Bun.serve({
+			port: 0,
+			fetch() {
+				return Response.json({ foo: "bar", count: 42 })
+			},
+		})
+
+		try {
+			await runCLI(["init"], testDir)
+			const configPath = join(testDir, ".opencode", "ocx.jsonc")
+			const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
+			config.registries = {
+				bad: { url: `http://localhost:${server.port}` },
+			}
+			await writeFile(configPath, JSON.stringify(config, null, 2))
+
+			const { exitCode, stdout, stderr } = await runCLI(["add", "bad/something", "--json"], testDir)
+
+			expect(exitCode).not.toBe(0)
+			const jsonOutput = JSON.parse(stdout || stderr)
+			expect(jsonOutput.success).toBe(false)
+			expect(jsonOutput.error.code).toBe("REGISTRY_COMPAT_ERROR")
+			expect(jsonOutput.error.details.issue).toBe("invalid-format")
+			expect(jsonOutput.error.details.url).toContain("index.json")
+		} finally {
+			server.stop()
+		}
+	})
+})

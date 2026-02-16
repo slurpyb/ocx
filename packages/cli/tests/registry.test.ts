@@ -848,3 +848,92 @@ describe("registry commands with --profile", () => {
 		expect(output.data.registries).toHaveLength(1)
 	})
 })
+
+describe("registry add compatibility diagnostics", () => {
+	let testDir: string
+
+	beforeEach(async () => {
+		testDir = await createTempDir("registry-compat-test")
+		await runCLI(["init"], testDir)
+	})
+
+	afterEach(async () => {
+		await cleanupTempDir(testDir)
+	})
+
+	it("should show actionable compatibility error for legacy array registry", async () => {
+		// Start a server that returns an array (legacy format)
+		const server = Bun.serve({
+			port: 0,
+			fetch() {
+				return Response.json([{ name: "button", type: "plugin", description: "A button" }])
+			},
+		})
+
+		try {
+			const { exitCode, output } = await runCLI(
+				["registry", "add", `http://localhost:${server.port}`, "--name", "legacy"],
+				testDir,
+			)
+
+			expect(exitCode).not.toBe(0)
+			expect(output).toContain("ancient-format")
+			expect(output).toContain("incompatible format")
+			// Should NOT show raw Zod errors as the primary message
+			expect(output).not.toMatch(/^.*Required$/m)
+		} finally {
+			server.stop()
+		}
+	})
+
+	it("should show actionable compatibility error in JSON mode", async () => {
+		const server = Bun.serve({
+			port: 0,
+			fetch() {
+				return Response.json([{ name: "button" }])
+			},
+		})
+
+		try {
+			const { exitCode, stdout, stderr } = await runCLI(
+				["registry", "add", `http://localhost:${server.port}`, "--name", "legacy", "--json"],
+				testDir,
+			)
+
+			expect(exitCode).not.toBe(0)
+			const jsonOutput = JSON.parse(stdout || stderr)
+			expect(jsonOutput.success).toBe(false)
+			expect(jsonOutput.error.code).toBe("REGISTRY_COMPAT_ERROR")
+			expect(jsonOutput.error.details.issue).toBe("ancient-format")
+			expect(jsonOutput.error.details.url).toContain("index.json")
+			expect(jsonOutput.error.details.remediation).toBeDefined()
+		} finally {
+			server.stop()
+		}
+	})
+
+	it("should show actionable error for missing-metadata registry", async () => {
+		const server = Bun.serve({
+			port: 0,
+			fetch() {
+				// Has 'components' signal but missing 'author'
+				return Response.json({
+					components: [{ name: "button", type: "plugin", description: "A button" }],
+				})
+			},
+		})
+
+		try {
+			const { exitCode, output } = await runCLI(
+				["registry", "add", `http://localhost:${server.port}`, "--name", "incomplete"],
+				testDir,
+			)
+
+			expect(exitCode).not.toBe(0)
+			expect(output).toContain("missing-metadata")
+			expect(output).toContain("author")
+		} finally {
+			server.stop()
+		}
+	})
+})

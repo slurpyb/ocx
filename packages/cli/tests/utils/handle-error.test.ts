@@ -15,6 +15,7 @@ import {
 	OCXError,
 	ProfileExistsError,
 	ProfileNotFoundError,
+	RegistryCompatibilityError,
 	RegistryExistsError,
 } from "../../src/utils/errors"
 import { handleError, wrapAction } from "../../src/utils/handle-error"
@@ -525,7 +526,7 @@ describe("handleError JSON output", () => {
 			try {
 				handleError(error, { json: true })
 			} catch {
-				// Expected
+				// Expected process.exit
 			}
 
 			const output = parseJsonOutput()
@@ -535,6 +536,74 @@ describe("handleError JSON output", () => {
 			// Verify it's a valid ISO date string
 			const parsed = new Date(output.meta.timestamp)
 			expect(parsed.toISOString()).toBe(output.meta.timestamp)
+		})
+	})
+
+	describe("RegistryCompatibilityError", () => {
+		it("formats with url, issue, and remediation details", () => {
+			const error = new RegistryCompatibilityError("Registry uses legacy format", {
+				url: "https://old-registry.example.com/index.json",
+				issue: "ancient-format",
+				remediation: "Migrate to the OCX registry specification.",
+			})
+
+			try {
+				handleError(error, { json: true })
+			} catch {
+				// Expected process.exit
+			}
+
+			const output = parseJsonOutput()
+			expect(output.success).toBe(false)
+			expect(output.error.code).toBe("REGISTRY_COMPAT_ERROR")
+			expect(output.error.details).toEqual({
+				url: "https://old-registry.example.com/index.json",
+				issue: "ancient-format",
+				remediation: "Migrate to the OCX registry specification.",
+			})
+			expect(output.exitCode).toBe(EXIT_CODES.CONFIG)
+			expect(capturedExitCode).toBe(EXIT_CODES.CONFIG)
+		})
+
+		it("formats missing-metadata issue", () => {
+			const error = new RegistryCompatibilityError("Registry index is missing required fields", {
+				url: "https://incomplete.example.com/index.json",
+				issue: "missing-metadata",
+				remediation: "Add 'author' and 'components' fields.",
+			})
+
+			try {
+				handleError(error, { json: true })
+			} catch {
+				// Expected
+			}
+
+			const output = parseJsonOutput()
+			expect(output.error.code).toBe("REGISTRY_COMPAT_ERROR")
+			expect(output.error.details).toEqual({
+				url: "https://incomplete.example.com/index.json",
+				issue: "missing-metadata",
+				remediation: "Add 'author' and 'components' fields.",
+			})
+		})
+
+		it("formats invalid-format issue", () => {
+			const error = new RegistryCompatibilityError("Registry returned unrecognized format", {
+				url: "https://bad.example.com/index.json",
+				issue: "invalid-format",
+				remediation: "Ensure it follows the OCX registry specification.",
+			})
+
+			try {
+				handleError(error, { json: true })
+			} catch {
+				// Expected
+			}
+
+			const output = parseJsonOutput()
+			expect(output.error.code).toBe("REGISTRY_COMPAT_ERROR")
+			expect(output.error.details?.issue).toBe("invalid-format")
+			expect(output.meta.timestamp).toBeDefined()
 		})
 	})
 })

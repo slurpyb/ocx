@@ -12,6 +12,7 @@ export type ErrorCode =
 	| "PERMISSION_ERROR"
 	| "INTEGRITY_ERROR"
 	| "UPDATE_ERROR"
+	| "REGISTRY_COMPAT_ERROR"
 
 /**
  * Exit codes for OCX CLI errors
@@ -107,6 +108,42 @@ export class SelfUpdateError extends OCXError {
 	constructor(message: string) {
 		super(message, "UPDATE_ERROR", EXIT_CODES.GENERAL)
 		this.name = "SelfUpdateError"
+	}
+}
+
+// =============================================================================
+// REGISTRY COMPATIBILITY ERRORS
+// =============================================================================
+
+/**
+ * Issue types for registry format incompatibility.
+ * - `missing-metadata`: index has registry-like signals but lacks required keys
+ * - `ancient-format`: index is a top-level array (legacy shadcn-style)
+ * - `invalid-format`: index is an unrecognized object shape
+ */
+export type RegistryCompatIssue = "missing-metadata" | "ancient-format" | "invalid-format"
+
+/**
+ * Error for registry format/compatibility issues.
+ * Thrown when a registry index cannot be parsed because it uses
+ * an incompatible or legacy format.
+ *
+ * Includes structured details for JSON output: url, issue, and remediation.
+ */
+export class RegistryCompatibilityError extends OCXError {
+	public readonly url: string
+	public readonly issue: RegistryCompatIssue
+	public readonly remediation: string
+
+	constructor(
+		message: string,
+		options: { url: string; issue: RegistryCompatIssue; remediation: string },
+	) {
+		super(message, "REGISTRY_COMPAT_ERROR", EXIT_CODES.CONFIG)
+		this.name = "RegistryCompatibilityError"
+		this.url = options.url
+		this.issue = options.issue
+		this.remediation = options.remediation
 	}
 }
 
