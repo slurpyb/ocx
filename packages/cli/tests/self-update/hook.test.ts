@@ -298,34 +298,15 @@ describe("self update --json curl strict output", () => {
 			})),
 		}))
 
-		mock.module("../../src/self-update/detect-method.js", () => {
-			// Inline real implementations so the mock is functionally
-			// equivalent to the production module.  Only getExecutablePath
-			// is overridden to point at the test temp directory.
-			const { SelfUpdateError } = require("../../src/utils/errors")
-			const VALID_METHODS = ["curl", "npm", "yarn", "pnpm", "bun"] as const
-
-			return {
-				detectInstallMethod: () => {
-					if (typeof Bun !== "undefined" && Bun.main.startsWith("/$bunfs/")) return "curl"
-					const scriptPath = process.argv[1] ?? ""
-					if (scriptPath.includes("/.bun/")) return "bun"
-					if (scriptPath.includes("/.pnpm/")) return "pnpm"
-					if (scriptPath.includes("/.npm/") || scriptPath.includes("/node_modules/")) return "npm"
-					return "unknown"
-				},
-				parseInstallMethod: (input: string) => {
-					const method = VALID_METHODS.find((m) => m === input)
-					if (!method) {
-						throw new SelfUpdateError(
-							`Invalid install method: "${input}"\nValid methods: ${VALID_METHODS.join(", ")}`,
-						)
-					}
-					return method
-				},
-				getExecutablePath: () => executablePath,
-			}
-		})
+		// Re-export the real detect-method module, only overriding
+		// getExecutablePath to point at the test temp directory.
+		// The "?real" query-string cache-buster bypasses any prior
+		// mock.module registration so we always get the genuine exports.
+		const realDetectMethod = require("../../src/self-update/detect-method.js?real")
+		mock.module("../../src/self-update/detect-method.js", () => ({
+			...realDetectMethod,
+			getExecutablePath: () => executablePath,
+		}))
 
 		mock.module("../../src/self-update/notify.js", () => ({
 			notifyUpdated: notifyUpdatedMock,
