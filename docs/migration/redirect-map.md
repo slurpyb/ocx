@@ -59,7 +59,7 @@ The following source files do not have redirects because they were never publish
 |-------------|-------------------|
 | `README.md` | GitHub root — visitors land on repo page, not docs site |
 | `docs/MANUAL_TESTING.md` | Not yet migrated (Phase 5) |
-| `docs/TEST_PARITY_MATRIX.md` | Not yet migrated (Phase 5) |
+| `docs/TEST_PARITY_MATRIX.md` | Intentionally removed as stale internal artifact; no migration target |
 | `facades/*/README.md` | Package READMEs — accessed from GitHub, not docs site |
 | `workers/*/README.md` | Package READMEs — accessed from GitHub, not docs site |
 | `examples/registry-starter/README.md` | Excluded from migration (see source-target-map rationale) |

@@ -92,7 +92,6 @@ A page moves to "Done" only when **all** of the following are true:
 |-------------|---------------------|---------|-------|--------|-------|
 | `docs/MIGRATION-v1.4.0.md` | `maintainers/migration-v1-4-0` | Maintainers | @kdcokenny | Done | v1.4.0 migration notes |
 | `docs/MANUAL_TESTING.md` | `maintainers/manual-testing` | Maintainers | @kdcokenny | Pending | Testing procedures |
-| `docs/TEST_PARITY_MATRIX.md` | `maintainers/test-parity` | Maintainers | @kdcokenny | Pending | Test coverage matrix |
 
 ## Package Documentation
 
@@ -173,7 +172,6 @@ The registry starter example README is **excluded** from Mintlify migration for 
 ### Phase 5: Remaining Maintainer Docs (Future)
 
 1. `docs/MANUAL_TESTING.md` → `maintainers/manual-testing`
-2. `docs/TEST_PARITY_MATRIX.md` → `maintainers/test-parity`
 
 ---
 

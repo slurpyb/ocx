@@ -62,7 +62,6 @@ Create a maintainer-specific navigation file:
       "group": "Processes",
       "pages": [
         "maintainers/manual-testing",
-        "maintainers/test-parity",
         "maintainers/migration-v1-4-0"
       ]
     }
@@ -116,7 +115,6 @@ Before creating documentation, determine visibility:
 | Content | Visibility | Rationale |
 |---------|------------|-----------|
 | `ocx init` command reference | Public | Users need this to get started |
-| Testing parity matrix | Maintainer | Internal quality tracking |
 | Security disclosure policy | Public | Required for responsible disclosure |
 | Manual testing procedures | Maintainer | Internal process documentation |
 | Registry protocol spec | Public | Needed for third-party registry authors |

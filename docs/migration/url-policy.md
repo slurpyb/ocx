@@ -123,7 +123,6 @@ Mintlify does not support anchor-specific redirects. When anchors change:
 | `docs/guides/kdco-workspace.md` | `/guides/kdco-workspace` | Tutorial format |
 | `docs/MIGRATION-v1.4.0.md` | `/maintainers/migration-v1-4-0` | Internal doc |
 | `docs/MANUAL_TESTING.md` | `/maintainers/manual-testing` | Internal doc |
-| `docs/TEST_PARITY_MATRIX.md` | `/maintainers/test-parity` | Internal doc |
 | `facades/opencode-worktree/README.md` | `/integrations/worktree` | Facade docs |
 | `facades/opencode-notify/README.md` | `/integrations/notify` | Facade docs |
 | `facades/opencode-background-agents/README.md` | `/integrations/background-agents` | Facade docs |

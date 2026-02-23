@@ -33,7 +33,7 @@ This document provides a complete testing checklist for OCX. Use it to verify fu
 5. Update `last_full_test` metadata when complete
 6. Reset checkboxes between test sessions
 
-> **Testing Coverage**: See [TEST_PARITY_MATRIX.md](./TEST_PARITY_MATRIX.md) for the complete mapping of workflows to manual and automated test coverage.
+> **Testing Coverage**: For automated coverage details, see `packages/cli/tests/`.
 
 ### Out of Scope
 
