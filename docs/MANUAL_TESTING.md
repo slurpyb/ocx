@@ -34,7 +34,8 @@ This document provides a complete testing checklist for OCX. Use it to verify fu
 ### How to Use
 
 1. Set up the sandbox environment (see Section 1)
-2. Work through sections sequentially
+2. Work through sections sequentially by default; if a section is marked as an
+   alternative/reset point, follow that note and then continue in order
 3. Check off boxes as you complete tests
 4. Note failures or unexpected behavior
 5. Update `last_full_test` metadata when complete
@@ -118,9 +119,10 @@ bun run dev --port 8788
 # Serves on http://localhost:8788
 ```
 
-**CRITICAL:** Keep both terminals running for the ENTIRE manual test session. Do not
-stop or restart the servers between sections. If a server dies, restart it before
-continuing any tests.
+**CRITICAL:** Keep both terminals running while executing registry-dependent
+sections (for example Sections 2, 3, and 5+). Sections 4.5–4.8 are scaffold-only
+exceptions and do not require running registries. If a required server dies,
+restart it before continuing registry-dependent tests.
 
 **Verify registries are accessible:**
 ```bash
@@ -222,13 +224,16 @@ If the version does not match the current codebase, verify `$OCX_BIN` points to 
 
 ### 1.4 Stop Local Registry Servers
 
-- [ ] **Setup:** When done testing
-- [ ] **Action:** Stop the wrangler dev servers
-- [ ] **Commands:**
+- [x] **Setup:** When done testing
+- [x] **Action:** Stop the wrangler dev servers
+- [x] **Commands:**
   1. Go to each terminal running `wrangler dev`
   2. Press `Ctrl+C` to stop the server
-- [ ] **Verify:** Servers no longer accessible
-- [x] **Last tested:** _v2.0.0 on 2026-02-23 (FAIL)_
+- [x] **Verify:** Servers no longer accessible
+- [x] **Run result (2026-02-23):** FAIL — stop sequence was attempted, but at least
+  one registry endpoint remained reachable during verification; rerun stop+verify
+  before closing the session.
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ---
 
@@ -520,10 +525,9 @@ All variations from CLI.md lines 53-91.
 - [x] **Expected:** Uses canary template fetched from remote main-branch source
 - [x] **Verify:**
   ```bash
-  # Verbose output should show remote fetch evidence (GitHub main tarball path)
-  # such as refs/heads/main.tar.gz (or equivalent GitHub remote fetch indicator)
+  # Verbose output must include the exact canary fetch URL from GitHub main
   ls my-registry/
-  cat /tmp/ocx-4.8-canary-verbose.log | grep -E 'refs/heads/main.tar.gz|github\.com/.+/(tarball|archive)'
+  rg -n 'https://github\.com/kdcokenny/ocx/archive/refs/heads/main\.tar\.gz' /tmp/ocx-4.8-canary-verbose.log
   rm -rf my-registry
   ```
 - [x] **Run result (2026-02-23):** PASS — verbose output included `https://github.com/kdcokenny/ocx/archive/refs/heads/main.tar.gz`, confirming remote canary fetch path.
@@ -622,32 +626,23 @@ All variations from CLI.md lines 94-147.
   ```
 - [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
-### 5.5 Add npm Plugin (Scoped)
+### 5.5 Add npm Plugin (`opencode-pty`)
 
-- [x] **Setup:** Local config initialized
-- [x] **Command:** `$OCX_BIN add npm:@franlol/opencode-md-table-formatter`
-- [ ] **Expected:** Plugin entry added to `.opencode/opencode.jsonc` plugin array; runtime installation handled by OpenCode
+- [ ] **Setup:** Local config initialized
+- [ ] **Command:** `$OCX_BIN add npm:opencode-pty`
+- [ ] **Expected:** Plugin entry for `opencode-pty` added to `.opencode/opencode.jsonc` plugin array; runtime installation handled by OpenCode
 - [ ] **Verify:**
   ```bash
-  cat .opencode/opencode.jsonc  # Should contain plugin in "plugin" array
+  cat .opencode/opencode.jsonc  # Should contain "opencode-pty" in "plugin" array
   ```
-- [x] **Run result (2026-02-23):** FAIL — command returned `Plugin(s) already exist in opencode.json: @franlol/opencode-md-table-formatter.` after prior Section 5.2 install of `kdco/workspace` (which already includes this plugin), blocking sequential execution as currently documented.
-- [x] **Last tested:** _v2.0.0 on 2026-02-23 (FAIL)_
+- [ ] **Run result:** Pending manual run for `npm:opencode-pty`.
+- [ ] **Last tested:** _v2.0.0 on 2026-02-23 (pending `npm:opencode-pty` run)_
 
 ### 5.6 Add npm Plugin with Version
 
-> **Note:** This is an **alternative** to Section 5.5 for the same package.
-> Running 5.5 first adds `@franlol/opencode-md-table-formatter` without a version,
-> which conflicts with this versioned add.
->
-> If running sequentially after 5.5, reset to a fresh local config first:
-> ```bash
-> rm -rf /tmp/ocx-v2-test-project
-> mkdir -p /tmp/ocx-v2-test-project
-> cd /tmp/ocx-v2-test-project
-> git init
-> $OCX_BIN init
-> ```
+> **Note:** This test is independent of Section 5.5 and can run sequentially.
+> If this exact versioned plugin entry already exists from a prior run, reset with
+> Section 1.2 before re-running 5.6.
 
 - [ ] **Setup:** Local config initialized
 - [ ] **Command:** `$OCX_BIN add npm:@franlol/opencode-md-table-formatter@0.0.3`
