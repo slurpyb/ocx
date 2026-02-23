@@ -9,9 +9,16 @@ platform: macOS
 Comprehensive manual testing checklist for all documented OCX functionality.
 
 > **Pre-Release Testing:** This guide uses locally built registries served via
-> `wrangler dev` (`localhost:8787`, `localhost:8788`). This is required because
-> deployed registries may not reflect current changes. After release, you can
-> optionally verify against production URLs.
+> `wrangler dev` (`localhost:8787`, `localhost:8788`) for tests that depend on
+> live component/profile registry responses. Sections **4.5–4.8** are scaffold-only
+> `ocx init --registry` tests and do **not** require the local registries to be
+> running. After release, you can optionally verify registry-dependent sections
+> against production URLs.
+>
+> **Pre-Release Registry Scaffolding Mapping:** For unreleased versions,
+> `ocx init --registry` validation should use:
+> - Sections **4.5–4.7**: `--local "$OCX_REPO/examples/registry-starter"`
+> - Section **4.8**: `--canary`
 
 ## Overview
 
@@ -92,8 +99,10 @@ This ensures you're testing the current codebase, not a system-installed version
 
 For pre-release testing, use locally built registries instead of deployed URLs.
 
-**REQUIRED:** Both registries MUST be running before proceeding to Section 2 or any
-subsequent tests. All component and profile operations depend on these local servers.
+**REQUIRED FOR REGISTRY-DEPENDENT TESTS:** Both registries MUST be running before
+sections that resolve/install components or profiles from local registries
+(for example Sections 2, 3, and 5+). **Exception:** scaffold-only init tests in
+Sections 4.5–4.8 can run without live local registries.
 
 **Terminal 1: KDCO Registry (components)**
 ```bash
@@ -122,17 +131,19 @@ curl http://localhost:8788/index.json | head -5
 Both curl commands must return JSON output. If either fails, the corresponding
 registry server is not running—start it before proceeding.
 
+- [x] **Run result (2026-02-23):** PASS — `curl http://localhost:8787/index.json | head -5` and `curl http://localhost:8788/index.json | head -5` both returned JSON after restarting local registries.
+
 ### 1.1 Create Isolated Environment
 
-- [ ] **Setup:** Clean slate for testing
-- [ ] **Commands:**
+- [x] **Setup:** Clean slate for testing
+- [x] **Commands:**
   ```bash
   export XDG_CONFIG_HOME=/tmp/ocx-v2-test
   mkdir -p /tmp/ocx-v2-test-project
   cd /tmp/ocx-v2-test-project
   git init
   ```
-- [ ] **Expected:** Environment variables set, test project directory created
+- [x] **Expected:** Environment variables set, test project directory created
 
 ### Preflight Checklist
 
@@ -168,18 +179,18 @@ $OCX_BIN --version
 
 If the version does not match the current codebase, verify `$OCX_BIN` points to the correct path.
 
-- [ ] **Verify:**
+- [x] **Verify:**
   ```bash
   echo $XDG_CONFIG_HOME           # Should show /tmp/ocx-v2-test
   test -f "$OCX_BIN" && echo "OK: Binary exists"
   $OCX_BIN --version              # Should show current dev version
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 1.2 Cleanup Between Test Sections
 
-- [ ] **Setup:** Reset state between sections
-- [ ] **Commands:**
+- [x] **Setup:** Reset state between sections
+- [x] **Commands:**
   ```bash
   rm -rf /tmp/ocx-v2-test
   rm -rf /tmp/ocx-v2-test-project
@@ -193,9 +204,9 @@ If the version does not match the current codebase, verify `$OCX_BIN` points to 
   test -f "$OCX_BIN" && echo "OK: Binary exists"
   $OCX_BIN --version
   ```
-- [ ] **Expected:** Fresh environment for next test section
-- [ ] **Verify:** Directories recreated, git initialized, XDG isolation active
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Fresh environment for next test section
+- [x] **Verify:** Directories recreated, git initialized, XDG isolation active
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 1.3 Complete Teardown
 
@@ -217,7 +228,7 @@ If the version does not match the current codebase, verify `$OCX_BIN` points to 
   1. Go to each terminal running `wrangler dev`
   2. Press `Ctrl+C` to stop the server
 - [ ] **Verify:** Servers no longer accessible
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23 (FAIL)_
 
 ---
 
@@ -227,10 +238,10 @@ Test cases from README.md lines 34-53.
 
 ### 2.1 `ocx init --global`
 
-- [ ] **Setup:** Fresh sandbox (Section 1.1)
-- [ ] **Command:** `$OCX_BIN init --global`
-- [ ] **Expected:** Creates `~/.config/opencode/` with global config and default profile
-- [ ] **Verify:**
+- [x] **Setup:** Fresh sandbox (Section 1.1)
+- [x] **Command:** `$OCX_BIN init --global`
+- [x] **Expected:** Creates `~/.config/opencode/` with global config and default profile
+- [x] **Verify:**
   ```bash
   ls -la $XDG_CONFIG_HOME/opencode/
   ls -la $XDG_CONFIG_HOME/opencode/profiles/default/
@@ -239,7 +250,7 @@ Test cases from README.md lines 34-53.
   cat $XDG_CONFIG_HOME/opencode/profiles/default/opencode.jsonc
   cat $XDG_CONFIG_HOME/opencode/profiles/default/AGENTS.md
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 2.2 `ocx profile add work` (Manual Creation)
 
@@ -252,32 +263,32 @@ Test cases from README.md lines 34-53.
 > $OCX_BIN profile rm work --global
 > ```
 
-- [ ] **Setup:** Global profiles initialized (Section 2.1)
-- [ ] **Commands:**
+- [x] **Setup:** Global profiles initialized (Section 2.1)
+- [x] **Commands:**
   ```bash
   $OCX_BIN profile add work --global
   # Pin to free Zen model for manual testing
   echo '{"model": "opencode/big-pickle", "small_model": "opencode/big-pickle"}' > $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc
   ```
-- [ ] **Expected:** Creates new profile `work` with template files and model pins
-- [ ] **Verify:**
+- [x] **Expected:** Creates new profile `work` with template files and model pins
+- [x] **Verify:**
   ```bash
    $OCX_BIN profile list --global  # Should show: default, work
   ls -la $XDG_CONFIG_HOME/opencode/profiles/work/
   cat $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc  # Should contain model pins
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 2.3 Add Global Registry
 
-- [ ] **Setup:** Profiles initialized (Section 2.1)
-- [ ] **Command:** `$OCX_BIN registry add http://localhost:8788 --name kit --global`
-- [ ] **Expected:** Adds registry to global config
-- [ ] **Verify:**
+- [x] **Setup:** Profiles initialized (Section 2.1)
+- [x] **Command:** `$OCX_BIN registry add http://localhost:8788 --name kit --global`
+- [x] **Expected:** Adds registry to global config
+- [x] **Verify:**
   ```bash
   cat $XDG_CONFIG_HOME/opencode/ocx.jsonc  # Should contain kit registry
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 2.4 Install Profile from Registry (Alternative to 2.2)
 
@@ -306,31 +317,31 @@ Test cases from README.md lines 34-53.
 
 ### 2.5 Launch OpenCode with Profile
 
-- [ ] **Setup:** Work profile exists with model pins (Section 2.2 OR 2.4 — complete one of them first)
-- [ ] **Commands:**
+- [x] **Setup:** Work profile exists with model pins (Section 2.2 OR 2.4 — complete one of them first)
+- [x] **Commands:**
   ```bash
   cd /tmp/ocx-v2-test-project
   # Verify model pins are set before running
   cat $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc | grep -q "opencode/big-pickle" && echo "OK: Model pins verified" || echo "FAIL: Model pins missing"
   $OCX_BIN oc -p work run "echo hello"
   ```
-- [ ] **Expected:** OpenCode runs with work profile and free Zen model, executes command
-- [ ] **Verify:** Command output shows "hello"
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** OpenCode runs with work profile and free Zen model, executes command
+- [x] **Verify:** Command output shows "hello"
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 2.6 Set Default Profile via Environment
 
-- [ ] **Setup:** Work profile exists with model pins (Section 2.2 OR 2.4 — complete one of them first)
-- [ ] **Commands:**
+- [x] **Setup:** Work profile exists with model pins (Section 2.2 OR 2.4 — complete one of them first)
+- [x] **Commands:**
   ```bash
   # Verify model pins are set before running
   cat $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc | grep -q "opencode/big-pickle" && echo "OK: Model pins verified" || echo "FAIL: Model pins missing"
   export OCX_PROFILE=work
   $OCX_BIN oc run "echo hello"
   ```
-- [ ] **Expected:** Uses work profile automatically without `-p` flag
-- [ ] **Verify:** Command executes successfully
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Uses work profile automatically without `-p` flag
+- [x] **Verify:** Command executes successfully
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ---
 
@@ -340,16 +351,16 @@ Test cases from README.md lines 79-96.
 
 ### 3.1 `ocx init` (Local)
 
-- [ ] **Setup:** Fresh test project directory
-- [ ] **Command:** `$OCX_BIN init`
-- [ ] **Expected:** Creates `.opencode/` directory with config files
-- [ ] **Verify:**
+- [x] **Setup:** Fresh test project directory
+- [x] **Command:** `$OCX_BIN init`
+- [x] **Expected:** Creates `.opencode/` directory with config files
+- [x] **Verify:**
   ```bash
   ls -la .opencode/
   cat .opencode/ocx.jsonc
   cat .opencode/opencode.jsonc
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 3.2 One-Command Install with Ephemeral Registry
 
@@ -367,16 +378,16 @@ Test cases from README.md lines 79-96.
 > $OCX_BIN init
 > ```
 
-- [ ] **Setup:** Local config initialized (Section 3.1)
-- [ ] **Command:** `$OCX_BIN add kdco/workspace --from http://localhost:8787`
-- [ ] **Expected:** Installs component without saving registry
-- [ ] **Verify:**
+- [x] **Setup:** Local config initialized (Section 3.1)
+- [x] **Command:** `$OCX_BIN add kdco/workspace --from http://localhost:8787`
+- [x] **Expected:** Installs component without saving registry
+- [x] **Verify:**
   ```bash
   ls .opencode/  # Should contain workspace files
   cat .ocx/receipt.jsonc  # Should list kdco/workspace
   cat .opencode/ocx.jsonc  # Should NOT contain registry.kdco.dev
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 3.3 Add npm Plugin Directly
 
@@ -398,20 +409,20 @@ Test cases from README.md lines 79-96.
 
 ### 3.4 Add Registry Permanently (Local)
 
-- [ ] **Setup:** Local config initialized (Section 3.1)
-- [ ] **Commands:**
+- [x] **Setup:** Local config initialized (Section 3.1)
+- [x] **Commands:**
   ```bash
   $OCX_BIN registry add http://localhost:8787 --name kdco
   $OCX_BIN add kdco/workspace
   ```
-- [ ] **Expected:** Registry saved to config, component installed
-- [ ] **Verify:**
+- [x] **Expected:** Registry saved to config, component installed
+- [x] **Verify:**
   ```bash
   cat .opencode/ocx.jsonc  # Should contain kdco registry
   $OCX_BIN registry list  # Should show kdco
   ls .opencode/  # Should contain workspace files
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ---
 
@@ -421,94 +432,102 @@ All variations from CLI.md lines 53-91.
 
 ### 4.1 `ocx init` (Default Local)
 
-- [ ] **Setup:** Fresh test project directory
-- [ ] **Command:** `$OCX_BIN init`
-- [ ] **Expected:** Creates `.opencode/` with default config
-- [ ] **Verify:**
+- [x] **Setup:** Fresh test project directory
+- [x] **Command:** `$OCX_BIN init`
+- [x] **Expected:** Creates `.opencode/` with default config
+- [x] **Verify:**
   ```bash
   ls .opencode/
   cat .opencode/ocx.jsonc
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 4.2 `ocx init --global`
 
-- [ ] **Setup:** Fresh sandbox
-- [ ] **Command:** `$OCX_BIN init --global`
-- [ ] **Expected:** Creates `~/.config/opencode/` and default profile
-- [ ] **Verify:**
+- [x] **Setup:** Fresh sandbox
+- [x] **Command:** `$OCX_BIN init --global`
+- [x] **Expected:** Creates `~/.config/opencode/` and default profile
+- [x] **Verify:**
   ```bash
   ls $XDG_CONFIG_HOME/opencode/
   ls $XDG_CONFIG_HOME/opencode/profiles/default/
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 4.3 `ocx init` (Default Behavior)
 
-- [ ] **Setup:** Test project directory
-- [ ] **Command:** `$OCX_BIN init`
-- [ ] **Expected:** Creates config with defaults, no prompts required
-- [ ] **Verify:** `.opencode/` created with defaults
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Test project directory
+- [x] **Command:** `$OCX_BIN init`
+- [x] **Expected:** Creates config with defaults, no prompts required
+- [x] **Verify:** `.opencode/` created with defaults
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 4.4 `ocx init` (Error on Existing Local Config)
 
-- [ ] **Setup:** Local config already exists (run Section 4.1 or 4.3 first)
-- [ ] **Command:** `$OCX_BIN init`
-- [ ] **Expected:** Fails with error (config already exists)
-- [ ] **Verify:** Error message indicates `ocx.jsonc` already exists
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Local config already exists (run Section 4.1 or 4.3 first)
+- [x] **Command:** `$OCX_BIN init`
+- [x] **Expected:** Fails with error (config already exists)
+- [x] **Verify:** Error message indicates `ocx.jsonc` already exists
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
-### 4.5 `ocx init --registry <path>` (Registry Scaffold Only)
+### 4.5 `ocx init --registry <path>` (Registry Scaffold Only, Local Template)
 
-- [ ] **Setup:** Parent directory
-- [ ] **Commands:**
+- [x] **Setup:** Parent directory and local template path available
+- [x] **Commands:**
   ```bash
   cd /tmp
-  $OCX_BIN init --registry ./ocx-test-registry --namespace my-org
+  $OCX_BIN init --registry ./ocx-test-registry --namespace my-org --local "$OCX_REPO/examples/registry-starter"
   ```
-- [ ] **Expected:** Creates registry project at specified path
-- [ ] **Verify:**
+- [x] **Expected:** Creates registry project at specified path using local template scaffold
+- [x] **Verify:**
   ```bash
   ls ./ocx-test-registry/
   cat ./ocx-test-registry/registry.jsonc
   rm -rf ./ocx-test-registry
   cd /tmp/ocx-v2-test-project
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 4.6 `ocx init --registry` (Scaffold Registry)
 
-- [ ] **Setup:** Empty directory for registry
-- [ ] **Command:** `$OCX_BIN init --registry my-registry --namespace my-org`
-- [ ] **Expected:** Scaffolds complete registry project
-- [ ] **Verify:**
+- [x] **Setup:** Empty directory for registry
+- [x] **Command:** `$OCX_BIN init --registry my-registry --namespace my-org --local "$OCX_REPO/examples/registry-starter"`
+- [x] **Expected:** Scaffolds complete registry project from local template
+- [x] **Verify:**
   ```bash
   ls my-registry/
   cat my-registry/registry.jsonc
   rm -rf my-registry
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 4.7 `ocx init --registry` with Author
 
-- [ ] **Setup:** Empty directory
-- [ ] **Command:** `$OCX_BIN init --registry my-registry --namespace acme --author "Acme Corp"`
-- [ ] **Expected:** Scaffolds registry with custom author
-- [ ] **Verify:**
+- [x] **Setup:** Empty directory
+- [x] **Command:** `$OCX_BIN init --registry my-registry --namespace acme --author "Acme Corp" --local "$OCX_REPO/examples/registry-starter"`
+- [x] **Expected:** Scaffolds registry with custom author from local template
+- [x] **Verify:**
   ```bash
   cat my-registry/registry.jsonc  # Should contain author field
   rm -rf my-registry
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 4.8 `ocx init --registry --canary`
 
-- [ ] **Setup:** Empty directory
-- [ ] **Command:** `$OCX_BIN init --registry my-registry --canary --namespace test`
-- [ ] **Expected:** Uses canary template (main branch)
-- [ ] **Verify:** Registry scaffolded successfully
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Empty directory
+- [x] **Command:** `$OCX_BIN init --registry my-registry --canary --namespace test --verbose 2>&1 | tee /tmp/ocx-4.8-canary-verbose.log`
+- [x] **Expected:** Uses canary template fetched from remote main-branch source
+- [x] **Verify:**
+  ```bash
+  # Verbose output should show remote fetch evidence (GitHub main tarball path)
+  # such as refs/heads/main.tar.gz (or equivalent GitHub remote fetch indicator)
+  ls my-registry/
+  cat /tmp/ocx-4.8-canary-verbose.log | grep -E 'refs/heads/main.tar.gz|github\.com/.+/(tarball|archive)'
+  rm -rf my-registry
+  ```
+- [x] **Run result (2026-02-23):** PASS — verbose output included `https://github.com/kdcokenny/ocx/archive/refs/heads/main.tar.gz`, confirming remote canary fetch path.
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ---
 
@@ -521,20 +540,20 @@ All variations from CLI.md lines 94-147.
 
 ### 5.1 Add Registry Component (Fully Qualified)
 
-- [ ] **Setup:** Local config with registry configured
-- [ ] **Commands:**
+- [x] **Setup:** Local config with registry configured
+- [x] **Commands:**
   ```bash
   $OCX_BIN init
   $OCX_BIN registry add http://localhost:8787 --name kdco
   $OCX_BIN add kdco/researcher
   ```
-- [ ] **Expected:** Component installed to `.opencode/`
-- [ ] **Verify:**
+- [x] **Expected:** Component installed to `.opencode/`
+- [x] **Verify:**
   ```bash
   ls .opencode/
   cat .ocx/receipt.jsonc  # Should list kdco/researcher
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 5.2 One-Command Install with `--from` (Ephemeral Registry)
 
@@ -553,23 +572,23 @@ All variations from CLI.md lines 94-147.
 > export XDG_CONFIG_HOME=/tmp/ocx-v2-test
 > ```
 
-- [ ] **Setup:** Fresh local config (NO registry configured)
+- [x] **Setup:** Fresh local config (NO registry configured)
   ```bash
   $OCX_BIN init
   # Do NOT run registry add - the --from flag provides ephemeral access
   ```
-- [ ] **Command:** `$OCX_BIN add kdco/workspace --from http://localhost:8787`
-- [ ] **Expected:** Installs component without saving registry to config
-- [ ] **Verify:**
+- [x] **Command:** `$OCX_BIN add kdco/workspace --from http://localhost:8787`
+- [x] **Expected:** Installs component without saving registry to config
+- [x] **Verify:**
   ```bash
   cat .opencode/ocx.jsonc  # Should NOT contain kdco registry
   cat .ocx/receipt.jsonc  # Should list kdco/workspace component
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 5.3 Add with Specific Profile
 
-- [ ] **Setup:** Create `work` profile and configure `kdco` registry at profile scope
+- [x] **Setup:** Create `work` profile and configure `kdco` registry at profile scope
   ```bash
   # Ensure global profiles are initialized
   $OCX_BIN init --global 2>/dev/null || true
@@ -579,40 +598,41 @@ All variations from CLI.md lines 94-147.
   # Write kdco registry into the profile's ocx.jsonc (profile-scoped)
   echo '{"registries": {"kdco": {"url": "http://localhost:8787"}}}' > $XDG_CONFIG_HOME/opencode/profiles/work/ocx.jsonc
   ```
-- [ ] **Verify setup:** Profile has kdco registry at profile scope
+- [x] **Verify setup:** Profile has kdco registry at profile scope
   ```bash
   cat $XDG_CONFIG_HOME/opencode/profiles/work/ocx.jsonc | grep -q '"kdco"' && echo "OK: kdco registry in profile" || echo "FAIL: kdco registry missing from profile"
   ```
-- [ ] **Command:** `$OCX_BIN add kdco/researcher --profile work`
-- [ ] **Expected:** Uses profile's registry for resolution; component installed to profile directory
-- [ ] **Verify:**
+- [x] **Command:** `$OCX_BIN add kdco/researcher --profile work`
+- [x] **Expected:** Uses profile's registry for resolution; component installed to profile directory
+- [x] **Verify:**
   ```bash
   ls $XDG_CONFIG_HOME/opencode/profiles/work/  # Should contain installed component files
   cat $XDG_CONFIG_HOME/opencode/profiles/work/.ocx/receipt.jsonc  # V1 receipt: Should list kdco/researcher
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 5.4 Add npm Plugin (Unscoped)
 
-- [ ] **Setup:** Local config initialized
-- [ ] **Command:** `$OCX_BIN add npm:chalk`
-- [ ] **Expected:** Plugin entry added to `.opencode/opencode.jsonc` plugin array; runtime installation handled by OpenCode
-- [ ] **Verify:**
+- [x] **Setup:** Local config initialized
+- [x] **Command:** `$OCX_BIN add npm:chalk`
+- [x] **Expected:** Plugin entry added to `.opencode/opencode.jsonc` plugin array; runtime installation handled by OpenCode
+- [x] **Verify:**
   ```bash
   cat .opencode/opencode.jsonc  # Should contain "chalk" in "plugin" array
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 5.5 Add npm Plugin (Scoped)
 
-- [ ] **Setup:** Local config initialized
-- [ ] **Command:** `$OCX_BIN add npm:@franlol/opencode-md-table-formatter`
+- [x] **Setup:** Local config initialized
+- [x] **Command:** `$OCX_BIN add npm:@franlol/opencode-md-table-formatter`
 - [ ] **Expected:** Plugin entry added to `.opencode/opencode.jsonc` plugin array; runtime installation handled by OpenCode
 - [ ] **Verify:**
   ```bash
   cat .opencode/opencode.jsonc  # Should contain plugin in "plugin" array
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Run result (2026-02-23):** FAIL — command returned `Plugin(s) already exist in opencode.json: @franlol/opencode-md-table-formatter.` after prior Section 5.2 install of `kdco/workspace` (which already includes this plugin), blocking sequential execution as currently documented.
+- [x] **Last tested:** _v2.0.0 on 2026-02-23 (FAIL)_
 
 ### 5.6 Add npm Plugin with Version
 
