@@ -7,6 +7,9 @@ import {
 } from "../../src/registry/fetcher"
 import { NetworkError, NotFoundError, RegistryCompatibilityError } from "../../src/utils/errors"
 
+const REGISTRY_SCHEMA_V2_URL = "https://ocx.kdco.dev/schemas/v2/registry.json"
+const REGISTRY_SCHEMA_UNVERSIONED_URL = "https://ocx.kdco.dev/schemas/registry.json"
+
 describe("fetcher", () => {
 	const originalFetch = globalThis.fetch
 
@@ -144,70 +147,93 @@ describe("fetcher", () => {
 // =============================================================================
 
 describe("classifyRegistryIndexIssue", () => {
-	it("returns 'ancient-format' for top-level array", () => {
+	it("returns 'legacy-schema-v1' for top-level array with no $schema", () => {
 		const result = classifyRegistryIndexIssue([
 			{ name: "button", type: "plugin" },
 			{ name: "card", type: "plugin" },
 		])
 
 		expect(result).not.toBeNull()
-		expect(result!.issue).toBe("ancient-format")
-		expect(result!.remediation).toContain("legacy array-based format")
+		expect(result?.issue).toBe("legacy-schema-v1")
+		expect(result?.remediation).toContain("v2")
 	})
 
-	it("returns 'missing-metadata' for object with signals but missing required keys", () => {
-		// Has 'components' signal but no 'author'
+	it("returns 'legacy-schema-v1' when $schema is missing", () => {
 		const result = classifyRegistryIndexIssue({
+			author: "Test Author",
 			components: [{ name: "button", type: "plugin", description: "A button" }],
 		})
 
 		expect(result).not.toBeNull()
-		expect(result!.issue).toBe("missing-metadata")
-		expect(result!.remediation).toContain("author")
+		expect(result?.issue).toBe("legacy-schema-v1")
 	})
 
-	it("returns 'missing-metadata' when only $schema is present", () => {
+	it("returns 'legacy-schema-v1' for canonical unversioned schema URL", () => {
 		const result = classifyRegistryIndexIssue({
-			$schema: "https://example.com/schema.json",
+			$schema: REGISTRY_SCHEMA_UNVERSIONED_URL,
 		})
 
 		expect(result).not.toBeNull()
-		expect(result!.issue).toBe("missing-metadata")
-		expect(result!.remediation).toContain("author")
-		expect(result!.remediation).toContain("components")
+		expect(result?.issue).toBe("legacy-schema-v1")
 	})
 
-	it("returns 'missing-metadata' when 'ocx' signal present but missing required keys", () => {
+	it("returns 'invalid-schema-url' for empty schema string", () => {
 		const result = classifyRegistryIndexIssue({
-			ocx: "1.0.0",
+			$schema: "",
 		})
 
 		expect(result).not.toBeNull()
-		expect(result!.issue).toBe("missing-metadata")
+		expect(result?.issue).toBe("invalid-schema-url")
 	})
 
-	it("returns 'missing-metadata' when 'opencode' signal present but missing required keys", () => {
+	it("returns 'invalid-schema-url' for foreign schema URL", () => {
 		const result = classifyRegistryIndexIssue({
-			opencode: "1.0.0",
+			$schema: "https://example.com/registry.json",
 		})
 
 		expect(result).not.toBeNull()
-		expect(result!.issue).toBe("missing-metadata")
+		expect(result?.issue).toBe("invalid-schema-url")
 	})
 
-	it("returns 'invalid-format' for object with no recognized signals", () => {
+	it("returns 'invalid-schema-url' for credentialed canonical URL", () => {
 		const result = classifyRegistryIndexIssue({
-			foo: "bar",
-			baz: 123,
+			$schema: "https://user:pass@ocx.kdco.dev/schemas/v2/registry.json",
 		})
 
 		expect(result).not.toBeNull()
-		expect(result!.issue).toBe("invalid-format")
-		expect(result!.remediation).toContain("OCX registry specification")
+		expect(result?.issue).toBe("invalid-schema-url")
 	})
 
-	it("returns null for object with all required keys and signals", () => {
+	it("returns 'invalid-schema-url' for explicit-port canonical URL", () => {
 		const result = classifyRegistryIndexIssue({
+			$schema: "https://ocx.kdco.dev:8443/schemas/v2/registry.json",
+		})
+
+		expect(result).not.toBeNull()
+		expect(result?.issue).toBe("invalid-schema-url")
+	})
+
+	it("returns 'invalid-schema-url' for explicit default HTTPS port (:443)", () => {
+		const result = classifyRegistryIndexIssue({
+			$schema: "https://ocx.kdco.dev:443/schemas/v2/registry.json",
+		})
+
+		expect(result).not.toBeNull()
+		expect(result?.issue).toBe("invalid-schema-url")
+	})
+
+	it("returns 'unsupported-schema-version' for unsupported major", () => {
+		const result = classifyRegistryIndexIssue({
+			$schema: "https://ocx.kdco.dev/schemas/v3/registry.json",
+		})
+
+		expect(result).not.toBeNull()
+		expect(result?.issue).toBe("unsupported-schema-version")
+	})
+
+	it("returns null for supported v2 schema URL", () => {
+		const result = classifyRegistryIndexIssue({
+			$schema: REGISTRY_SCHEMA_V2_URL,
 			author: "Test Author",
 			components: [{ name: "button", type: "plugin", description: "A button" }],
 		})
@@ -222,10 +248,10 @@ describe("classifyRegistryIndexIssue", () => {
 		expect(classifyRegistryIndexIssue(42)).toBeNull()
 	})
 
-	it("returns 'ancient-format' for empty array", () => {
+	it("returns 'legacy-schema-v1' for empty array", () => {
 		const result = classifyRegistryIndexIssue([])
 		expect(result).not.toBeNull()
-		expect(result!.issue).toBe("ancient-format")
+		expect(result?.issue).toBe("legacy-schema-v1")
 	})
 })
 
@@ -237,13 +263,19 @@ describe("fetchRegistryIndex compatibility detection", () => {
 		_clearFetcherCacheForTests()
 	})
 
-	it("throws RegistryCompatibilityError for ancient-format (array)", async () => {
+	it("throws RegistryCompatibilityError for missing schema URL", async () => {
 		globalThis.fetch = mock(() =>
 			Promise.resolve(
-				new Response(JSON.stringify([{ name: "button" }]), {
-					status: 200,
-					headers: { "content-type": "application/json" },
-				}),
+				new Response(
+					JSON.stringify({
+						author: "Test",
+						components: [{ name: "button", type: "plugin", description: "Button" }],
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json" },
+					},
+				),
 			),
 		)
 
@@ -253,19 +285,26 @@ describe("fetchRegistryIndex compatibility detection", () => {
 		} catch (error) {
 			expect(error).toBeInstanceOf(RegistryCompatibilityError)
 			const compatError = error as RegistryCompatibilityError
-			expect(compatError.issue).toBe("ancient-format")
+			expect(compatError.issue).toBe("legacy-schema-v1")
 			expect(compatError.url).toContain("legacy.example.com")
-			expect(compatError.remediation).toContain("legacy")
+			expect(compatError.remediation).toContain("v2")
 		}
 	})
 
-	it("throws RegistryCompatibilityError for missing-metadata", async () => {
+	it("throws RegistryCompatibilityError for canonical unversioned schema URL", async () => {
 		globalThis.fetch = mock(() =>
 			Promise.resolve(
-				new Response(JSON.stringify({ components: [] }), {
-					status: 200,
-					headers: { "content-type": "application/json" },
-				}),
+				new Response(
+					JSON.stringify({
+						$schema: REGISTRY_SCHEMA_UNVERSIONED_URL,
+						author: "Test",
+						components: [],
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json" },
+					},
+				),
 			),
 		)
 
@@ -275,18 +314,24 @@ describe("fetchRegistryIndex compatibility detection", () => {
 		} catch (error) {
 			expect(error).toBeInstanceOf(RegistryCompatibilityError)
 			const compatError = error as RegistryCompatibilityError
-			expect(compatError.issue).toBe("missing-metadata")
-			expect(compatError.remediation).toContain("author")
+			expect(compatError.issue).toBe("legacy-schema-v1")
 		}
 	})
 
-	it("throws RegistryCompatibilityError for invalid-format (unrecognized object)", async () => {
+	it("throws RegistryCompatibilityError for invalid schema URL", async () => {
 		globalThis.fetch = mock(() =>
 			Promise.resolve(
-				new Response(JSON.stringify({ foo: "bar", count: 42 }), {
-					status: 200,
-					headers: { "content-type": "application/json" },
-				}),
+				new Response(
+					JSON.stringify({
+						$schema: "https://foreign.example.com/registry.json",
+						author: "Test",
+						components: [],
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json" },
+					},
+				),
 			),
 		)
 
@@ -296,7 +341,34 @@ describe("fetchRegistryIndex compatibility detection", () => {
 		} catch (error) {
 			expect(error).toBeInstanceOf(RegistryCompatibilityError)
 			const compatError = error as RegistryCompatibilityError
-			expect(compatError.issue).toBe("invalid-format")
+			expect(compatError.issue).toBe("invalid-schema-url")
+		}
+	})
+
+	it("throws RegistryCompatibilityError for unsupported schema major", async () => {
+		globalThis.fetch = mock(() =>
+			Promise.resolve(
+				new Response(
+					JSON.stringify({
+						$schema: "https://ocx.kdco.dev/schemas/v3/registry.json",
+						author: "Test",
+						components: [],
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json" },
+					},
+				),
+			),
+		)
+
+		try {
+			await fetchRegistryIndex("https://future.example.com")
+			expect.unreachable("Should have thrown")
+		} catch (error) {
+			expect(error).toBeInstanceOf(RegistryCompatibilityError)
+			const compatError = error as RegistryCompatibilityError
+			expect(compatError.issue).toBe("unsupported-schema-version")
 		}
 	})
 
@@ -306,6 +378,7 @@ describe("fetchRegistryIndex compatibility detection", () => {
 			Promise.resolve(
 				new Response(
 					JSON.stringify({
+						$schema: REGISTRY_SCHEMA_V2_URL,
 						author: "Test",
 						components: [{ invalid: true }],
 					}),
@@ -336,7 +409,7 @@ describe("fetchRegistryIndex compatibility detection", () => {
 		globalThis.fetch = mock(() => {
 			callCount++
 			return Promise.resolve(
-				new Response(JSON.stringify([{ name: "legacy" }]), {
+				new Response(JSON.stringify({ author: "Test", components: [] }), {
 					status: 200,
 					headers: { "content-type": "application/json" },
 				}),
@@ -348,6 +421,7 @@ describe("fetchRegistryIndex compatibility detection", () => {
 			await fetchRegistryIndex("https://cache-test.example.com")
 		} catch (error) {
 			expect(error).toBeInstanceOf(RegistryCompatibilityError)
+			expect((error as RegistryCompatibilityError).issue).toBe("legacy-schema-v1")
 		}
 
 		expect(callCount).toBe(1)
@@ -357,6 +431,7 @@ describe("fetchRegistryIndex compatibility detection", () => {
 			await fetchRegistryIndex("https://cache-test.example.com")
 		} catch (error) {
 			expect(error).toBeInstanceOf(RegistryCompatibilityError)
+			expect((error as RegistryCompatibilityError).issue).toBe("legacy-schema-v1")
 		}
 
 		expect(callCount).toBe(2)

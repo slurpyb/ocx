@@ -168,6 +168,7 @@ export function startMockRegistry(): MockRegistry {
 
 			if (path === "/index.json") {
 				return Response.json({
+					$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
 					name: "Test Registry",
 					version: "1.0.0",
 					author: "Test Author",

@@ -232,16 +232,21 @@ function formatErrorAsJson(error: unknown): JsonErrorOutput {
 	}
 
 	if (error instanceof RegistryCompatibilityError) {
+		const details: Record<string, unknown> = {
+			url: error.url,
+			issue: error.issue,
+			remediation: error.remediation,
+		}
+		if (error.schemaUrl !== undefined) details.schemaUrl = error.schemaUrl
+		if (error.supportedMajor !== undefined) details.supportedMajor = error.supportedMajor
+		if (error.detectedMajor !== undefined) details.detectedMajor = error.detectedMajor
+
 		return {
 			success: false,
 			error: {
 				code: error.code,
 				message: error.message,
-				details: {
-					url: error.url,
-					issue: error.issue,
-					remediation: error.remediation,
-				},
+				details,
 			},
 			exitCode: error.exitCode,
 			meta: {

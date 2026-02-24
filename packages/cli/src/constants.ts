@@ -12,6 +12,14 @@ export const GITHUB_REPO = "kdcokenny/ocx"
 
 // OCX URLs
 export const OCX_SCHEMA_URL = `https://${OCX_DOMAIN}/schemas/ocx.json`
+export const REGISTRY_SCHEMA_UNVERSIONED_URL = `https://${OCX_DOMAIN}/schemas/registry.json`
+export const REGISTRY_SCHEMA_LATEST_MAJOR = 2
+
+export function getRegistrySchemaUrl(major: number): string {
+	return `https://${OCX_DOMAIN}/schemas/v${major}/registry.json`
+}
+
+export const REGISTRY_SCHEMA_LATEST_URL = getRegistrySchemaUrl(REGISTRY_SCHEMA_LATEST_MAJOR)
 
 // CLI Version (single source of truth from package.json)
 export const CLI_VERSION: string = pkg.version

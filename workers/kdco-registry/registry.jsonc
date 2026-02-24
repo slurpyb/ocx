@@ -1,5 +1,5 @@
 {
-	"$schema": "https://ocx.kdco.dev/schemas/registry.json",
+	"$schema": "https://ocx.kdco.dev/schemas/v2/registry.json",
 	// KDCO Registry - Official component registry for OpenCode extensions
 	// This registry provides plugins, agents, skills, and commands for the KDCO workspace
 

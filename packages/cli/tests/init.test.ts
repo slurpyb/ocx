@@ -94,10 +94,12 @@ describe("init --registry", () => {
 		expect(existsSync(registryPath)).toBe(true)
 
 		const content = await readFile(registryPath, "utf-8")
+		const manifest = parseJsonc(content) as { $schema?: string }
 
 		// Positive assertions - new values present
 		expect(content).toContain('"namespace": "test-namespace"')
 		expect(content).toContain('"author": "Test Author"')
+		expect(manifest.$schema).toBe("https://ocx.kdco.dev/schemas/v2/registry.json")
 
 		// CRITICAL: Negative assertions - template placeholders GONE
 		// These are the original template values that should be replaced

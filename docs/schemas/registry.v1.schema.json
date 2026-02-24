@@ -1,10 +1,10 @@
 {
-	"$id": "https://ocx.kdco.dev/schemas/v2/registry.json",
+	"$id": "https://ocx.kdco.dev/registry.schema.json",
 	"$schema": "http://json-schema.org/draft-07/schema#",
 	"title": "OCX Registry Schema",
 	"description": "Schema for registry.jsonc files that define OCX component registries",
 	"type": "object",
-	"required": ["name", "version", "author", "components"],
+	"required": ["name", "namespace", "version", "author", "components"],
 	"additionalProperties": false,
 	"properties": {
 		"$schema": {
@@ -15,6 +15,13 @@
 			"type": "string",
 			"minLength": 1,
 			"description": "Human-readable registry name"
+		},
+		"namespace": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 64,
+			"pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+			"description": "Registry namespace identifier (lowercase alphanumeric with hyphens)"
 		},
 		"version": {
 			"type": "string",
@@ -59,16 +66,7 @@
 				},
 				"type": {
 					"type": "string",
-					"enum": [
-						"agent",
-						"skill",
-						"plugin",
-						"command",
-						"tool",
-						"bundle",
-						"ocx:bundle",
-						"ocx:profile"
-					],
+					"enum": ["ocx:agent", "ocx:skill", "ocx:plugin", "ocx:command", "ocx:tool", "ocx:bundle"],
 					"description": "Component type"
 				},
 				"description": {
@@ -85,7 +83,7 @@
 							{
 								"type": "string",
 								"minLength": 1,
-								"description": "Source path (target auto-inferred as root-relative path; OCX V2 resolves to .opencode/<path> based on component type)"
+								"description": "Source path (target auto-inferred as .opencode/<path>)"
 							},
 							{
 								"type": "object",
@@ -99,8 +97,8 @@
 									},
 									"target": {
 										"type": "string",
-										"pattern": "^(agent|skill|plugin|command|tool|philosophy)/",
-										"description": "Target path in project (root-relative, no .opencode/ prefix; OCX V2 resolves based on component type)"
+										"pattern": "^\\.opencode/(agent|skill|plugin|command|tool|philosophy)/",
+										"description": "Target path in project (must start with .opencode/{agent|skill|plugin|command|tool|philosophy}/)"
 									}
 								}
 							}

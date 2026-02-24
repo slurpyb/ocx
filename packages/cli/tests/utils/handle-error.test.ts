@@ -543,7 +543,7 @@ describe("handleError JSON output", () => {
 		it("formats with url, issue, and remediation details", () => {
 			const error = new RegistryCompatibilityError("Registry uses legacy format", {
 				url: "https://old-registry.example.com/index.json",
-				issue: "ancient-format",
+				issue: "legacy-schema-v1",
 				remediation: "Migrate to the OCX registry specification.",
 			})
 
@@ -558,18 +558,18 @@ describe("handleError JSON output", () => {
 			expect(output.error.code).toBe("REGISTRY_COMPAT_ERROR")
 			expect(output.error.details).toEqual({
 				url: "https://old-registry.example.com/index.json",
-				issue: "ancient-format",
+				issue: "legacy-schema-v1",
 				remediation: "Migrate to the OCX registry specification.",
 			})
 			expect(output.exitCode).toBe(EXIT_CODES.CONFIG)
 			expect(capturedExitCode).toBe(EXIT_CODES.CONFIG)
 		})
 
-		it("formats missing-metadata issue", () => {
-			const error = new RegistryCompatibilityError("Registry index is missing required fields", {
+		it("formats invalid-schema-url issue", () => {
+			const error = new RegistryCompatibilityError("Registry uses invalid schema URL", {
 				url: "https://incomplete.example.com/index.json",
-				issue: "missing-metadata",
-				remediation: "Add 'author' and 'components' fields.",
+				issue: "invalid-schema-url",
+				remediation: "Use canonical v2 schema URL.",
 			})
 
 			try {
@@ -582,8 +582,36 @@ describe("handleError JSON output", () => {
 			expect(output.error.code).toBe("REGISTRY_COMPAT_ERROR")
 			expect(output.error.details).toEqual({
 				url: "https://incomplete.example.com/index.json",
-				issue: "missing-metadata",
-				remediation: "Add 'author' and 'components' fields.",
+				issue: "invalid-schema-url",
+				remediation: "Use canonical v2 schema URL.",
+			})
+		})
+
+		it("formats schema compatibility details for unsupported major", () => {
+			const error = new RegistryCompatibilityError("Registry uses unsupported schema major", {
+				url: "https://future.example.com/index.json",
+				issue: "unsupported-schema-version",
+				remediation: "Use canonical v2 schema URL.",
+				schemaUrl: "https://ocx.kdco.dev/schemas/v3/registry.json",
+				supportedMajor: 2,
+				detectedMajor: 3,
+			})
+
+			try {
+				handleError(error, { json: true })
+			} catch {
+				// Expected
+			}
+
+			const output = parseJsonOutput()
+			expect(output.error.code).toBe("REGISTRY_COMPAT_ERROR")
+			expect(output.error.details).toEqual({
+				url: "https://future.example.com/index.json",
+				issue: "unsupported-schema-version",
+				remediation: "Use canonical v2 schema URL.",
+				schemaUrl: "https://ocx.kdco.dev/schemas/v3/registry.json",
+				supportedMajor: 2,
+				detectedMajor: 3,
 			})
 		})
 

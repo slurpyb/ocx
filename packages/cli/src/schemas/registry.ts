@@ -7,6 +7,13 @@
 
 import { isAbsolute, normalize } from "node:path"
 import { z } from "zod"
+import {
+	OCX_DOMAIN,
+	REGISTRY_SCHEMA_LATEST_MAJOR,
+	REGISTRY_SCHEMA_LATEST_URL,
+	REGISTRY_SCHEMA_UNVERSIONED_URL,
+} from "../constants"
+import type { RegistryCompatIssue } from "../utils/errors"
 import { ValidationError } from "../utils/errors"
 import { PathValidationError, validatePath } from "../utils/path-security"
 
@@ -802,6 +809,106 @@ export function normalizeComponentManifest(
 // =============================================================================
 // REGISTRY SCHEMA
 // =============================================================================
+
+const REGISTRY_SCHEMA_VERSIONED_URL_REGEX = new RegExp(
+	`^https://${OCX_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/schemas/v(\\d+)/registry\\.json$`,
+)
+
+export interface RegistrySchemaUrlIssue {
+	issue: Exclude<RegistryCompatIssue, "invalid-format">
+	remediation: string
+	schemaUrl?: string
+	supportedMajor: number
+	detectedMajor?: number
+}
+
+/**
+ * Classify registry schema URL compatibility.
+ * Single source of truth for local manifests and remote index payloads.
+ */
+export function classifyRegistrySchemaIssue(document: unknown): RegistrySchemaUrlIssue | null {
+	if (document === null || document === undefined || typeof document !== "object") {
+		return null
+	}
+
+	const documentRecord = document as Record<string, unknown>
+	const hasSchemaField = Object.hasOwn(documentRecord, "$schema")
+	if (!hasSchemaField) {
+		return {
+			issue: "legacy-schema-v1",
+			remediation:
+				`This registry uses legacy schema v1 (missing $schema). ` +
+				`Set "$schema" to "${REGISTRY_SCHEMA_LATEST_URL}".`,
+			supportedMajor: REGISTRY_SCHEMA_LATEST_MAJOR,
+		}
+	}
+
+	const schemaUrl = documentRecord.$schema
+
+	if (typeof schemaUrl !== "string") {
+		return {
+			issue: "invalid-schema-url",
+			remediation: `Registry $schema must be a canonical URL like "${REGISTRY_SCHEMA_LATEST_URL}".`,
+			schemaUrl: String(schemaUrl),
+			supportedMajor: REGISTRY_SCHEMA_LATEST_MAJOR,
+		}
+	}
+
+	if (!schemaUrl) {
+		return {
+			issue: "invalid-schema-url",
+			remediation: `Registry $schema must be a canonical URL like "${REGISTRY_SCHEMA_LATEST_URL}".`,
+			schemaUrl,
+			supportedMajor: REGISTRY_SCHEMA_LATEST_MAJOR,
+		}
+	}
+
+	if (schemaUrl === REGISTRY_SCHEMA_UNVERSIONED_URL) {
+		return {
+			issue: "legacy-schema-v1",
+			remediation:
+				`Schema URL "${REGISTRY_SCHEMA_UNVERSIONED_URL}" is legacy v1. ` +
+				`Use "${REGISTRY_SCHEMA_LATEST_URL}" instead.`,
+			schemaUrl,
+			supportedMajor: REGISTRY_SCHEMA_LATEST_MAJOR,
+		}
+	}
+
+	const versionMatch = schemaUrl.match(REGISTRY_SCHEMA_VERSIONED_URL_REGEX)
+	if (!versionMatch) {
+		return {
+			issue: "invalid-schema-url",
+			remediation: `Registry $schema must be a canonical URL like "${REGISTRY_SCHEMA_LATEST_URL}".`,
+			schemaUrl,
+			supportedMajor: REGISTRY_SCHEMA_LATEST_MAJOR,
+		}
+	}
+
+	const majorToken = versionMatch[1]
+	if (!majorToken) {
+		return {
+			issue: "invalid-schema-url",
+			remediation: `Registry $schema must be a canonical URL like "${REGISTRY_SCHEMA_LATEST_URL}".`,
+			schemaUrl,
+			supportedMajor: REGISTRY_SCHEMA_LATEST_MAJOR,
+		}
+	}
+
+	const major = Number.parseInt(majorToken, 10)
+	if (major !== REGISTRY_SCHEMA_LATEST_MAJOR) {
+		return {
+			issue: "unsupported-schema-version",
+			remediation:
+				`Schema major v${major} is unsupported. ` +
+				`Use "${REGISTRY_SCHEMA_LATEST_URL}" (v${REGISTRY_SCHEMA_LATEST_MAJOR}).`,
+			schemaUrl,
+			supportedMajor: REGISTRY_SCHEMA_LATEST_MAJOR,
+			detectedMajor: major,
+		}
+	}
+
+	return null
+}
 
 /**
  * Semver regex for version validation

@@ -779,7 +779,7 @@ describe("ocx add legacy registry compatibility", () => {
 
 			expect(exitCode).not.toBe(0)
 			expect(output).toContain("incompatible format")
-			expect(output).toContain("ancient-format")
+			expect(output).toContain("legacy-schema-v1")
 			// Should NOT show raw Zod errors
 			expect(output).not.toMatch(/^Required$/m)
 		} finally {
@@ -816,7 +816,7 @@ describe("ocx add legacy registry compatibility", () => {
 
 			expect(exitCode).not.toBe(0)
 			expect(output).toContain("incompatible format")
-			expect(output).toContain("ancient-format")
+			expect(output).toContain("legacy-schema-v1")
 		} finally {
 			server.stop()
 		}
@@ -847,7 +847,7 @@ describe("ocx add legacy registry compatibility", () => {
 			const jsonOutput = JSON.parse(stdout || stderr)
 			expect(jsonOutput.success).toBe(false)
 			expect(jsonOutput.error.code).toBe("REGISTRY_COMPAT_ERROR")
-			expect(jsonOutput.error.details.issue).toBe("invalid-format")
+			expect(jsonOutput.error.details.issue).toBe("legacy-schema-v1")
 			expect(jsonOutput.error.details.url).toContain("index.json")
 		} finally {
 			server.stop()

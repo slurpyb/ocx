@@ -4,7 +4,12 @@
  */
 
 import type { ComponentManifest, McpServer, RegistryIndex } from "../schemas/registry"
-import { componentManifestSchema, packumentSchema, registryIndexSchema } from "../schemas/registry"
+import {
+	classifyRegistrySchemaIssue,
+	componentManifestSchema,
+	packumentSchema,
+	registryIndexSchema,
+} from "../schemas/registry"
 import {
 	NetworkError,
 	NotFoundError,
@@ -70,62 +75,25 @@ async function fetchWithCache<T>(url: string, parse: (data: unknown) => T): Prom
 }
 
 /**
- * Classify registry index format issues from parsed JSON data.
- * Pure function: inspects unknown data and returns a classification or null.
- *
- * Classifications:
- * - `ancient-format`: top-level array (legacy shadcn-style registries)
- * - `missing-metadata`: object with registry-like signals but missing required keys
- * - `invalid-format`: object that doesn't match any recognized pattern
- *
- * Returns null if the data does not match any known incompatible pattern
- * (i.e., it should be handed to the normal schema parser).
+ * Classify registry index schema compatibility from parsed JSON data.
+ * Returns null when the schema URL is compatible.
  */
-export function classifyRegistryIndexIssue(
-	data: unknown,
-): { issue: RegistryCompatIssue; remediation: string } | null {
-	// Guard: non-object data
-	if (data === null || data === undefined || typeof data !== "object") {
-		return null
-	}
+export function classifyRegistryIndexIssue(data: unknown): {
+	issue: RegistryCompatIssue
+	remediation: string
+	schemaUrl?: string
+	supportedMajor?: number
+	detectedMajor?: number
+} | null {
+	const issue = classifyRegistrySchemaIssue(data)
+	if (!issue) return null
 
-	// Ancient format: top-level array (legacy shadcn-style)
-	if (Array.isArray(data)) {
-		return {
-			issue: "ancient-format",
-			remediation:
-				"This registry uses a legacy array-based format. " +
-				"Migrate to the OCX registry specification with a top-level object containing 'author' and 'components' fields.",
-		}
-	}
-
-	// Check for registry-like signals
-	const obj = data as Record<string, unknown>
-	const indexSignals = ["components", "$schema", "opencode", "ocx"] as const
-	const hasIndexSignal = indexSignals.some((key) => key in obj)
-
-	if (hasIndexSignal) {
-		// Has signals but might be missing required keys
-		const requiredKeys = ["author", "components"] as const
-		const missingKeys = requiredKeys.filter((key) => !(key in obj))
-		if (missingKeys.length > 0) {
-			return {
-				issue: "missing-metadata",
-				remediation:
-					`Registry index is missing required field(s): ${missingKeys.join(", ")}. ` +
-					"Add the missing fields to conform to the OCX registry specification.",
-			}
-		}
-		// Has all signals and required keys — let schema parse normally
-		return null
-	}
-
-	// Plain object with no recognized signals — invalid format
 	return {
-		issue: "invalid-format",
-		remediation:
-			"The registry index does not match any recognized format. " +
-			"Ensure it follows the OCX registry specification with 'author' and 'components' fields.",
+		issue: issue.issue,
+		remediation: issue.remediation,
+		schemaUrl: issue.schemaUrl,
+		supportedMajor: issue.supportedMajor,
+		detectedMajor: issue.detectedMajor,
 	}
 }
 
@@ -145,6 +113,15 @@ export async function fetchRegistryIndex(baseUrl: string): Promise<RegistryIndex
 					url,
 					issue: classification.issue,
 					remediation: classification.remediation,
+					...(classification.schemaUrl !== undefined && {
+						schemaUrl: classification.schemaUrl,
+					}),
+					...(classification.supportedMajor !== undefined && {
+						supportedMajor: classification.supportedMajor,
+					}),
+					...(classification.detectedMajor !== undefined && {
+						detectedMajor: classification.detectedMajor,
+					}),
 				},
 			)
 		}

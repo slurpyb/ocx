@@ -8,7 +8,7 @@
 import { mkdir } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { parse as parseJsonc } from "jsonc-parser"
-import { normalizeFile, registrySchema } from "../schemas/registry"
+import { classifyRegistrySchemaIssue, normalizeFile, registrySchema } from "../schemas/registry"
 import type { DryRunResult } from "../utils/dry-run"
 
 export interface BuildRegistryOptions {
@@ -62,6 +62,13 @@ export async function buildRegistry(
 	const registryFile = jsoncExists ? jsoncFile : jsonFile
 	const content = await registryFile.text()
 	const registryData = parseJsonc(content, [], { allowTrailingComma: true })
+	const schemaIssue = classifyRegistrySchemaIssue(registryData)
+	if (schemaIssue) {
+		throw new BuildRegistryError(`Registry schema compatibility failed (${schemaIssue.issue})`, [
+			schemaIssue.remediation,
+			...(schemaIssue.schemaUrl !== undefined ? [`Invalid $schema: ${schemaIssue.schemaUrl}`] : []),
+		])
+	}
 
 	// Validate registry schema
 	const parseResult = registrySchema.safeParse(registryData)

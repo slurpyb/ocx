@@ -117,11 +117,16 @@ export class SelfUpdateError extends OCXError {
 
 /**
  * Issue types for registry format incompatibility.
- * - `missing-metadata`: index has registry-like signals but lacks required keys
- * - `ancient-format`: index is a top-level array (legacy shadcn-style)
- * - `invalid-format`: index is an unrecognized object shape
+ * - `legacy-schema-v1`: missing/unversioned schema URL (legacy v1)
+ * - `invalid-schema-url`: malformed/non-canonical schema URL
+ * - `unsupported-schema-version`: versioned schema URL with unsupported major
+ * - `invalid-format`: payload shape is invalid for supported schema
  */
-export type RegistryCompatIssue = "missing-metadata" | "ancient-format" | "invalid-format"
+export type RegistryCompatIssue =
+	| "legacy-schema-v1"
+	| "invalid-schema-url"
+	| "unsupported-schema-version"
+	| "invalid-format"
 
 /**
  * Error for registry format/compatibility issues.
@@ -134,16 +139,29 @@ export class RegistryCompatibilityError extends OCXError {
 	public readonly url: string
 	public readonly issue: RegistryCompatIssue
 	public readonly remediation: string
+	public readonly schemaUrl?: string
+	public readonly supportedMajor?: number
+	public readonly detectedMajor?: number
 
 	constructor(
 		message: string,
-		options: { url: string; issue: RegistryCompatIssue; remediation: string },
+		options: {
+			url: string
+			issue: RegistryCompatIssue
+			remediation: string
+			schemaUrl?: string
+			supportedMajor?: number
+			detectedMajor?: number
+		},
 	) {
 		super(message, "REGISTRY_COMPAT_ERROR", EXIT_CODES.CONFIG)
 		this.name = "RegistryCompatibilityError"
 		this.url = options.url
 		this.issue = options.issue
 		this.remediation = options.remediation
+		this.schemaUrl = options.schemaUrl
+		this.supportedMajor = options.supportedMajor
+		this.detectedMajor = options.detectedMajor
 	}
 }
 

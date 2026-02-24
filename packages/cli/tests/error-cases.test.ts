@@ -272,7 +272,7 @@ describe("Error Cases", () => {
 		it("should error when registry schema is invalid", async () => {
 			// Create registry.jsonc with invalid schema (missing required fields)
 			const registryConfig = {
-				$schema: "https://ocx.build/registry.json",
+				$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
 				name: "test",
 				// Missing namespace, version, author, and components - which are required
 			}
@@ -286,7 +286,7 @@ describe("Error Cases", () => {
 		it("should error when source files are missing", async () => {
 			// Create a complete valid registry.jsonc referencing non-existent files
 			const registryConfig = {
-				$schema: "https://ocx.build/registry.json",
+				$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
 				name: "test",
 				namespace: "test",
 				version: "1.0.0",

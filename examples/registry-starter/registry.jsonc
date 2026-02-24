@@ -2,10 +2,10 @@
 	// OCX Registry Starter Template
 	// Use this as a starting point for creating your own component registry
 	//
-	// Schema reference: https://ocx.kdco.dev/schema.json
+	// Schema reference: https://ocx.kdco.dev/schemas/v2/registry.json
 	// Documentation: https://github.com/kdcokenny/ocx
 
-	"$schema": "https://ocx.kdco.dev/schemas/registry.json",
+	"$schema": "https://ocx.kdco.dev/schemas/v2/registry.json",
 	"name": "My Registry",
 	"namespace": "my-registry",
 	"version": "0.0.1",

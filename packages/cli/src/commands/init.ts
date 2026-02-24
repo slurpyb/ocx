@@ -7,7 +7,7 @@ import { existsSync } from "node:fs"
 import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import type { Command } from "commander"
-import { OCX_SCHEMA_URL } from "../constants"
+import { OCX_SCHEMA_URL, REGISTRY_SCHEMA_LATEST_URL } from "../constants"
 import { atomicWrite } from "../profile/atomic"
 import { DEFAULT_OCX_CONFIG } from "../profile/manager"
 import {
@@ -414,6 +414,17 @@ async function replacePlaceholders(
 		content = content.replace(/my-registry/g, values.namespace)
 		content = content.replace(/My Registry/g, toTitleCase(values.namespace))
 		content = content.replace(/Your Name/g, values.author)
+
+		if (file === "registry.jsonc") {
+			if (/"\$schema"\s*:/.test(content)) {
+				content = content.replace(
+					/("\$schema"\s*:\s*")[^"]*(")/,
+					`$1${REGISTRY_SCHEMA_LATEST_URL}$2`,
+				)
+			} else {
+				content = content.replace(/{/, `{\n\t"$schema": "${REGISTRY_SCHEMA_LATEST_URL}",`)
+			}
+		}
 
 		await writeFile(filePath, content)
 	}

@@ -877,7 +877,7 @@ describe("registry add compatibility diagnostics", () => {
 			)
 
 			expect(exitCode).not.toBe(0)
-			expect(output).toContain("ancient-format")
+			expect(output).toContain("legacy-schema-v1")
 			expect(output).toContain("incompatible format")
 			// Should NOT show raw Zod errors as the primary message
 			expect(output).not.toMatch(/^.*Required$/m)
@@ -904,7 +904,7 @@ describe("registry add compatibility diagnostics", () => {
 			const jsonOutput = JSON.parse(stdout || stderr)
 			expect(jsonOutput.success).toBe(false)
 			expect(jsonOutput.error.code).toBe("REGISTRY_COMPAT_ERROR")
-			expect(jsonOutput.error.details.issue).toBe("ancient-format")
+			expect(jsonOutput.error.details.issue).toBe("legacy-schema-v1")
 			expect(jsonOutput.error.details.url).toContain("index.json")
 			expect(jsonOutput.error.details.remediation).toBeDefined()
 		} finally {
@@ -912,12 +912,13 @@ describe("registry add compatibility diagnostics", () => {
 		}
 	})
 
-	it("should show actionable error for missing-metadata registry", async () => {
+	it("should show actionable error for unsupported schema major", async () => {
 		const server = Bun.serve({
 			port: 0,
 			fetch() {
-				// Has 'components' signal but missing 'author'
 				return Response.json({
+					$schema: "https://ocx.kdco.dev/schemas/v3/registry.json",
+					author: "Legacy",
 					components: [{ name: "button", type: "plugin", description: "A button" }],
 				})
 			},
@@ -930,8 +931,8 @@ describe("registry add compatibility diagnostics", () => {
 			)
 
 			expect(exitCode).not.toBe(0)
-			expect(output).toContain("missing-metadata")
-			expect(output).toContain("author")
+			expect(output).toContain("unsupported-schema-version")
+			expect(output).toContain("v2")
 		} finally {
 			server.stop()
 		}
