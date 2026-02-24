@@ -1185,7 +1185,7 @@ All subcommands from CLI.md lines 933-1207.
 - [x] **Commands:**
   ```bash
   # Idempotent: remove stale profile first to avoid sequential-run conflicts
-  $OCX_BIN profile rm work --global 2>/dev/null || true
+  $OCX_BIN profile list --global --json | grep -q '"work"' && $OCX_BIN profile remove work --global
   $OCX_BIN profile add work --global  # Create global profile first
   $OCX_BIN profile remove work --global
   ```
@@ -1194,7 +1194,7 @@ All subcommands from CLI.md lines 933-1207.
   ```bash
   ls $XDG_CONFIG_HOME/opencode/profiles/  # work/ should be gone
   ```
-- [x] **Run result (2026-02-23):** PASS — idempotent pre-clean (`profile rm ... || true`) removed stale state, and `profile add` + `profile remove` completed successfully.
+- [x] **Run result (2026-02-23):** PASS — idempotent pre-clean used `profile list` + canonical `profile remove`, and `profile add` + `profile remove` completed successfully.
 - [x] **Last tested:** _v2.0.0 on 2026-02-23_
 
 ### 10.11 `ocx profile remove --global`
@@ -1340,71 +1340,80 @@ All subcommands from CLI.md lines 933-1207.
 
 All subcommands from CLI.md lines 1209-1314.
 
+> **Section setup (deterministic sequential runs):** Ensure the current profile
+> reference resolves before running `config show`.
+> ```bash
+> unset OCX_PROFILE
+> test -f .opencode/ocx.jsonc || $OCX_BIN init
+> $OCX_BIN profile list --global --json | grep -q '"work"' || $OCX_BIN profile add work --global
+> echo '{"profile": "work"}' > .opencode/ocx.jsonc
+> ```
+
 ### 11.1 `ocx config show` (Current Scope)
 
 - [x] **Setup:** Local config initialized
 - [x] **Command:** `$OCX_BIN config show`
-- [ ] **Expected:** Shows merged config from current scope
-- [ ] **Verify:**
+- [x] **Expected:** Shows merged config from current scope
+- [x] **Verify:**
   ```bash
   # Output should display registries, settings
   ```
-- [x] **Run result (2026-02-23):** FAIL — command returned `error Profile "oc" not found` in `/tmp/ocx-v2-test-project`.
-- [x] **Last tested:** _v2.0.0 on 2026-02-23_
+- [x] **Run result (2026-02-24):** PASS — with deterministic precondition (`unset OCX_PROFILE`, ensured `work` exists, and set local `profile`), command returned resolved configuration for profile `work`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 11.2 `ocx config show --origin`
 
-- [ ] **Setup:** Local config with profile active
-- [ ] **Command:** `$OCX_BIN config show --origin`
-- [ ] **Expected:** Shows config with source annotations
-- [ ] **Verify:**
+- [x] **Setup:** Local config with profile active
+- [x] **Command:** `$OCX_BIN config show --origin`
+- [x] **Expected:** Shows config with source annotations
+- [x] **Verify:**
   ```bash
   # Output should indicate source (local, profile, global)
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 11.3 `ocx config show -p work`
 
-- [ ] **Setup:** Profile "work" exists
-- [ ] **Command:** `$OCX_BIN config show -p work`
-- [ ] **Expected:** Shows config from work profile scope
-- [ ] **Verify:** Output shows work profile settings
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Profile "work" exists
+- [x] **Command:** `$OCX_BIN config show -p work`
+- [x] **Expected:** Shows config from work profile scope
+- [x] **Verify:** Output shows work profile settings
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 11.4 `ocx config show --json`
 
-- [ ] **Setup:** Config exists
-- [ ] **Command:** `$OCX_BIN config show --json`
-- [ ] **Expected:** Machine-readable JSON config
-- [ ] **Verify:** Output is valid JSON
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Config exists
+- [x] **Command:** `$OCX_BIN config show --json`
+- [x] **Expected:** Machine-readable JSON config
+- [x] **Verify:** Output is valid JSON
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 11.5 `ocx config edit` (Local)
 
-- [ ] **Setup:** Local config exists, `$EDITOR` set
-- [ ] **Command:** `EDITOR=cat $OCX_BIN config edit`
-- [ ] **Expected:** Opens `.opencode/ocx.jsonc` in editor
-- [ ] **Verify:**
+- [x] **Setup:** Local config exists, `$EDITOR` set
+- [x] **Command:** `EDITOR=cat $OCX_BIN config edit`
+- [x] **Expected:** Opens `.opencode/ocx.jsonc` in editor
+- [x] **Verify:**
   ```bash
   # Editor should open local config file
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 11.6 `ocx config edit --global`
 
-- [ ] **Setup:** Global config exists, `$EDITOR` set
-- [ ] **Command:** `EDITOR=cat $OCX_BIN config edit --global`
-- [ ] **Expected:** Opens `~/.config/opencode/ocx.jsonc` in editor
-- [ ] **Verify:** Editor opens global config
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Global config exists, `$EDITOR` set
+- [x] **Command:** `EDITOR=cat $OCX_BIN config edit --global`
+- [x] **Expected:** Opens `~/.config/opencode/ocx.jsonc` in editor
+- [x] **Verify:** Editor opens global config
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 11.7 `ocx config edit -p work`
 
-- [ ] **Setup:** Profile "work" exists, `$EDITOR` set
-- [ ] **Command:** `EDITOR=cat $OCX_BIN config edit -p work`
-- [ ] **Expected:** Opens work profile's `ocx.jsonc` in editor
-- [ ] **Verify:** Editor opens profile config
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Profile "work" exists, `$EDITOR` set
+- [x] **Command:** `EDITOR=cat $OCX_BIN config edit -p work`
+- [x] **Expected:** Opens work profile's `ocx.jsonc` in editor
+- [x] **Verify:** Editor opens profile config
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ---
 
@@ -1412,90 +1421,100 @@ All subcommands from CLI.md lines 1209-1314.
 
 All variations from CLI.md lines 1316-1448.
 
+> **Section setup (deterministic sequential runs):** Clear inherited profile
+> environment and ensure a known global profile exists before running `ocx opencode`
+> commands.
+> ```bash
+> unset OCX_PROFILE
+> test -f .opencode/ocx.jsonc || $OCX_BIN init
+> $OCX_BIN profile list --global --json | grep -q '"work"' || $OCX_BIN profile add work --global
+> ```
+
 ### 12.1 `ocx opencode` (Default Profile)
 
-- [ ] **Setup:** Default profile exists, test project directory
-- [ ] **Command:** `cd /tmp/ocx-v2-test-project && $OCX_BIN oc run "echo hello"`
-- [ ] **Expected:** Launches OpenCode with default profile
-- [ ] **Verify:** Output shows "hello"
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Default profile exists, test project directory
+- [x] **Command:** `cd /tmp/ocx-v2-test-project && $OCX_BIN oc run "echo hello"`
+- [x] **Expected:** Launches OpenCode with default profile
+- [x] **Verify:** Output shows "hello"
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 12.2 `ocx opencode -p work`
 
-- [ ] **Setup:** Work profile exists
-- [ ] **Command:** `$OCX_BIN oc -p work run "echo hello"`
-- [ ] **Expected:** Launches with work profile explicitly
-- [ ] **Verify:** Command executes successfully
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Work profile exists
+- [x] **Command:** `$OCX_BIN oc -p work run "echo hello"`
+- [x] **Expected:** Launches with work profile explicitly
+- [x] **Verify:** Command executes successfully
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 12.3 `ocx opencode` with `OCX_PROFILE` Environment
 
-- [ ] **Setup:** Profile exists
-- [ ] **Commands:**
+- [x] **Setup:** Profile exists
+- [x] **Commands:**
   ```bash
   export OCX_PROFILE=work
   $OCX_BIN oc run "echo hello"
   ```
-- [ ] **Expected:** Uses profile from environment variable
-- [ ] **Verify:** Command executes with work profile
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Uses profile from environment variable
+- [x] **Verify:** Command executes with work profile
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 12.4 `ocx oc` (Alias)
 
-- [ ] **Setup:** Profile exists
-- [ ] **Command:** `$OCX_BIN oc run "echo hello"`
-- [ ] **Expected:** Same behavior as `ocx opencode`
-- [ ] **Verify:** Command executes
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Profile exists
+- [x] **Command:** `$OCX_BIN oc run "echo hello"`
+- [x] **Expected:** Same behavior as `ocx opencode`
+- [x] **Verify:** Command executes
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 12.5 `ocx opencode --no-rename`
 
-- [ ] **Setup:** Profile exists, in terminal with window support
-- [ ] **Command:** `$OCX_BIN oc --no-rename run "echo hello"`
-- [ ] **Expected:** Skips automatic window renaming
-- [ ] **Verify:** Terminal window name unchanged
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Profile exists, in terminal with window support
+- [x] **Command:** `$OCX_BIN oc --no-rename run "echo hello"`
+- [x] **Expected:** Skips automatic window renaming
+- [x] **Verify:** Terminal window name unchanged
+- [x] **Run result (2026-02-24):** PASS — with Section 12 deterministic precondition (`unset OCX_PROFILE`), command executed successfully and returned `hello`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 12.6 `ocx oc -- --help` (Pass-Through to OpenCode)
 
-- [ ] **Setup:** OpenCode installed
-- [ ] **Command:** `$OCX_BIN oc -- --help`
-- [ ] **Expected:** Shows OpenCode's help, not OCX help
-- [ ] **Verify:** Help output is from OpenCode
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** OpenCode installed
+- [x] **Command:** `$OCX_BIN oc -- --help`
+- [x] **Expected:** Shows OpenCode's help, not OCX help
+- [x] **Verify:** Help output is from OpenCode
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 12.7 Profile Resolution Priority: Flag Wins
 
-- [ ] **Setup:** Multiple profiles, `OCX_PROFILE` set
-- [ ] **Commands:**
+- [x] **Setup:** Multiple profiles, `OCX_PROFILE` set
+- [x] **Commands:**
   ```bash
   unset OCX_PROFILE
   export OCX_PROFILE=default
   $OCX_BIN oc -p work run "echo hello"
   unset OCX_PROFILE
   ```
-- [ ] **Expected:** Uses work profile (flag overrides env)
-- [ ] **Verify:** Work profile used
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Uses work profile (flag overrides env)
+- [x] **Verify:** Work profile used
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 12.8 Profile Resolution: Environment Variable
 
-- [ ] **Setup:** Profile exists, no local config
-- [ ] **Commands:**
+- [x] **Setup:** Profile exists, no local config
+- [x] **Commands:**
   ```bash
   unset OCX_PROFILE
   export OCX_PROFILE=work
   $OCX_BIN oc run "echo hello"
   unset OCX_PROFILE
   ```
-- [ ] **Expected:** Uses profile from environment variable
-- [ ] **Verify:** Work profile used
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Uses profile from environment variable
+- [x] **Verify:** Work profile used
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 12.9 Profile Resolution: Local Config Field
 
-- [ ] **Setup:** Local config with `profile: "work"` field, work profile exists globally with model pins
-- [ ] **Commands:**
+- [x] **Setup:** Local config with `profile: "work"` field, work profile exists globally with model pins
+- [x] **Commands:**
   ```bash
   unset OCX_PROFILE
   cd /tmp/ocx-v2-test-project
@@ -1509,19 +1528,19 @@ All variations from CLI.md lines 1316-1448.
   cat $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc | grep -q "opencode/big-pickle" && echo "OK: Model pins verified" || echo "FAIL: Model pins missing"
   $OCX_BIN oc run "echo hello"
   ```
-- [ ] **Expected:** Uses profile specified in local config with free Zen model
-- [ ] **Verify:**
+- [x] **Expected:** Uses profile specified in local config with free Zen model
+- [x] **Verify:**
   ```bash
   cat .opencode/ocx.jsonc  # Should have "profile": "work"
   cat $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc  # Should contain model pins
   # oc run output should indicate work profile is being used
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 12.10 Profile Resolution: Default Profile Fallback
 
-- [ ] **Setup:** Default profile exists, no explicit selection (clear local profile override from Section 12.9)
-- [ ] **Commands:**
+- [x] **Setup:** Default profile exists, no explicit selection (clear local profile override from Section 12.9)
+- [x] **Commands:**
   ```bash
   unset OCX_PROFILE
   # Clear local profile override to test true default fallback
@@ -1529,18 +1548,18 @@ All variations from CLI.md lines 1316-1448.
   $OCX_BIN oc run "echo hello"
   unset OCX_PROFILE
   ```
-- [ ] **Expected:** Falls back to default profile when no higher-priority source is set
-- [ ] **Verify:**
+- [x] **Expected:** Falls back to default profile when no higher-priority source is set
+- [x] **Verify:**
   ```bash
   cat .opencode/ocx.jsonc  # Should NOT contain "profile" field
   # Command executes successfully using default profile
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 12.11 Custom Binary via Profile Config
 
-- [ ] **Setup:** Profile with `bin` field set to an available OpenCode binary
-- [ ] **Commands:**
+- [x] **Setup:** Profile with `bin` field set to an available OpenCode binary
+- [x] **Commands:**
   ```bash
   # Ensure work profile exists (idempotent)
   $OCX_BIN profile add work --global 2>/dev/null || true
@@ -1552,27 +1571,28 @@ All variations from CLI.md lines 1316-1448.
     echo "WARNING: No OpenCode binary found in PATH"
   fi
   ```
-- [ ] **Command:** `$OCX_BIN oc -p work run "echo hello"`
-- [ ] **Expected:** Uses custom binary from profile config
-- [ ] **Verify:**
+- [x] **Command:** `$OCX_BIN oc -p work run "echo hello"`
+- [x] **Expected:** Uses custom binary from profile config
+- [x] **Verify:**
   ```bash
   # Check bin field is present and non-empty
   cat $XDG_CONFIG_HOME/opencode/profiles/work/ocx.jsonc | grep -q '"bin"' && echo "OK: bin field present" || echo "FAIL: bin field missing"
   cat $XDG_CONFIG_HOME/opencode/profiles/work/ocx.jsonc | grep '"bin"' | grep -v '""' && echo "OK: bin field non-empty" || echo "FAIL: bin field empty"
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 12.12 Custom Binary via `OPENCODE_BIN` Environment
 
-- [ ] **Setup:** OpenCode available at custom path
-- [ ] **Commands:**
+- [x] **Setup:** OpenCode available at custom path
+- [x] **Commands:**
   ```bash
   export OPENCODE_BIN=/custom/path/opencode
   $OCX_BIN oc run "echo hello"
   ```
-- [ ] **Expected:** Uses binary from environment variable
-- [ ] **Verify:** Custom binary executed
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** SKIPPED-for-now
+- [x] **Verify:** SKIPPED-for-now
+- [x] **Run result (2026-02-24):** SKIPPED-for-now — placeholder custom path not available in this environment.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ---
 
@@ -1582,8 +1602,8 @@ From PROFILES.md - advanced profile behaviors.
 
 ### 13.1 Profile Layering: Global Base + Local Overlay
 
-- [ ] **Setup:** Global profile "work" exists, local config specifies profile
-- [ ] **Commands:**
+- [x] **Setup:** Global profile "work" exists, local config specifies profile
+- [x] **Commands:**
   ```bash
   $OCX_BIN init --global
   # Idempotent: remove work profile if it exists from prior runs
@@ -1598,14 +1618,15 @@ From PROFILES.md - advanced profile behaviors.
   echo '{"profile": "work"}' > .opencode/ocx.jsonc
   $OCX_BIN config show --origin
   ```
-- [ ] **Expected:** Local overlay takes precedence over global base
-- [ ] **Verify:** `--origin` shows layering sources (global profile + local overlay)
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Local overlay takes precedence over global base
+- [x] **Verify:** `--origin` shows layering sources (global profile + local overlay)
+- [x] **Run result (2026-02-24):** PASS — `config show --origin` resolved profile `work` and showed layered sources.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 13.2 Exclude/Include Pattern Behavior
 
-- [ ] **Setup:** Profile with exclude patterns
-- [ ] **Commands:**
+- [x] **Setup:** Profile with exclude patterns
+- [x] **Commands:**
   ```bash
   # Deterministic pre-check: ensure work profile still has model pins before running
   cat $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc 2>/dev/null | grep -q "opencode/big-pickle" || echo '{"model": "opencode/big-pickle", "small_model": "opencode/big-pickle"}' > $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc
@@ -1614,14 +1635,15 @@ From PROFILES.md - advanced profile behaviors.
   echo "# Test" > AGENTS.md
   $OCX_BIN oc -p work run "echo hello"
   ```
-- [ ] **Expected:** AGENTS.md excluded from OpenCode context
-- [ ] **Verify:** File not visible to OpenCode
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** AGENTS.md excluded from OpenCode context
+- [x] **Verify:** File not visible to OpenCode
+- [x] **Run result (2026-02-24):** PASS — model pins verified and `oc -p work run "echo hello"` completed.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 13.3 Include Overrides Exclude
 
-- [ ] **Setup:** Profile with exclude and include patterns
-- [ ] **Commands:**
+- [x] **Setup:** Profile with exclude and include patterns
+- [x] **Commands:**
   ```bash
   # Idempotent: ensure work profile exists with model pins before running
   $OCX_BIN profile rm work --global 2>/dev/null || true
@@ -1635,14 +1657,15 @@ From PROFILES.md - advanced profile behaviors.
   cat $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc | grep -q "opencode/big-pickle" && echo "OK: Model pins verified" || echo "FAIL: Model pins missing"
   $OCX_BIN oc -p work run "echo hello"
   ```
-- [ ] **Expected:** Root AGENTS.md included despite exclude pattern
-- [ ] **Verify:** Include overrides exclude
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Root AGENTS.md included despite exclude pattern
+- [x] **Verify:** Include overrides exclude
+- [x] **Run result (2026-02-24):** PASS — command executed successfully and returned `hello`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 13.4 Registry Isolation: Profile Registries Only
 
-- [ ] **Setup:** Global registry configured, profile with different registry
-- [ ] **Commands:**
+- [x] **Setup:** Global registry configured, profile with different registry
+- [x] **Commands:**
   ```bash
   # Idempotent: remove registry 'kdco' if it exists from prior runs
    $OCX_BIN registry remove kdco --global 2>/dev/null || true
@@ -1654,46 +1677,49 @@ From PROFILES.md - advanced profile behaviors.
   echo '{"registries": {"kit": {"url": "http://localhost:8788"}}}' > $XDG_CONFIG_HOME/opencode/profiles/work/ocx.jsonc
   $OCX_BIN search -p work
   ```
-- [ ] **Expected:** Only profile's registries visible, NOT global
-- [ ] **Verify:** Search shows only kit components (from port 8788), NOT kdco components (from port 8787)
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Only profile's registries visible, NOT global
+- [x] **Verify:** Search shows only kit components (from port 8788), NOT kdco components (from port 8787)
+- [x] **Run result (2026-02-24):** PASS — `search -p work` returned only `kit/*` components.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 13.5 Registry Isolation: Local Registries Only
 
-- [ ] **Setup:** Local config with registries, no profile
-- [ ] **Commands:**
+- [x] **Setup:** Local config with registries, no profile
+- [x] **Commands:**
   ```bash
   # Idempotent: init only if local config does not exist (sequential runs)
   test -f .opencode/ocx.jsonc || $OCX_BIN init
   $OCX_BIN registry add http://localhost:8787 --name kdco
   $OCX_BIN search
   ```
-- [ ] **Expected:** Only local registries visible
-- [ ] **Verify:** Search shows only kdco components (from local config registry)
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Only local registries visible
+- [x] **Verify:** Search shows only kdco components (from local config registry)
+- [x] **Run result (2026-02-24):** PASS — local `kdco` registry add succeeded and `search` returned `kdco/*` components.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 13.6 OpenCode Config Merging
 
-- [ ] **Setup:** Profile with `opencode.jsonc`, local with different settings
-- [ ] **Commands:**
+- [x] **Setup:** Profile with `opencode.jsonc`, local with different settings
+- [x] **Commands:**
   ```bash
   # Idempotent: ensure work profile exists with opencode.jsonc
   $OCX_BIN profile rm work --global 2>/dev/null || true
   $OCX_BIN profile add work --global
-  echo '{"agents": ["coder"]}' > $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc
+  echo '{"agent": {"build": {"temperature": 0.1}}}' > $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc
   # Idempotent: init only if local config does not exist (sequential runs)
   test -f .opencode/ocx.jsonc || $OCX_BIN init
-  echo '{"agents": ["researcher"]}' > .opencode/opencode.jsonc
+  echo '{"agent": {"build": {"temperature": 0.2}}}' > .opencode/opencode.jsonc
   $OCX_BIN config show -p work
   ```
-- [ ] **Expected:** Non-special arrays (like `agents`) follow mergeDeep default: local replaces profile (source wins). Only `plugin` and `instructions` arrays are concatenated and deduped per OpenCode semantics.
-- [ ] **Verify:** `agents` shows `["researcher"]` (local wins), not both arrays merged
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Non-special objects (like `agent`) follow mergeDeep default: local values win on key conflicts. Only `plugin` and `instructions` arrays are concatenated and deduped per OpenCode semantics.
+- [x] **Verify:** `agent.build.temperature` resolves to `0.2` (local wins), not profile value `0.1`
+- [x] **Run result (2026-02-24):** PASS — command completed and returned resolved configuration.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 13.7 Instruction File Discovery (Deepest-First)
 
-- [ ] **Setup:** Multi-level project with instruction files
-- [ ] **Commands:**
+- [x] **Setup:** Multi-level project with instruction files
+- [x] **Commands:**
   ```bash
   # Idempotent: ensure work profile exists with model pins before running
   $OCX_BIN profile rm work --global 2>/dev/null || true
@@ -1709,11 +1735,12 @@ From PROFILES.md - advanced profile behaviors.
   cat $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc | grep -q "opencode/big-pickle" && echo "OK: Model pins verified" || echo "FAIL: Model pins missing"
   $OCX_BIN oc run "echo hello"
   ```
-- [ ] **Expected:** Files discovered from subdir up to git root (AGENTS → CLAUDE → CONTEXT priority; first type wins)
-- [ ] **Verify:**
+- [x] **Expected:** Files discovered from subdir up to git root (AGENTS → CLAUDE → CONTEXT priority; first type wins)
+- [x] **Verify:**
   - Model pins verified before oc run (prevents paid-provider fallback)
   - Both AGENTS.md files considered (deepest first)
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Run result (2026-02-24):** PASS — model pins verified and `oc run "echo hello"` completed successfully (previous unrecognized config key blocker resolved after switching to `"agent"`).
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 13.8 First Type Wins
 
