@@ -93,8 +93,15 @@ async function runGlobalMigrate(options: MigrateOptions): Promise<void> {
 	// Preview mode: collect results from all targets, no writes
 	if (!options.apply) {
 		const targetResults: TargetResult[] = []
+		const staleLockCleanupPendingTargets = new Set<string>()
 
 		for (const { label, path: targetPath } of targets) {
+			const receipt = findReceipt(targetPath)
+			const lockInfo = findOcxLock(targetPath, { isFlattened: true })
+			if (receipt.exists && lockInfo.exists) {
+				staleLockCleanupPendingTargets.add(label)
+			}
+
 			try {
 				const result = await analyzeTarget(targetPath, true)
 				targetResults.push({ ...result, target: label })
@@ -123,7 +130,7 @@ async function runGlobalMigrate(options: MigrateOptions): Promise<void> {
 		}
 
 		if (!options.quiet) {
-			logGlobalPreview(targetResults, aggregated)
+			logGlobalPreview(targetResults, aggregated, staleLockCleanupPendingTargets)
 		}
 		return
 	}
@@ -206,13 +213,13 @@ async function analyzeTarget(
 ): Promise<Omit<TargetResult, "target">> {
 	const configActions = detectConfigActionsForScope(root)
 	const receipt = findReceipt(root)
+	const lockInfo = findOcxLock(root, { isFlattened })
+	const shouldArchiveStaleLock = receipt.exists && lockInfo.exists
 
 	// Already migrated and no config normalization needed
-	if (receipt.exists && configActions.length === 0) {
+	if (receipt.exists && configActions.length === 0 && !shouldArchiveStaleLock) {
 		return { status: "already_v2", count: 0, components: [], configActions: [] }
 	}
-
-	const lockInfo = findOcxLock(root, { isFlattened })
 
 	// No lock, no receipt, no config actions → nothing to do
 	if (!lockInfo.exists && !receipt.exists && configActions.length === 0) {
@@ -250,13 +257,13 @@ async function applyTarget(
 ): Promise<Omit<TargetResult, "target">> {
 	const configActions = detectConfigActionsForScope(root)
 	const receipt = findReceipt(root)
+	const lockInfo = findOcxLock(root, { isFlattened })
+	const shouldArchiveStaleLock = receipt.exists && lockInfo.exists
 
 	// Already migrated and no config normalization needed
-	if (receipt.exists && configActions.length === 0) {
+	if (receipt.exists && configActions.length === 0 && !shouldArchiveStaleLock) {
 		return { status: "already_v2", count: 0, components: [], configActions: [] }
 	}
-
-	const lockInfo = findOcxLock(root, { isFlattened })
 
 	// No lock, no receipt, no config actions → nothing to do
 	if (!lockInfo.exists && !receipt.exists && configActions.length === 0) {
@@ -298,12 +305,17 @@ async function applyTarget(
 		await rename(lockInfo.path, bakPath)
 	}
 
+	if (shouldArchiveStaleLock) {
+		const bakPath = resolveBackupPath(lockInfo.path)
+		await rename(lockInfo.path, bakPath)
+	}
+
 	// Apply config normalization
 	if (configActions.length > 0) {
 		await applyConfigNormalizationToFile(root, configActions)
 	}
 
-	const didWrite = lockMigrationPlan !== null || configActions.length > 0
+	const didWrite = lockMigrationPlan !== null || shouldArchiveStaleLock || configActions.length > 0
 	return {
 		status: didWrite ? "migrated" : "already_v2",
 		count,
@@ -370,9 +382,11 @@ async function runSingleTargetMigrate(
 
 	// Detect state: receipt exists?
 	const receipt = findReceipt(root)
+	const lockInfo = findOcxLock(root, { isFlattened })
+	const shouldArchiveStaleLock = receipt.exists && lockInfo.exists
 
 	// Guard: already migrated (receipt exists) and no config normalization needed → safe no-op
-	if (receipt.exists && configActions.length === 0) {
+	if (receipt.exists && configActions.length === 0 && !shouldArchiveStaleLock) {
 		const result: MigrateResult = {
 			success: true,
 			status: "already_v2",
@@ -392,9 +406,6 @@ async function runSingleTargetMigrate(
 		}
 		return
 	}
-
-	// Detect state: legacy lock exists?
-	const lockInfo = findOcxLock(root, { isFlattened })
 
 	// Guard: no lock, no receipt, no config actions → nothing to do
 	if (!lockInfo.exists && !receipt.exists && configActions.length === 0) {
@@ -474,6 +485,13 @@ async function runSingleTargetMigrate(
 				logger.break()
 			}
 
+			if (shouldArchiveStaleLock) {
+				logger.info(
+					`[${scope}] Legacy ocx.lock would be backed up and removed (receipt already exists).`,
+				)
+				logger.break()
+			}
+
 			if (configActions.length > 0) {
 				logger.info(
 					`[${scope}] Config normalization: ${configActions.length} deprecated field(s) would be removed.`,
@@ -484,7 +502,7 @@ async function runSingleTargetMigrate(
 				logger.break()
 			}
 
-			if (count === 0 && configActions.length === 0) {
+			if (count === 0 && configActions.length === 0 && !shouldArchiveStaleLock) {
 				logger.info(`[${scope}] Nothing to migrate.`)
 			} else {
 				logger.info("No changes made. Run with --apply to perform migration.")
@@ -515,6 +533,16 @@ async function runSingleTargetMigrate(
 		}
 	}
 
+	if (shouldArchiveStaleLock) {
+		const bakPath = resolveBackupPath(lockInfo.path)
+		await rename(lockInfo.path, bakPath)
+
+		if (!options.json && !options.quiet) {
+			logger.success(`[${scope}] Removed stale legacy lock (receipt already exists).`)
+			logger.info(`Legacy lock backed up to: ${bakPath}`)
+		}
+	}
+
 	// Apply config normalization
 	if (configActions.length > 0) {
 		await applyConfigNormalizationToFile(root, configActions)
@@ -528,7 +556,7 @@ async function runSingleTargetMigrate(
 		}
 	}
 
-	const didWrite = lockMigrationPlan !== null || configActions.length > 0
+	const didWrite = lockMigrationPlan !== null || shouldArchiveStaleLock || configActions.length > 0
 	const result: MigrateResult = {
 		success: true,
 		status: didWrite ? "migrated" : "already_v2",
@@ -554,7 +582,11 @@ async function runSingleTargetMigrate(
 // GLOBAL OUTPUT HELPERS
 // =============================================================================
 
-function logGlobalPreview(targetResults: TargetResult[], aggregated: MigrateResult): void {
+function logGlobalPreview(
+	targetResults: TargetResult[],
+	aggregated: MigrateResult,
+	staleLockCleanupPendingTargets: Set<string>,
+): void {
 	if (aggregated.status === "nothing_to_migrate") {
 		logger.info("[global] Nothing to migrate across all targets.")
 		return
@@ -569,7 +601,8 @@ function logGlobalPreview(targetResults: TargetResult[], aggregated: MigrateResu
 	logger.break()
 
 	for (const t of targetResults) {
-		const actionsSummary = describeTargetActions(t)
+		const shouldIncludeStaleLockCleanup = staleLockCleanupPendingTargets.has(t.target)
+		const actionsSummary = describeTargetActions(t, shouldIncludeStaleLockCleanup)
 		logger.info(`  ${t.target}: ${actionsSummary}`)
 	}
 
@@ -616,7 +649,7 @@ function logGlobalApplySummary(targetResults: TargetResult[], hasFailure: boolea
 	}
 }
 
-function describeTargetActions(t: TargetResult): string {
+function describeTargetActions(t: TargetResult, shouldIncludeStaleLockCleanup: boolean): string {
 	if (t.status === "error") return "error"
 	if (t.status === "already_v2") return "already migrated"
 	if (t.status === "nothing_to_migrate") return "nothing to migrate"
@@ -627,6 +660,9 @@ function describeTargetActions(t: TargetResult): string {
 	}
 	if (t.configActions.length > 0) {
 		parts.push(`${t.configActions.length} config field(s) to normalize`)
+	}
+	if (shouldIncludeStaleLockCleanup) {
+		parts.push("legacy lock cleanup pending")
 	}
 	if (parts.length === 0) return "nothing to migrate"
 	return parts.join(", ")

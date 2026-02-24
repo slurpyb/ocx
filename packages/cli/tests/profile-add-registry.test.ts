@@ -1023,7 +1023,7 @@ describe("ocx profile add --source (registry installation)", () => {
 		}
 	})
 
-	it("installs profile from configured registry with all files and lockfile", async () => {
+	it("installs profile from configured registry with receipt-only state", async () => {
 		// Setup global config with registry configured
 		const globalConfigDir = join(testDir, "opencode")
 		const profilesDir = join(globalConfigDir, "profiles")
@@ -1057,13 +1057,22 @@ describe("ocx profile add --source (registry installation)", () => {
 		expect(existsSync(join(profileDir, "opencode.jsonc"))).toBe(true)
 		expect(existsSync(join(profileDir, "AGENTS.md"))).toBe(true)
 
-		// Verify lockfile created
-		expect(existsSync(join(profileDir, "ocx.lock"))).toBe(true)
-		const lockContent = parseJsonc(await readFile(join(profileDir, "ocx.lock"), "utf-8")) as {
-			installedFrom: { registry: string; component: string }
+		// Verify receipt exists and legacy lock does not
+		expect(existsSync(join(profileDir, "ocx.lock"))).toBe(false)
+		const receiptPath = join(profileDir, ".ocx", "receipt.jsonc")
+		expect(existsSync(receiptPath)).toBe(true)
+		const receiptContent = parseJsonc(await readFile(receiptPath, "utf-8")) as {
+			version: number
+			root?: string
+			installed: Record<string, unknown>
+			profileSource?: unknown
+			installedFrom?: unknown
 		}
-		expect(lockContent.installedFrom.registry).toBe("kdco")
-		expect(lockContent.installedFrom.component).toBe("test-profile")
+		expect(receiptContent.version).toBe(1)
+		expect(receiptContent.root).toBe(profileDir)
+		expect(receiptContent.installed).toEqual({})
+		expect("profileSource" in receiptContent).toBe(false)
+		expect("installedFrom" in receiptContent).toBe(false)
 	})
 
 	it("installs profile from ephemeral registry using --source with --from", async () => {
@@ -1105,6 +1114,8 @@ describe("ocx profile add --source (registry installation)", () => {
 		expect(existsSync(join(profileDir, "ocx.jsonc"))).toBe(true)
 		expect(existsSync(join(profileDir, "opencode.jsonc"))).toBe(true)
 		expect(existsSync(join(profileDir, "AGENTS.md"))).toBe(true)
+		expect(existsSync(join(profileDir, "ocx.lock"))).toBe(false)
+		expect(existsSync(join(profileDir, ".ocx", "receipt.jsonc"))).toBe(true)
 	})
 
 	it("should install profile dependencies flat (not in .opencode/)", async () => {
@@ -1152,16 +1163,20 @@ describe("ocx profile add --source (registry installation)", () => {
 		// Verify NO .opencode/ directory exists - this is the key regression check
 		expect(existsSync(join(profileDir, ".opencode"))).toBe(false)
 
-		// V1: Verify receipt file instead of ocx.lock
+		// Verify receipt file instead of ocx.lock
 		const receiptPath = join(profileDir, ".ocx", "receipt.jsonc")
 		expect(existsSync(receiptPath)).toBe(true)
+		expect(existsSync(join(profileDir, "ocx.lock"))).toBe(false)
 		const receiptContent = parseJsonc(await readFile(receiptPath, "utf-8")) as {
 			version: number
+			profileSource?: unknown
+			installedFrom?: unknown
 			installed: Record<string, unknown>
 		}
-		// V1: Receipt doesn't have installedFrom field - that's stored in ocx.jsonc metadata
 		expect(receiptContent.version).toBe(1)
 		expect(Object.keys(receiptContent.installed).length).toBeGreaterThan(0)
+		expect("profileSource" in receiptContent).toBe(false)
+		expect("installedFrom" in receiptContent).toBe(false)
 	})
 })
 

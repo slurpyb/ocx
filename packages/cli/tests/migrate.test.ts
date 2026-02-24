@@ -1272,6 +1272,122 @@ describe("ocx migrate", () => {
 			}
 		}
 
+		it("migrates lock-only profile roots to receipt and backup lock", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalWithProfiles(tmp.path, [{ name: "work" }], { lock: false })
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--apply", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			const workTarget = json.targets.find((t: { target: string }) => t.target === "profile:work")
+			expect(workTarget.status).toBe("migrated")
+
+			expect(existsSync(join(tmp.path, "profiles", "work", ".ocx", "receipt.jsonc"))).toBe(true)
+			expect(existsSync(join(tmp.path, "profiles", "work", "ocx.lock"))).toBe(false)
+			expect(existsSync(join(tmp.path, "profiles", "work", "ocx.lock.bak"))).toBe(true)
+		})
+
+		it("keeps receipt-only profile roots as no-op", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalWithProfiles(tmp.path, [{ name: "work", lock: false, receipt: true }], {
+				lock: false,
+			})
+
+			const profileReceiptPath = join(tmp.path, "profiles", "work", ".ocx", "receipt.jsonc")
+			const receiptBefore = await readFile(profileReceiptPath, "utf-8")
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--apply", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			const workTarget = json.targets.find((t: { target: string }) => t.target === "profile:work")
+			expect(workTarget.status).toBe("already_v2")
+
+			const receiptAfter = await readFile(profileReceiptPath, "utf-8")
+			expect(receiptAfter).toBe(receiptBefore)
+			expect(existsSync(join(tmp.path, "profiles", "work", "ocx.lock"))).toBe(false)
+		})
+
+		it("removes stale lock when profile root already has receipt", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalWithProfiles(
+				tmp.path,
+				[
+					{
+						name: "work",
+						receipt: true,
+						// lock defaults to present -> stale lock + receipt case
+					},
+				],
+				{ lock: false },
+			)
+
+			const profileReceiptPath = join(tmp.path, "profiles", "work", ".ocx", "receipt.jsonc")
+			const sentinelReceipt = `{
+  "version": 1,
+  "root": "sentinel-root",
+  "installed": {}
+}
+`
+			await writeFile(profileReceiptPath, sentinelReceipt)
+			const receiptBefore = await readFile(profileReceiptPath, "utf-8")
+
+			const { exitCode, stdout } = await runCLI(
+				["migrate", "--global", "--apply", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			const json = JSON.parse(stdout)
+			const workTarget = json.targets.find((t: { target: string }) => t.target === "profile:work")
+			expect(workTarget.status).toBe("migrated")
+			expect(workTarget.count).toBe(0)
+
+			expect(existsSync(join(tmp.path, "profiles", "work", "ocx.lock"))).toBe(false)
+			expect(existsSync(join(tmp.path, "profiles", "work", "ocx.lock.bak"))).toBe(true)
+
+			const receiptAfter = await readFile(profileReceiptPath, "utf-8")
+			expect(receiptAfter).toBe(receiptBefore)
+		})
+
+		it("includes stale lock cleanup with config normalization in global preview summary", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalWithProfiles(
+				tmp.path,
+				[
+					{
+						name: "work",
+						receipt: true,
+						registries: {
+							kdco: { url: "https://ocx.kdco.dev", version: "1.4.6" },
+						},
+						// lock defaults to present -> stale lock + config normalization
+					},
+				],
+				{ lock: false },
+			)
+
+			const { exitCode, output } = await runCLI(
+				["migrate", "--global", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			expect(exitCode).toBe(0)
+			expect(output).toContain("profile:work")
+			expect(output).toContain("1 config field(s) to normalize")
+			expect(output).toContain("legacy lock cleanup pending")
+			expect(output).toMatch(
+				/profile:work: .*1 config field\(s\) to normalize, legacy lock cleanup pending/,
+			)
+		})
+
 		it("should include profiles in global preview", async () => {
 			await using tmp = await tmpdir({ git: true })
 			await setupGlobalWithProfiles(tmp.path, [{ name: "work" }, { name: "personal", lock: false }])

@@ -3,8 +3,8 @@
  *
  * Installs a profile package from a registry, including:
  * - Profile files (ocx.jsonc, opencode.jsonc, AGENTS.md) -> flat in profile dir
- * - Dependencies (agents, skills, etc.) -> profile's .opencode/ subdirectory
- * - Lock file creation for reproducible installs
+ * - Dependencies (agents, skills, etc.) via runAddCore in flat profile root
+ * - V2 receipt initialization (.ocx/receipt.jsonc)
  */
 
 import { existsSync } from "node:fs"
@@ -16,12 +16,11 @@ import { getProfileDir, getProfilesDir } from "../../profile/paths"
 import { profileNameSchema } from "../../profile/schema"
 import { fetchComponent, fetchFileContent } from "../../registry/fetcher"
 import type { RegistryConfig } from "../../schemas/config"
-import { type OcxLock, writeOcxLock } from "../../schemas/config"
+import { writeReceipt } from "../../schemas/config"
 import { profileOcxConfigSchema } from "../../schemas/ocx"
 import { normalizeComponentManifest } from "../../schemas/registry"
 import { ConfigError, ConflictError, NotFoundError, ValidationError } from "../../utils/errors"
 import { createSpinner, logger } from "../../utils/index"
-import { hashBundle } from "../../utils/receipt"
 import { isPlainObject } from "../../utils/type-guards"
 import { runAddCore } from "../add"
 
@@ -54,7 +53,7 @@ export interface InstallProfileOptions {
  * 2. Fetch all profile files from registry
  * 3. Create staging directory for atomic install
  * 4. Write profile files (flat in profile dir)
- * 5. Create ocx.lock with installedFrom metadata
+ * 5. Initialize V2 receipt (.ocx/receipt.jsonc)
  * 6. Move staging dir to final profile location
  * 7. Install dependencies via runAddCore (if any)
  *
@@ -160,7 +159,7 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 			content: Buffer.from(content),
 		}
 
-		// Route files: .opencode/ prefix goes to subdir, everything else goes flat
+		// Route files: .opencode/ prefix marks embedded files for profile flattening
 		if (file.target.startsWith(".opencode/")) {
 			embeddedFiles.push(fileEntry)
 		} else {
@@ -217,26 +216,14 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 		writeSpin?.succeed(`Wrote ${profileFiles.length + embeddedFiles.length} profile files`)
 
 		// ==========================================================================
-		// Phase 5: Create ocx.lock in staging directory
+		// Phase 5: Initialize V2 receipt in staging directory
 		// ==========================================================================
 
-		const profileHash = await hashBundle(
-			profileFiles.map((f) => ({ path: f.path, content: f.content })),
-		)
-
-		const lock: OcxLock = {
-			lockVersion: 1,
-			installedFrom: {
-				registry: namespace,
-				component,
-				version: `sha256:${profileHash}`,
-				hash: profileHash,
-				installedAt: new Date().toISOString(),
-			},
+		await writeReceipt(stagingDir, {
+			version: 1,
+			root: profileDir,
 			installed: {},
-		}
-
-		await writeOcxLock(stagingDir, lock, join(stagingDir, "ocx.lock"))
+		})
 
 		// ==========================================================================
 		// Phase 6: Move staging to final profile directory
