@@ -2269,27 +2269,31 @@ Master summary for full test sessions.
 
 - [ ] Quick Start Profiles (Section 2): 6 test cases
 - [ ] Quick Start Components (Section 3): 4 test cases
+- [x] **Run result (2026-02-24):** PARTIAL — Sections 2.1, 2.2, 2.3, 2.5, 2.6 and 3.1, 3.2, 3.4 are complete; alternative-path checks 2.4 and 3.3 remain intentionally unexecuted in this run.
 
 ### 16.2 All CLI.md Commands Verified
 
-- [ ] ocx init (Section 4): 8 test cases
-- [ ] ocx add (Section 5): 11 test cases
-- [ ] ocx update (Section 6): 7 test cases
-- [ ] ocx search (Section 7): 7 test cases
-- [ ] ocx registry (Section 8): 10 test cases
-- [ ] ocx build (Section 9): 4 test cases
-- [ ] ocx profile (Section 10): 15 test cases (revised for global-only model)
-- [ ] ocx config (Section 11): 7 test cases
-- [ ] ocx opencode (Section 12): 12 test cases
+- [x] ocx init (Section 4): 8 test cases
+- [x] ocx add (Section 5): 11 test cases
+- [x] ocx update (Section 6): 7 test cases
+- [x] ocx search (Section 7): 7 test cases
+- [x] ocx registry (Section 8): 10 test cases
+- [x] ocx build (Section 9): 4 test cases
+- [x] ocx profile (Section 10): 15 test cases (revised for global-only model)
+- [x] ocx config (Section 11): 7 test cases
+- [ ] ocx opencode (Section 12): PARTIAL — 11/12 executed; Section 12.12 is skipped under waiver (custom `OPENCODE_BIN` placeholder path unavailable in this environment)
+- [x] **Run result (2026-02-24):** PARTIAL — Sections 4–11 are complete; Section 12 is partial due to the documented 12.12 skip waiver.
 
 ### 16.3 Profile System Verified
 
-- [ ] Profile Layering (Section 13): 6 test cases (revised for global-only model)
+- [x] Profile System (Section 13.1–13.12): 12 test cases (revised for global-only model)
+- [x] **Run result (2026-02-24):** PASS — Section 13.1–13.12 checks are complete in current run history.
 
 ### 16.4 Error Paths Verified
 
-- [ ] Common Errors (Section 14): 10 test cases
-- [ ] Negative Profile Tests (Section 13.12): 6 test cases
+- [x] Common Errors (Section 14): 10 test cases
+- [x] Negative Profile Tests (Section 13.12): 6 test cases
+- [x] **Run result (2026-02-24):** PASS — error-path and negative-profile assertions are complete with exit-code verification entries.
 
 ### 16.5 Migration Verified
 
@@ -2298,10 +2302,11 @@ Master summary for full test sessions.
 ### 16.6 Documentation Sync
 
 - [ ] All README examples tested
-- [ ] All CLI.md examples tested
-- [ ] All PROFILES.md examples tested
-- [ ] Error exit codes verified
-- [ ] JSON output formats verified
+- [ ] All CLI.md examples tested (PARTIAL — Section 12.12 skipped under waiver: custom `OPENCODE_BIN` placeholder path unavailable in this environment)
+- [x] All PROFILES.md examples tested
+- [x] Error exit codes verified
+- [x] JSON output formats verified
+- [x] **Run result (2026-02-24):** PARTIAL — README remains intentionally partial because alternative-path tests 2.4 and 3.3 were not executed in this checkpoint continuation; CLI remains partial due to the documented Section 12.12 skip waiver.
 
 ---
 
@@ -2313,10 +2318,11 @@ For maintainability when commands change.
 
 - [ ] New command added to CLI
 - [ ] New option added to existing command
-- [ ] Command behavior changes
-- [ ] Error handling changes
-- [ ] Before major releases
+- [x] Command behavior changes
+- [x] Error handling changes
+- [x] Before major releases
 - [ ] After significant refactoring
+- [x] **Run result (2026-02-24):** PASS — current update aligns with command-behavior/error-path maintenance and pre-release validation.
 
 ### 17.2 Cross-Reference Links
 
@@ -2339,10 +2345,11 @@ For maintainability when commands change.
 
 ### 17.3 Version Tracking
 
-- [ ] Update `ocx_version` in metadata after testing
+- [x] Update `ocx_version` in metadata after testing
 - [ ] Update `last_full_test` date when complete session finishes
-- [ ] Note platform tested (macOS, Linux)
-- [ ] Track any skipped tests and reasons
+- [x] Note platform tested (macOS, Linux)
+- [x] Track any skipped tests and reasons
+- [x] **Run result (2026-02-24):** PARTIAL — `ocx_version` remains current at `2.0.0`; platform/skips are documented; `last_full_test` intentionally not advanced because README alternatives (2.4, 3.3) and teardown checks (1.3, 1.4 verify) remain open.
 
 ### 17.4 Automated Test Coverage
 
@@ -2407,5 +2414,5 @@ When adding new test cases:
 
 **End of Manual Testing Guide**
 
-_Last updated: 2026-02-12_
+_Last updated: 2026-02-24_
 _Document version: 1.0_
