@@ -222,7 +222,7 @@ describe("classifyRegistryIndexIssue", () => {
 		expect(classifyRegistryIndexIssue(42)).toBeNull()
 	})
 
-	it("returns null for empty array (classified as ancient-format)", () => {
+	it("returns 'ancient-format' for empty array", () => {
 		const result = classifyRegistryIndexIssue([])
 		expect(result).not.toBeNull()
 		expect(result!.issue).toBe("ancient-format")
