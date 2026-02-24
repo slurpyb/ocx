@@ -3,10 +3,13 @@
  * Based on: https://github.com/shadcn-ui/ui/blob/main/packages/shadcn/src/registry/fetcher.ts
  */
 
+import { posix as posixPath } from "node:path"
+import { z } from "zod"
 import type { ComponentManifest, McpServer, RegistryIndex } from "../schemas/registry"
 import {
 	classifyRegistrySchemaIssue,
 	componentManifestSchema,
+	componentTypeSchema,
 	packumentSchema,
 	registryIndexSchema,
 } from "../schemas/registry"
@@ -17,10 +20,242 @@ import {
 	RegistryCompatibilityError,
 	ValidationError,
 } from "../utils/errors"
+import { isPlainObject } from "../utils/type-guards"
 import { normalizeRegistryUrl } from "../utils/url"
 
 // In-memory cache for deduplication
 const cache = new Map<string, Promise<unknown>>()
+
+const LEGACY_COMPONENT_TYPE_MAP = {
+	"ocx:agent": "agent",
+	"ocx:skill": "skill",
+	"ocx:plugin": "plugin",
+	"ocx:command": "command",
+	"ocx:tool": "tool",
+	"ocx:bundle": "bundle",
+	"ocx:profile": "profile",
+} as const
+
+const LEGACY_TARGET_KIND_MAP = {
+	agent: "agents",
+	skill: "skills",
+	plugin: "plugins",
+	command: "commands",
+	tool: "tools",
+	bundle: "bundles",
+	profile: "profiles",
+	philosophy: "tools",
+} as const
+
+const packumentEnvelopeSchema = packumentSchema.extend({
+	versions: z.record(z.unknown()),
+})
+
+function createCompatibilityError(
+	url: string,
+	classification: {
+		issue: RegistryCompatIssue
+		remediation: string
+		schemaUrl?: string
+		supportedMajor?: number
+		detectedMajor?: number
+	},
+): RegistryCompatibilityError {
+	return new RegistryCompatibilityError(
+		`Registry at ${url} uses an incompatible format (${classification.issue}). ${classification.remediation}`,
+		{
+			url,
+			issue: classification.issue,
+			remediation: classification.remediation,
+			...(classification.schemaUrl !== undefined && {
+				schemaUrl: classification.schemaUrl,
+			}),
+			...(classification.supportedMajor !== undefined && {
+				supportedMajor: classification.supportedMajor,
+			}),
+			...(classification.detectedMajor !== undefined && {
+				detectedMajor: classification.detectedMajor,
+			}),
+		},
+	)
+}
+
+function mapLegacyComponentType(type: unknown, context: string): string {
+	if (typeof type !== "string") {
+		throw new ValidationError(`Invalid ${context}: expected string, got ${typeof type}`)
+	}
+
+	const mappedType =
+		LEGACY_COMPONENT_TYPE_MAP[type as keyof typeof LEGACY_COMPONENT_TYPE_MAP] ?? type
+	const parsedType = componentTypeSchema.safeParse(mappedType)
+	if (!parsedType.success) {
+		throw new ValidationError(
+			`Unsupported component type "${type}" in ${context}. ` +
+				`Expected one of: ${componentTypeSchema.options.join(", ")}`,
+		)
+	}
+
+	return parsedType.data
+}
+
+function canonicalizeLegacyTargetPath(rawTarget: string, context: string): string {
+	if (rawTarget.includes("\0")) {
+		throw new ValidationError(
+			`Unsafe target "${rawTarget}" in ${context}: null bytes are not allowed`,
+		)
+	}
+
+	if (rawTarget.includes("%")) {
+		throw new ValidationError(
+			`Unsafe target "${rawTarget}" in ${context}: encoded paths are not allowed`,
+		)
+	}
+
+	if (rawTarget.includes("\\")) {
+		throw new ValidationError(
+			`Unsafe target "${rawTarget}" in ${context}: Windows separators are not allowed`,
+		)
+	}
+
+	if (rawTarget.startsWith("/") || rawTarget.startsWith("//") || /^[a-zA-Z]:/.test(rawTarget)) {
+		throw new ValidationError(
+			`Unsafe target "${rawTarget}" in ${context}: absolute paths are not allowed`,
+		)
+	}
+
+	const withoutPrefix = rawTarget.startsWith(".opencode/")
+		? rawTarget.slice(".opencode/".length)
+		: rawTarget
+
+	if (!withoutPrefix) {
+		throw new ValidationError(
+			`Unsafe target "${rawTarget}" in ${context}: missing path after .opencode/`,
+		)
+	}
+
+	const segments = withoutPrefix.split("/")
+	if (segments.some((segment) => segment.length === 0)) {
+		throw new ValidationError(
+			`Unsafe target "${rawTarget}" in ${context}: empty path segments are not allowed`,
+		)
+	}
+
+	if (segments.some((segment) => segment === "." || segment === "..")) {
+		throw new ValidationError(
+			`Unsafe target "${rawTarget}" in ${context}: traversal segments are not allowed`,
+		)
+	}
+
+	const [firstSegment, ...restSegments] = segments
+	if (!firstSegment) {
+		throw new ValidationError(
+			`Unsafe target "${rawTarget}" in ${context}: missing path root segment`,
+		)
+	}
+
+	const mappedRoot = LEGACY_TARGET_KIND_MAP[firstSegment as keyof typeof LEGACY_TARGET_KIND_MAP]
+	const rewrittenTarget = [mappedRoot ?? firstSegment, ...restSegments].join("/")
+
+	const normalized = posixPath.normalize(rewrittenTarget)
+	if (normalized !== rewrittenTarget) {
+		throw new ValidationError(
+			`Unsafe target "${rawTarget}" in ${context}: path normalization is ambiguous`,
+		)
+	}
+
+	if (normalized === "." || normalized === ".." || normalized.startsWith("../")) {
+		throw new ValidationError(
+			`Unsafe target "${rawTarget}" in ${context}: target escapes project root`,
+		)
+	}
+
+	return normalized
+}
+
+function adaptLegacyComponentManifest(manifest: unknown, context: string): unknown {
+	if (!isPlainObject(manifest)) return manifest
+
+	const adaptedManifest: Record<string, unknown> = { ...manifest }
+
+	if (Object.hasOwn(adaptedManifest, "type")) {
+		adaptedManifest.type = mapLegacyComponentType(adaptedManifest.type, `${context}.type`)
+	}
+
+	if (Array.isArray(adaptedManifest.files)) {
+		adaptedManifest.files = adaptedManifest.files.map((file, index) => {
+			if (!isPlainObject(file)) return file
+
+			const target = file.target
+			if (typeof target !== "string") return file
+
+			const isLegacyTarget = target.startsWith(".opencode/") || target.startsWith(".opencode\\")
+			if (!isLegacyTarget) return file
+
+			return {
+				...file,
+				target: canonicalizeLegacyTargetPath(target, `${context}.files[${index}].target`),
+			}
+		})
+	}
+
+	return adaptedManifest
+}
+
+function adaptLegacyRegistryIndex(data: unknown, url: string): unknown {
+	if (!isPlainObject(data)) {
+		throw new RegistryCompatibilityError(
+			`Registry at ${url} uses legacy schema v1 but does not expose an object index payload.`,
+			{
+				url,
+				issue: "legacy-schema-v1",
+				remediation:
+					"Publish an object index with author/components fields, or upgrade to schema v2.",
+			},
+		)
+	}
+
+	const components = data.components
+	if (!Array.isArray(components)) {
+		throw new RegistryCompatibilityError(
+			`Registry at ${url} uses legacy schema v1 but the components field is missing or invalid.`,
+			{
+				url,
+				issue: "legacy-schema-v1",
+				remediation: "Ensure the legacy index has a components array, or upgrade to schema v2.",
+			},
+		)
+	}
+
+	const adaptedComponents = components.map((component, index) => {
+		if (!isPlainObject(component)) {
+			throw new ValidationError(
+				`Invalid index component at components[${index}]: expected object, got ${typeof component}`,
+			)
+		}
+
+		const name = component.name
+		const description = component.description
+		if (typeof name !== "string") {
+			throw new ValidationError(`Invalid index component name at components[${index}].name`)
+		}
+		if (typeof description !== "string") {
+			throw new ValidationError(
+				`Invalid index component description at components[${index}].description`,
+			)
+		}
+
+		return {
+			name,
+			type: mapLegacyComponentType(component.type, `components[${index}].type`),
+			description,
+		}
+	})
+
+	return {
+		...data,
+		components: adaptedComponents,
+	}
+}
 
 /**
  * Fetch with caching - deduplicates concurrent requests
@@ -106,27 +341,34 @@ export async function fetchRegistryIndex(baseUrl: string): Promise<RegistryIndex
 	return fetchWithCache(url, (data) => {
 		// Pre-schema classification: detect known incompatible formats
 		const classification = classifyRegistryIndexIssue(data)
-		if (classification) {
-			throw new RegistryCompatibilityError(
-				`Registry at ${url} uses an incompatible format (${classification.issue}). ${classification.remediation}`,
-				{
-					url,
-					issue: classification.issue,
-					remediation: classification.remediation,
-					...(classification.schemaUrl !== undefined && {
-						schemaUrl: classification.schemaUrl,
-					}),
-					...(classification.supportedMajor !== undefined && {
-						supportedMajor: classification.supportedMajor,
-					}),
-					...(classification.detectedMajor !== undefined && {
-						detectedMajor: classification.detectedMajor,
-					}),
-				},
-			)
+
+		if (classification && classification.issue !== "legacy-schema-v1") {
+			throw createCompatibilityError(url, classification)
 		}
 
-		const result = registryIndexSchema.safeParse(data)
+		let candidateData = data
+		if (classification?.issue === "legacy-schema-v1") {
+			try {
+				candidateData = adaptLegacyRegistryIndex(data, url)
+			} catch (error) {
+				if (error instanceof RegistryCompatibilityError) {
+					throw error
+				}
+
+				const reason = error instanceof Error ? error.message : String(error)
+				throw new RegistryCompatibilityError(
+					`Registry at ${url} uses legacy schema v1 but cannot be adapted safely. ${reason}`,
+					{
+						url,
+						issue: "invalid-format",
+						remediation:
+							"Fix the legacy payload shape (types/descriptions/components) or upgrade the registry to v2.",
+					},
+				)
+			}
+		}
+
+		const result = registryIndexSchema.safeParse(candidateData)
 		if (!result.success) {
 			throw new RegistryCompatibilityError(
 				`Registry at ${url} returned an unrecognized index format. Ensure it follows the OCX registry specification. Schema error: ${result.error.message}`,
@@ -164,7 +406,7 @@ export async function fetchComponentVersion(
 
 	return fetchWithCache(`${url}#v=${version ?? "latest"}`, (data) => {
 		// 1. Parse as packument
-		const packumentResult = packumentSchema.safeParse(data)
+		const packumentResult = packumentEnvelopeSchema.safeParse(data)
 		if (!packumentResult.success) {
 			throw new ValidationError(
 				`Invalid packument format for "${name}": ${packumentResult.error.message}`,
@@ -190,7 +432,12 @@ export async function fetchComponentVersion(
 		}
 
 		// 3. Validate manifest
-		const manifestResult = componentManifestSchema.safeParse(manifest)
+		const adaptedManifest = adaptLegacyComponentManifest(
+			manifest,
+			`component "${name}@${resolvedVersion}"`,
+		)
+
+		const manifestResult = componentManifestSchema.safeParse(adaptedManifest)
 		if (!manifestResult.success) {
 			throw new ValidationError(
 				`Invalid component manifest for "${name}@${resolvedVersion}": ${manifestResult.error.message}`,

@@ -1,0 +1,24 @@
+{
+	"name": "ws",
+	"dist-tags": {
+		"latest": "1.4.6"
+	},
+	"versions": {
+		"1.4.6": {
+			"name": "ws",
+			"type": "ocx:profile",
+			"description": "Legacy workspace profile",
+			"files": [
+				{
+					"path": "profiles/ws/ocx.jsonc",
+					"target": ".opencode/profile/ws/ocx.jsonc"
+				},
+				{
+					"path": "profiles/ws/opencode.jsonc",
+					"target": ".opencode/profile/ws/opencode.jsonc"
+				}
+			],
+			"dependencies": ["kdco/workspace"]
+		}
+	}
+}

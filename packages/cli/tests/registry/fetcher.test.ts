@@ -2,10 +2,17 @@ import { afterEach, describe, expect, it, mock } from "bun:test"
 import {
 	_clearFetcherCacheForTests,
 	classifyRegistryIndexIssue,
+	fetchComponentVersion,
 	fetchFileContent,
 	fetchRegistryIndex,
 } from "../../src/registry/fetcher"
-import { NetworkError, NotFoundError, RegistryCompatibilityError } from "../../src/utils/errors"
+import {
+	NetworkError,
+	NotFoundError,
+	RegistryCompatibilityError,
+	ValidationError,
+} from "../../src/utils/errors"
+import { startLegacyFixtureRegistry } from "../legacy-fixture-registry"
 
 const REGISTRY_SCHEMA_V2_URL = "https://ocx.kdco.dev/schemas/v2/registry.json"
 const REGISTRY_SCHEMA_UNVERSIONED_URL = "https://ocx.kdco.dev/schemas/registry.json"
@@ -272,13 +279,13 @@ describe("fetchRegistryIndex compatibility detection", () => {
 		_clearFetcherCacheForTests()
 	})
 
-	it("throws RegistryCompatibilityError for missing schema URL", async () => {
+	it("adapts legacy v1 object index when schema URL is missing", async () => {
 		globalThis.fetch = mock(() =>
 			Promise.resolve(
 				new Response(
 					JSON.stringify({
 						author: "Test",
-						components: [{ name: "button", type: "plugin", description: "Button" }],
+						components: [{ name: "button", type: "ocx:plugin", description: "Button" }],
 					}),
 					{
 						status: 200,
@@ -288,26 +295,19 @@ describe("fetchRegistryIndex compatibility detection", () => {
 			),
 		)
 
-		try {
-			await fetchRegistryIndex("https://legacy.example.com")
-			expect.unreachable("Should have thrown")
-		} catch (error) {
-			expect(error).toBeInstanceOf(RegistryCompatibilityError)
-			const compatError = error as RegistryCompatibilityError
-			expect(compatError.issue).toBe("legacy-schema-v1")
-			expect(compatError.url).toContain("legacy.example.com")
-			expect(compatError.remediation).toContain("v2")
-		}
+		const index = await fetchRegistryIndex("https://legacy.example.com")
+		expect(index.components).toHaveLength(1)
+		expect(index.components[0]?.type).toBe("plugin")
 	})
 
-	it("throws RegistryCompatibilityError for canonical unversioned schema URL", async () => {
+	it("adapts legacy v1 object index for canonical unversioned schema URL", async () => {
 		globalThis.fetch = mock(() =>
 			Promise.resolve(
 				new Response(
 					JSON.stringify({
 						$schema: REGISTRY_SCHEMA_UNVERSIONED_URL,
 						author: "Test",
-						components: [],
+						components: [{ name: "workspace", type: "ocx:bundle", description: "Bundle" }],
 					}),
 					{
 						status: 200,
@@ -317,13 +317,19 @@ describe("fetchRegistryIndex compatibility detection", () => {
 			),
 		)
 
+		const index = await fetchRegistryIndex("https://incomplete.example.com")
+		expect(index.components[0]?.type).toBe("bundle")
+	})
+
+	it("loads legacy fixture index for kdco/workspace", async () => {
+		const fixtureRegistry = startLegacyFixtureRegistry("kdco")
+
 		try {
-			await fetchRegistryIndex("https://incomplete.example.com")
-			expect.unreachable("Should have thrown")
-		} catch (error) {
-			expect(error).toBeInstanceOf(RegistryCompatibilityError)
-			const compatError = error as RegistryCompatibilityError
-			expect(compatError.issue).toBe("legacy-schema-v1")
+			const index = await fetchRegistryIndex(fixtureRegistry.url)
+			expect(index.components.map((component) => component.name)).toContain("workspace")
+			expect(index.components[0]?.type).toBe("bundle")
+		} finally {
+			fixtureRegistry.stop()
 		}
 	})
 
@@ -438,17 +444,43 @@ describe("fetchRegistryIndex compatibility detection", () => {
 		}
 	})
 
-	it("does not cache failed compatibility errors (subsequent call re-fetches)", async () => {
-		let callCount = 0
-
-		// First call: return invalid data
-		globalThis.fetch = mock(() => {
-			callCount++
-			return Promise.resolve(
-				new Response(JSON.stringify({ author: "Test", components: [] }), {
+	it("fails loud for legacy array payloads that cannot be adapted", async () => {
+		globalThis.fetch = mock(() =>
+			Promise.resolve(
+				new Response(JSON.stringify([{ name: "button", type: "plugin" }]), {
 					status: 200,
 					headers: { "content-type": "application/json" },
 				}),
+			),
+		)
+
+		try {
+			await fetchRegistryIndex("https://legacy-array.example.com")
+			expect.unreachable("Should have thrown")
+		} catch (error) {
+			expect(error).toBeInstanceOf(RegistryCompatibilityError)
+			expect((error as RegistryCompatibilityError).issue).toBe("legacy-schema-v1")
+		}
+	})
+
+	it("does not cache failed compatibility errors (subsequent call re-fetches)", async () => {
+		let callCount = 0
+
+		// Return unsupported schema each time to force compatibility failure.
+		globalThis.fetch = mock(() => {
+			callCount++
+			return Promise.resolve(
+				new Response(
+					JSON.stringify({
+						$schema: "https://ocx.kdco.dev/schemas/v3/registry.json",
+						author: "Test",
+						components: [],
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json" },
+					},
+				),
 			)
 		})
 
@@ -457,7 +489,7 @@ describe("fetchRegistryIndex compatibility detection", () => {
 			await fetchRegistryIndex("https://cache-test.example.com")
 		} catch (error) {
 			expect(error).toBeInstanceOf(RegistryCompatibilityError)
-			expect((error as RegistryCompatibilityError).issue).toBe("legacy-schema-v1")
+			expect((error as RegistryCompatibilityError).issue).toBe("unsupported-schema-version")
 		}
 
 		expect(callCount).toBe(1)
@@ -467,9 +499,126 @@ describe("fetchRegistryIndex compatibility detection", () => {
 			await fetchRegistryIndex("https://cache-test.example.com")
 		} catch (error) {
 			expect(error).toBeInstanceOf(RegistryCompatibilityError)
-			expect((error as RegistryCompatibilityError).issue).toBe("legacy-schema-v1")
+			expect((error as RegistryCompatibilityError).issue).toBe("unsupported-schema-version")
 		}
 
 		expect(callCount).toBe(2)
 	})
+})
+
+describe("fetchComponentVersion legacy manifest adaptation", () => {
+	const originalFetch = globalThis.fetch
+
+	afterEach(() => {
+		globalThis.fetch = originalFetch
+		_clearFetcherCacheForTests()
+	})
+
+	it("adapts .opencode/plugin target and ocx:* type to v2 manifest", async () => {
+		globalThis.fetch = mock(() =>
+			Promise.resolve(
+				new Response(
+					JSON.stringify({
+						name: "legacy-plugin",
+						"dist-tags": { latest: "1.4.6" },
+						versions: {
+							"1.4.6": {
+								name: "legacy-plugin",
+								type: "ocx:plugin",
+								description: "Legacy plugin",
+								files: [{ path: "plugin.ts", target: ".opencode/plugin/legacy-plugin.ts" }],
+								dependencies: [],
+							},
+						},
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json" },
+					},
+				),
+			),
+		)
+
+		const { manifest } = await fetchComponentVersion("https://legacy.example.com", "legacy-plugin")
+		expect(manifest.type).toBe("plugin")
+		expect(manifest.files[0]).toEqual({ path: "plugin.ts", target: "plugins/legacy-plugin.ts" })
+	})
+
+	it("loads legacy fixture manifests for kit/ws and kit/omo", async () => {
+		const fixtureRegistry = startLegacyFixtureRegistry("kit")
+
+		try {
+			const ws = await fetchComponentVersion(fixtureRegistry.url, "ws")
+			expect(ws.manifest.name).toBe("ws")
+			expect(ws.manifest.type).toBe("profile")
+			expect(
+				ws.manifest.files.map((file) => (typeof file === "string" ? file : file.target)),
+			).toEqual(["profiles/ws/ocx.jsonc", "profiles/ws/opencode.jsonc"])
+
+			const omo = await fetchComponentVersion(fixtureRegistry.url, "omo")
+			expect(omo.manifest.name).toBe("omo")
+			expect(omo.manifest.type).toBe("profile")
+			expect(
+				omo.manifest.files.map((file) => (typeof file === "string" ? file : file.target)),
+			).toEqual(["profiles/omo/ocx.jsonc", "profiles/omo/opencode.jsonc"])
+		} finally {
+			fixtureRegistry.stop()
+		}
+	})
+
+	const unsafeTargets = [
+		{
+			target: ".opencode/plugin/../../escape.ts",
+			reason: "traversal",
+		},
+		{
+			target: ".opencode/plugin/%2e%2e/escape.ts",
+			reason: "encoded",
+		},
+		{
+			target: ".opencode\\plugin\\escape.ts",
+			reason: "Windows separators",
+		},
+		{
+			target: ".opencode/plugin//escape.ts",
+			reason: "empty path segments",
+		},
+	]
+
+	for (const unsafe of unsafeTargets) {
+		it(`rejects unsafe canonicalization target: ${unsafe.target}`, async () => {
+			globalThis.fetch = mock(() =>
+				Promise.resolve(
+					new Response(
+						JSON.stringify({
+							name: "unsafe-plugin",
+							"dist-tags": { latest: "1.4.6" },
+							versions: {
+								"1.4.6": {
+									name: "unsafe-plugin",
+									type: "ocx:plugin",
+									description: "Unsafe plugin",
+									files: [{ path: "plugin.ts", target: unsafe.target }],
+									dependencies: [],
+								},
+							},
+						}),
+						{
+							status: 200,
+							headers: { "content-type": "application/json" },
+						},
+					),
+				),
+			)
+
+			try {
+				await fetchComponentVersion("https://legacy.example.com", "unsafe-plugin")
+				expect.unreachable("Should have thrown")
+			} catch (error) {
+				expect(error).toBeInstanceOf(ValidationError)
+				expect((error as ValidationError).message).toContain("Unsafe target")
+				expect((error as ValidationError).message).toContain(unsafe.reason)
+			}
+		})
+	}
 })

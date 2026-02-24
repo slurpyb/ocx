@@ -245,6 +245,231 @@ If the version does not match the current codebase, verify `$OCX_BIN` points to 
 
 ---
 
+## 1.5 Registry Schema Compatibility (V1.4.6 Pinned Fixtures)
+
+> **RELEASE-CRITICAL:** This section validates in-memory adaptation of legacy V1.4.6 registry payloads. Run these tests before any release that touches registry fetch or schema adaptation code.
+>
+> **PRECONDITION:** These tests MUST use the git-pinned fixture data at `packages/cli/tests/fixtures/legacy-v1/`. Do NOT use production/live registry URLs for V1 migration checks. The fixtures are version-locked at V1.4.6 and provide deterministic, reproducible test data without external dependencies.
+>
+> **RATIONALE:** Hosted registries will migrate to V2 schema after this code merges. Manual verification against pinned fixtures ensures backward compatibility continues to work even when live registries no longer serve V1 responses.
+
+### Fixture Server Setup
+
+The V1.4.6 fixtures are served locally for testing.
+
+> **Important caveat:** `packages/cli/tests/fixtures/legacy-v1/` is intentionally
+> metadata-focused (index + packument payloads). It does **not** include full
+> component file blobs for profile installs. The automated test helper
+> `packages/cli/tests/legacy-fixture-registry.ts` serves placeholder file content
+> for `/components/<name>/<path>` routes. Keep this in mind when interpreting
+> manual vs automated coverage below.
+
+Use the Bun helper script so manual hosting matches project runtime/tests:
+
+```bash
+# Terminal 1: Serve kdco fixtures
+bun run "$OCX_REPO/packages/cli/scripts/serve-legacy-fixture.ts" --fixture kdco --port 9876
+# Serves on http://localhost:9876
+
+# Terminal 2: Serve kit fixtures
+bun run "$OCX_REPO/packages/cli/scripts/serve-legacy-fixture.ts" --fixture kit --port 9877
+# Serves on http://localhost:9877
+
+# In your test shell, set URLs once for this section
+export V1_KDCO_URL=http://localhost:9876
+export V1_KIT_URL=http://localhost:9877
+```
+
+The helper serves pinned fixture index/packument payloads and placeholder
+`/components/<name>/<path>` content (matching automated test behavior).
+
+**Verify fixture servers are accessible:**
+```bash
+curl -sf http://localhost:9876/index.json | grep -q '"version": "1.4.6"' && echo "OK: kdco V1 fixture (9876)" || echo "FAIL: kdco fixture not reachable"
+curl -sf http://localhost:9877/index.json | grep -q '"version": "1.4.6"' && echo "OK: kit V1 fixture (9877)" || echo "FAIL: kit fixture not reachable"
+```
+
+Both commands must return "OK". If either fails, restart the corresponding server before proceeding.
+
+- [x] **Setup:** Fixture servers running on ports 9876 (kdco) and 9877 (kit)
+- [x] **Run result (2026-02-24):** PASS — both fixture indexes returned pinned `version: 1.4.6`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
+
+### 1.5.1 Happy Path: Install from V1 Pinned Fixtures
+
+**Test kdco/workspace component:**
+
+- [x] **Setup:** Fresh sandbox (Section 1.1), fixture servers running
+- [x] **Commands:**
+  ```bash
+  $OCX_BIN init
+  $OCX_BIN registry add "$V1_KDCO_URL" --name kdco-v1
+  $OCX_BIN add kdco-v1/workspace
+  ```
+- [x] **Expected:** Command succeeds and records `kdco-v1/workspace` in receipt (fixture is metadata-only; no workspace file payloads are expected)
+- [x] **Verify:**
+  ```bash
+  cat .ocx/receipt.jsonc  # Should list kdco-v1/workspace
+  ```
+- [x] **Run result (2026-02-24):** PASS — `kdco-v1/workspace` recorded in receipt; parity suites passed.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
+
+**Automated parity checks required for kit/ws and kit/omo profile fixtures:**
+
+Because the pinned fixture directories do not include full profile file blobs,
+manual static-server installs for `kit/ws` and `kit/omo` are not deterministic.
+Validate those two cases with targeted automated suites that use the helper-backed
+fixture server:
+
+```bash
+cd "$OCX_REPO/packages/cli"
+bun test tests/registry/fetcher.test.ts tests/registry.test.ts
+```
+
+Confirm both suites pass and include legacy fixture coverage for `kit/ws` and
+`kit/omo`.
+
+### 1.5.2 Guardrail: Unsupported Major Schema Fails Loudly
+
+- [x] **Setup:** Create a test registry fixture with unsupported schema version
+- [x] **Commands:**
+  ```bash
+  mkdir -p /tmp/ocx-v1-test-unsupported
+  cat > /tmp/ocx-v1-test-unsupported/index.json << 'EOF'
+  {
+    "$schema": "https://ocx.kdco.dev/schemas/v3/registry.json",
+    "name": "Test Registry",
+    "namespace": "test",
+    "version": "3.0.0",
+    "author": "Test",
+    "components": []
+  }
+  EOF
+  bun run "$OCX_REPO/packages/cli/scripts/serve-legacy-fixture.ts" --root /tmp/ocx-v1-test-unsupported --port 9875 &
+  V1_UNSUPPORTED_PID=$!
+  MAX_ATTEMPTS=50
+  attempt=1
+  until curl -sf http://localhost:9875/index.json > /dev/null; do
+    if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+      echo "FAIL: fixture server on port 9875 did not become ready after ${MAX_ATTEMPTS} attempts (~5 seconds)."
+      kill $V1_UNSUPPORTED_PID 2>/dev/null || true
+      wait $V1_UNSUPPORTED_PID 2>/dev/null || true
+      rm -rf /tmp/ocx-v1-test-unsupported
+      exit 1
+    fi
+    sleep 0.1
+    attempt=$((attempt + 1))
+  done
+  curl -sf http://localhost:9875/index.json | grep -q '"\$schema": "https://ocx.kdco.dev/schemas/v3/registry.json"' || {
+    echo "FAIL: unsupported fixture payload mismatch";
+    kill $V1_UNSUPPORTED_PID 2>/dev/null || true;
+    wait $V1_UNSUPPORTED_PID 2>/dev/null || true;
+    rm -rf /tmp/ocx-v1-test-unsupported;
+    exit 1;
+  }
+  cd /tmp/ocx-v2-test-project
+  $OCX_BIN init
+  set +e
+  $OCX_BIN registry add http://localhost:9875 --name test-unsupported 2>&1
+  rc=$?
+  set -e
+  echo "rc=$rc"
+  kill $V1_UNSUPPORTED_PID 2>/dev/null || true
+  wait $V1_UNSUPPORTED_PID 2>/dev/null || true
+  rm -rf /tmp/ocx-v1-test-unsupported
+  ```
+- [x] **Expected:** `registry add` fails with structured compatibility error before registry is saved
+- [x] **Verify:**
+  - Command output includes `rc=<value>` and `rc` is non-zero (CONFIG error, typically 78)
+  - Error message includes `unsupported-schema-version` and references unsupported major (v3) / supported major (v2)
+- [x] **Run result (2026-02-24):** PASS — failed with `rc=78` and `unsupported-schema-version` (v3 unsupported).
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
+
+### 1.5.3 Guardrail: Missing Legacy Component Fails Loudly
+
+- [x] **Setup:** Fresh sandbox, fixture servers running
+- [x] **Commands:**
+  ```bash
+  $OCX_BIN init
+  $OCX_BIN registry add "$V1_KDCO_URL" --name kdco-v1
+  # Attempt to install a component that doesn't exist in the fixture
+  set +e
+  $OCX_BIN add kdco-v1/nonexistent 2>&1
+  rc=$?
+  set -e
+  echo "rc=$rc"
+  ```
+- [x] **Expected:** Clear error that component was not found in registry
+- [x] **Verify:**
+  - Command output includes `rc=<value>` and `rc` is non-zero (NOT_FOUND, typically 66)
+  - Error message indicates component not found
+  - No partial files created in `.opencode/`
+- [x] **Run result (2026-02-24):** PASS — missing component returned `rc=66`; no partial files created.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
+
+### 1.5.4 JSON Mode: Success Path
+
+- [x] **Setup:** Fresh sandbox (Section 1.1), fixture servers running
+- [x] **Commands:**
+  ```bash
+  $OCX_BIN init
+  $OCX_BIN registry add "$V1_KDCO_URL" --name kdco-v1
+  $OCX_BIN add kdco-v1/workspace --json > /tmp/ocx-v1-json-success.json
+  ```
+- [x] **Expected:** Valid JSON output with success status and component details
+- [x] **Verify:**
+  ```bash
+  bun -e "JSON.parse(await Bun.file('/tmp/ocx-v1-json-success.json').text()); console.log('OK: valid JSON')"
+  # Output should contain installed component info
+  cat /tmp/ocx-v1-json-success.json | grep -q "workspace" && echo "OK: workspace in output" || echo "FAIL: missing component"
+  ```
+- [x] **Run result (2026-02-24):** PASS — JSON parsed cleanly and included `workspace`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
+
+### 1.5.5 JSON Mode: Failure Path
+
+- [x] **Setup:** Fresh sandbox, fixture servers running
+- [x] **Commands:**
+  ```bash
+  $OCX_BIN init
+  $OCX_BIN registry add "$V1_KDCO_URL" --name kdco-v1
+  set +e
+  $OCX_BIN add kdco-v1/nonexistent --json > /tmp/ocx-v1-json-fail.json 2>&1
+  rc=$?
+  set -e
+  echo "rc=$rc"
+  ```
+- [x] **Expected:** Valid JSON output with error details and structured error code
+- [x] **Verify:**
+  ```bash
+  bun -e "JSON.parse(await Bun.file('/tmp/ocx-v1-json-fail.json').text()); console.log('OK: valid JSON')"
+  # Error JSON should contain structured error information
+  test "${rc:-0}" -ne 0 || { echo "FAIL: expected non-zero rc"; exit 1; }
+  echo "OK: rc is non-zero"
+  cat /tmp/ocx-v1-json-fail.json | grep -q "error" && echo "OK: error field present" || echo "FAIL: missing error field"
+  ```
+- [x] **Run result (2026-02-24):** PASS — exited `rc=66` with valid JSON `error` payload.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
+
+### 1.5.6 Cleanup Fixture Servers
+
+When V1 compatibility testing is complete:
+
+- [x] **Setup:** Fixture server terminals running
+- [x] **Action:** Stop the fixture servers
+- [x] **Commands:**
+  1. Go to each terminal running the fixture server (ports 9876, 9877)
+  2. Press `Ctrl+C` to stop the server
+- [x] **Verify:**
+  ```bash
+  curl -sf http://localhost:9876/index.json 2>/dev/null && echo "FAIL: 9876 still running" || echo "OK: 9876 stopped"
+  curl -sf http://localhost:9877/index.json 2>/dev/null && echo "FAIL: 9877 still running" || echo "OK: 9877 stopped"
+  ```
+- [x] **Run result (2026-02-24):** PASS — both fixture endpoints were unreachable after shutdown.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
+
+---
+
 ## 2. README: Quick Start Profiles
 
 Test cases from README.md lines 34-53.

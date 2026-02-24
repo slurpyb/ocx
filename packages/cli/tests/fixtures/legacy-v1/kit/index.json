@@ -1,0 +1,18 @@
+{
+	"name": "OCX Kit",
+	"namespace": "kit",
+	"version": "1.4.6",
+	"author": "KDCO",
+	"components": [
+		{
+			"name": "ws",
+			"type": "ocx:profile",
+			"description": "Legacy workspace profile"
+		},
+		{
+			"name": "omo",
+			"type": "ocx:profile",
+			"description": "Legacy Oh-My-OpenCode profile"
+		}
+	]
+}

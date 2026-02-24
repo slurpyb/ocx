@@ -1,0 +1,24 @@
+{
+	"name": "omo",
+	"dist-tags": {
+		"latest": "1.4.6"
+	},
+	"versions": {
+		"1.4.6": {
+			"name": "omo",
+			"type": "ocx:profile",
+			"description": "Legacy Oh-My-OpenCode profile",
+			"files": [
+				{
+					"path": "profiles/omo/ocx.jsonc",
+					"target": ".opencode/profile/omo/ocx.jsonc"
+				},
+				{
+					"path": "profiles/omo/opencode.jsonc",
+					"target": ".opencode/profile/omo/opencode.jsonc"
+				}
+			],
+			"dependencies": []
+		}
+	}
+}

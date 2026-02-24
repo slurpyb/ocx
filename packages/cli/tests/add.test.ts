@@ -14,6 +14,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { handleError } from "../src/utils/handle-error"
 import { cleanupTempDir, createTempDir, parseJsonc, runCLI } from "./helpers"
+import { startLegacyFixtureRegistry } from "./legacy-fixture-registry"
 import { type MockRegistry, startMockRegistry } from "./mock-registry"
 
 let addImportCounter = 0
@@ -753,6 +754,64 @@ describe("ocx add legacy registry compatibility", () => {
 		}
 	})
 
+	it("should install kdco/workspace from legacy v1 object index fixture", async () => {
+		testDir = await createTempDir("add-legacy-kdco-workspace")
+		const fixtureRegistry = startLegacyFixtureRegistry("kdco")
+
+		try {
+			await runCLI(["init"], testDir)
+			const configPath = join(testDir, ".opencode", "ocx.jsonc")
+			const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
+			config.registries = {
+				kdco: { url: fixtureRegistry.url },
+			}
+			await writeFile(configPath, JSON.stringify(config, null, 2))
+
+			const { exitCode, output } = await runCLI(["add", "kdco/workspace"], testDir)
+
+			if (exitCode !== 0) {
+				console.log(output)
+			}
+			expect(exitCode).toBe(0)
+
+			const receipt = parseJsonc(
+				await readFile(join(testDir, ".ocx", "receipt.jsonc"), "utf-8"),
+			) as {
+				installed: Record<string, unknown>
+			}
+			expect(Object.keys(receipt.installed).some((key) => key.includes("workspace"))).toBe(true)
+		} finally {
+			fixtureRegistry.stop()
+		}
+	})
+
+	it("should return success JSON when adding legacy kdco/workspace", async () => {
+		testDir = await createTempDir("add-legacy-json-success")
+		const fixtureRegistry = startLegacyFixtureRegistry("kdco")
+
+		try {
+			await runCLI(["init"], testDir)
+			const configPath = join(testDir, ".opencode", "ocx.jsonc")
+			const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
+			config.registries = {
+				kdco: { url: fixtureRegistry.url },
+			}
+			await writeFile(configPath, JSON.stringify(config, null, 2))
+
+			const { exitCode, stdout, stderr } = await runCLI(
+				["add", "kdco/workspace", "--json"],
+				testDir,
+			)
+
+			expect(exitCode).toBe(0)
+			const payload = JSON.parse(stdout || stderr)
+			expect(payload.success).toBe(true)
+			expect(payload.installed).toContain("kdco/workspace")
+		} finally {
+			fixtureRegistry.stop()
+		}
+	})
+
 	it("should fail with actionable error when registry returns legacy array format", async () => {
 		testDir = await createTempDir("add-legacy-registry")
 
@@ -778,8 +837,8 @@ describe("ocx add legacy registry compatibility", () => {
 			const { exitCode, output } = await runCLI(["add", "legacy/button"], testDir)
 
 			expect(exitCode).not.toBe(0)
-			expect(output).toContain("incompatible format")
-			expect(output).toContain("legacy-schema-v1")
+			expect(output).toContain("legacy schema v1")
+			expect(output).toContain("object index payload")
 			// Should NOT show raw Zod errors
 			expect(output).not.toMatch(/^Required$/m)
 		} finally {
@@ -815,8 +874,70 @@ describe("ocx add legacy registry compatibility", () => {
 			)
 
 			expect(exitCode).not.toBe(0)
-			expect(output).toContain("incompatible format")
-			expect(output).toContain("legacy-schema-v1")
+			expect(output).toContain("legacy schema v1")
+			expect(output).toContain("object index payload")
+		} finally {
+			server.stop()
+		}
+	})
+
+	it("should reject unsafe legacy target canonicalization inputs", async () => {
+		testDir = await createTempDir("add-legacy-unsafe-target")
+
+		const server = Bun.serve({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url)
+				if (url.pathname === "/index.json") {
+					return Response.json({
+						author: "Legacy",
+						components: [{ name: "unsafe", type: "ocx:plugin", description: "Unsafe plugin" }],
+					})
+				}
+
+				if (url.pathname === "/components/unsafe.json") {
+					return Response.json({
+						name: "unsafe",
+						"dist-tags": { latest: "1.4.6" },
+						versions: {
+							"1.4.6": {
+								name: "unsafe",
+								type: "ocx:plugin",
+								description: "Unsafe plugin",
+								files: [
+									{
+										path: "plugin.ts",
+										target: ".opencode/plugin/%2e%2e/escape.ts",
+									},
+								],
+								dependencies: [],
+							},
+						},
+					})
+				}
+
+				if (url.pathname === "/components/unsafe/plugin.ts") {
+					return new Response("export default {}")
+				}
+
+				return new Response("Not Found", { status: 404 })
+			},
+		})
+
+		try {
+			await runCLI(["init"], testDir)
+			const configPath = join(testDir, ".opencode", "ocx.jsonc")
+			const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
+			config.registries = {
+				legacy: { url: `http://localhost:${server.port}` },
+			}
+			await writeFile(configPath, JSON.stringify(config, null, 2))
+
+			const { exitCode, output } = await runCLI(["add", "legacy/unsafe"], testDir)
+
+			expect(exitCode).not.toBe(0)
+			expect(output).toContain("Unsafe target")
+			expect(output).toContain("encoded paths")
 		} finally {
 			server.stop()
 		}

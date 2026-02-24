@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { cleanupTempDir, createTempDir, parseJsonc, runCLI } from "./helpers"
+import { startLegacyFixtureRegistry } from "./legacy-fixture-registry"
 import { type MockRegistry, startMockRegistry } from "./mock-registry"
 
 /** Type for parsed ocx config in tests */
@@ -861,6 +862,40 @@ describe("registry add compatibility diagnostics", () => {
 		await cleanupTempDir(testDir)
 	})
 
+	it("should accept legacy v1 object index for kdco/workspace", async () => {
+		const fixtureRegistry = startLegacyFixtureRegistry("kdco")
+
+		try {
+			const { exitCode, output } = await runCLI(
+				["registry", "add", fixtureRegistry.url, "--name", "kdco"],
+				testDir,
+			)
+
+			expect(exitCode).toBe(0)
+			expect(output).toContain("Added registry to local config: kdco")
+		} finally {
+			fixtureRegistry.stop()
+		}
+	})
+
+	it("should accept legacy v1 object index in JSON mode for kit/ws and kit/omo", async () => {
+		const fixtureRegistry = startLegacyFixtureRegistry("kit")
+
+		try {
+			const { exitCode, stdout, stderr } = await runCLI(
+				["registry", "add", fixtureRegistry.url, "--name", "kit", "--json"],
+				testDir,
+			)
+
+			expect(exitCode).toBe(0)
+			const payload = JSON.parse(stdout || stderr)
+			expect(payload.success).toBe(true)
+			expect(payload.data.name).toBe("kit")
+		} finally {
+			fixtureRegistry.stop()
+		}
+	})
+
 	it("should show actionable compatibility error for legacy array registry", async () => {
 		// Start a server that returns an array (legacy format)
 		const server = Bun.serve({
@@ -877,8 +912,8 @@ describe("registry add compatibility diagnostics", () => {
 			)
 
 			expect(exitCode).not.toBe(0)
-			expect(output).toContain("legacy-schema-v1")
-			expect(output).toContain("incompatible format")
+			expect(output).toContain("legacy schema v1")
+			expect(output).toContain("object index payload")
 			// Should NOT show raw Zod errors as the primary message
 			expect(output).not.toMatch(/^.*Required$/m)
 		} finally {

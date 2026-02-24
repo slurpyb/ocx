@@ -1,0 +1,13 @@
+{
+	"name": "KDCO Registry",
+	"namespace": "kdco",
+	"version": "1.4.6",
+	"author": "KDCO",
+	"components": [
+		{
+			"name": "workspace",
+			"type": "ocx:bundle",
+			"description": "Legacy workspace bundle"
+		}
+	]
+}
