@@ -2255,6 +2255,8 @@ Smoke tests for the v1.4.6 → v2 receipt migration command.
   test ! -f $XDG_CONFIG_HOME/opencode/profiles/failing/ocx.lock.bak && echo "OK: failing profile lock not backed up" || echo "FAIL: failing profile lock backup should not exist"
   ```
 - [x] **Run result (2026-02-24):** FAIL — `$OCX_BIN migrate --global --apply` failed for `profile:failing` with `Registry "kdco" referenced in lock key "kdco/workspace" is not configured in ocx.jsonc. Add it before migrating.` (exit `1`); no receipt or `.bak` was created for that profile.
+- [x] **Run result (2026-02-24, checkpoint resume):** BLOCKED — setup was blocked before rerunning migration: `$OCX_BIN` was unset in the current shell, so `$OCX_BIN profile ...` expanded to `profile` (`command not found`) and profile config writes targeted `/opencode/...` (`no such file or directory`).
+- [x] **Run result (2026-02-24, explicit env bootstrap retry):** PASS — after exporting `OCX_REPO`, `OCX_BIN`, and `XDG_CONFIG_HOME` in the same shell, setup completed and `$OCX_BIN migrate --global --apply` behaved as expected: `profile:passing` migrated, `profile:failing` reported the expected missing-registry error, exited `1`, and verification checks passed.
 - [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ---
