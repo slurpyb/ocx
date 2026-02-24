@@ -231,6 +231,15 @@ describe("classifyRegistryIndexIssue", () => {
 		expect(result?.issue).toBe("unsupported-schema-version")
 	})
 
+	it("returns 'invalid-schema-url' for zero-padded canonical major", () => {
+		const result = classifyRegistryIndexIssue({
+			$schema: "https://ocx.kdco.dev/schemas/v02/registry.json",
+		})
+
+		expect(result).not.toBeNull()
+		expect(result?.issue).toBe("invalid-schema-url")
+	})
+
 	it("returns null for supported v2 schema URL", () => {
 		const result = classifyRegistryIndexIssue({
 			$schema: REGISTRY_SCHEMA_V2_URL,
@@ -369,6 +378,33 @@ describe("fetchRegistryIndex compatibility detection", () => {
 			expect(error).toBeInstanceOf(RegistryCompatibilityError)
 			const compatError = error as RegistryCompatibilityError
 			expect(compatError.issue).toBe("unsupported-schema-version")
+		}
+	})
+
+	it("throws RegistryCompatibilityError for zero-padded schema major", async () => {
+		globalThis.fetch = mock(() =>
+			Promise.resolve(
+				new Response(
+					JSON.stringify({
+						$schema: "https://ocx.kdco.dev/schemas/v02/registry.json",
+						author: "Test",
+						components: [],
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json" },
+					},
+				),
+			),
+		)
+
+		try {
+			await fetchRegistryIndex("https://zero-padded.example.com")
+			expect.unreachable("Should have thrown")
+		} catch (error) {
+			expect(error).toBeInstanceOf(RegistryCompatibilityError)
+			const compatError = error as RegistryCompatibilityError
+			expect(compatError.issue).toBe("invalid-schema-url")
 		}
 	})
 

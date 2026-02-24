@@ -1009,7 +1009,7 @@ All variations from CLI.md lines 559-645.
   ```bash
   # Create test registry structure
   mkdir -p /tmp/test-registry/files/agent
-  echo '{"name": "test-registry", "version": "1.0.0", "namespace": "test", "author": "Test Author", "components": []}' > /tmp/test-registry/registry.jsonc
+  echo '{"$schema": "https://ocx.kdco.dev/schemas/v2/registry.json", "name": "test-registry", "version": "1.0.0", "author": "Test Author", "components": []}' > /tmp/test-registry/registry.jsonc
   cd /tmp/test-registry
   $OCX_BIN build
   ```
@@ -1028,7 +1028,7 @@ All variations from CLI.md lines 559-645.
 > ```bash
 > cd /tmp
 > mkdir -p /tmp/test-registry/files/agent
-> echo '{"name": "test-registry", "version": "1.0.0", "namespace": "test", "author": "Test Author", "components": []}' > /tmp/test-registry/registry.jsonc
+> echo '{"$schema": "https://ocx.kdco.dev/schemas/v2/registry.json", "name": "test-registry", "version": "1.0.0", "author": "Test Author", "components": []}' > /tmp/test-registry/registry.jsonc
 > ```
 
 - [x] **Setup:** Registry source directory (recreate if needed)
@@ -1047,7 +1047,7 @@ All variations from CLI.md lines 559-645.
 > ```bash
 > cd /tmp
 > mkdir -p /tmp/test-registry/files/agent
-> echo '{"name": "test-registry", "version": "1.0.0", "namespace": "test", "author": "Test Author", "components": []}' > /tmp/test-registry/registry.jsonc
+> echo '{"$schema": "https://ocx.kdco.dev/schemas/v2/registry.json", "name": "test-registry", "version": "1.0.0", "author": "Test Author", "components": []}' > /tmp/test-registry/registry.jsonc
 > ```
 
 - [x] **Setup:** Registry source directory (recreate if needed)

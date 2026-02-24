@@ -49,7 +49,7 @@ Returns registry metadata and a list of available components.
 
 ```json
 {
-  "$schema": "https://ocx.kdco.dev/schemas/registry.json",
+  "$schema": "https://ocx.kdco.dev/schemas/v2/registry.json",
   "name": "My Registry",
   "namespace": "myregistry",
   "version": "1.0.0",
@@ -67,12 +67,16 @@ Returns registry metadata and a list of available components.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `$schema` | string | No | Schema URL for validation |
+| `$schema` | string | Yes | For OCX CLI-supported manifests, must be `https://ocx.kdco.dev/schemas/v2/registry.json` |
 | `name` | string | Yes | Human-readable registry name |
 | `namespace` | string | Yes | Registry namespace (kebab-case, informational) |
 | `version` | string | Yes | Registry version (semver recommended) |
 | `author` | string | Yes | Registry author or organization |
 | `components` | array | Yes | List of available components |
+
+<Note>
+For OCX CLI-supported manifests, `$schema` is required and must be `https://ocx.kdco.dev/schemas/v2/registry.json`. Registries may still serve `https://ocx.kdco.dev/schemas/registry.json` as a compatibility alias/latest pointer, but OCX CLI treats registry manifests with a missing `$schema` or the unversioned URL as legacy v1 and rejects them.
+</Note>
 
 <Note>
 The `index.namespace` field is informational only and not used for component resolution. Users reference components via the registry name configured with `ocx registry add --name <name>`.
@@ -178,6 +182,7 @@ A registry with a single skill needs three files:
 
 ```json
 {
+  "$schema": "https://ocx.kdco.dev/schemas/v2/registry.json",
   "name": "Minimal Registry",
   "namespace": "minimal",
   "version": "1.0.0",

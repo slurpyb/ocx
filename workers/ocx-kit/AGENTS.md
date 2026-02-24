@@ -130,7 +130,7 @@ The registry manifest defines your components:
 
 ```json
 {
-  "$schema": "https://ocx.kdco.dev/schema.json",
+  "$schema": "https://ocx.kdco.dev/schemas/v2/registry.json",
   "name": "My Registry",
   "namespace": "my-namespace",
   "version": "0.0.1",

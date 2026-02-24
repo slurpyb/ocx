@@ -811,7 +811,7 @@ export function normalizeComponentManifest(
 // =============================================================================
 
 const REGISTRY_SCHEMA_VERSIONED_URL_REGEX = new RegExp(
-	`^https://${OCX_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/schemas/v(\\d+)/registry\\.json$`,
+	`^https://${OCX_DOMAIN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/schemas/v([1-9]\\d*)/registry\\.json$`,
 )
 
 export interface RegistrySchemaUrlIssue {
