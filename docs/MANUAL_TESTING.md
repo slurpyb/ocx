@@ -1020,7 +1020,8 @@ All variations from CLI.md lines 559-645.
   rm -rf /tmp/test-registry
   cd /tmp  # Return to safe directory after deleting cwd
   ```
-- [x] **Last tested:** _v2.0.0 on 2026-02-23_
+- [x] **Run result (2026-02-24):** PASS — build succeeded and `./dist/` contained `index.json` and `components/`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 9.2 Build from Specific Directory
 
@@ -1039,7 +1040,8 @@ All variations from CLI.md lines 559-645.
   ls ./dist/  # Output is relative to cwd, not the source directory
   rm -rf ./dist
   ```
-- [x] **Last tested:** _v2.0.0 on 2026-02-23_
+- [x] **Run result (2026-02-24):** PASS — build succeeded and `./dist/` contained `index.json` and `components/`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 9.3 Build with Custom Output Directory
 
@@ -1058,7 +1060,8 @@ All variations from CLI.md lines 559-645.
   ls ./public/
   rm -rf ./public
   ```
-- [x] **Last tested:** _v2.0.0 on 2026-02-23_
+- [x] **Run result (2026-02-24):** PASS — build succeeded and `./public/` contained `index.json` and `components/`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 9.4 Build with `--json` Output
 
