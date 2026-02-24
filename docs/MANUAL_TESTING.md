@@ -1718,6 +1718,12 @@ From PROFILES.md - advanced profile behaviors.
 
 ### 13.7 Instruction File Discovery (Deepest-First)
 
+- **Clarity note (distinct goals for 13.7–13.10):**
+  - **13.7:** Verifies depth ordering (deepest directory to git root).
+  - **13.8:** Verifies same-directory file-type winner (`AGENTS.md` > `CLAUDE.md` > `CONTEXT.md`).
+  - **13.9:** Verifies `CONTEXT.md` fallback only when same-directory `AGENTS.md`/`CLAUDE.md` are absent.
+  - **13.10:** Verifies profile-vs-project layering (profile instruction sources resolve before project sources).
+
 - [x] **Setup:** Multi-level project with instruction files
 - [x] **Commands:**
   ```bash
@@ -1744,8 +1750,8 @@ From PROFILES.md - advanced profile behaviors.
 
 ### 13.8 First Type Wins
 
-- [ ] **Setup:** Project directory with multiple instruction file types
-- [ ] **Commands:**
+- [x] **Setup:** Project directory with all three instruction file types present in the same directory
+- [x] **Commands:**
   ```bash
   cd /tmp/ocx-v2-test-project
   git init
@@ -1756,39 +1762,72 @@ From PROFILES.md - advanced profile behaviors.
   echo "# Agents" > AGENTS.md
   echo "# Claude" > CLAUDE.md
   echo "# Context" > CONTEXT.md
-  # Verify model pins before running
-  cat .opencode/opencode.jsonc | grep -q "opencode/big-pickle" && echo "OK: Model pins verified" || echo "FAIL: Model pins missing"
-  $OCX_BIN oc run "echo hello"
+  $OCX_BIN config show --origin > /tmp/ocx-13.8-config.txt
+  # Deterministic verification: project AGENTS is selected; project CLAUDE/CONTEXT are not
+  python3 - << 'PY'
+  from pathlib import Path
+  import sys
+  text = Path('/tmp/ocx-13.8-config.txt').read_text()
+  ok = (
+      'ocx-v2-test-project/AGENTS.md' in text
+      and 'ocx-v2-test-project/CLAUDE.md' not in text
+      and 'ocx-v2-test-project/CONTEXT.md' not in text
+  )
+  print('OK: first type wins (AGENTS only)' if ok else 'FAIL: first type wins verification failed')
+  sys.exit(0 if ok else 1)
+  PY
   ```
-- [ ] **Expected:** Only AGENTS.md is loaded; CLAUDE.md and CONTEXT.md are ignored (AGENTS → CLAUDE → CONTEXT priority)
-- [ ] **Verify:** First type wins behavior enforced
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Same-directory winner rule: only AGENTS.md is loaded; CLAUDE.md and CONTEXT.md are ignored (AGENTS → CLAUDE → CONTEXT priority). This is complementary to 13.9 fallback behavior.
+- [x] **Verify:** `/tmp/ocx-13.8-config.txt` includes project `AGENTS.md` and excludes project `CLAUDE.md`/`CONTEXT.md`
+- [x] **Run result (2026-02-24):** PASS — deterministic `config show --origin` verification confirmed project `AGENTS.md` was selected while project `CLAUDE.md`/`CONTEXT.md` were excluded.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 13.9 CONTEXT.md Deprecated
 
-- [ ] **Setup:** Project with only CONTEXT.md
-- [ ] **Commands:**
+- [x] **Setup:** Project with only CONTEXT.md (explicitly isolated from profile/global instruction sources)
+- [x] **Commands:**
   ```bash
   cd /tmp/ocx-v2-test-project
+  # Deterministic isolation: clear profile env override and use clean global config root
+  unset OCX_PROFILE
+  rm -rf /tmp/ocx-13.9-xdg
+  mkdir -p /tmp/ocx-13.9-xdg
   git init
-  # Idempotent: init only if local config does not exist (sequential runs)
-  test -f .opencode/ocx.jsonc || $OCX_BIN init
+  # Deterministic local config: ensure no local profile is pinned
+  mkdir -p .opencode
+  echo '{}' > .opencode/ocx.jsonc
   # Pin to free Zen model for manual testing
   echo '{"model": "opencode/big-pickle", "small_model": "opencode/big-pickle"}' > .opencode/opencode.jsonc
   rm -f AGENTS.md CLAUDE.md
   echo "# Context" > CONTEXT.md
-  # Verify model pins before running
-  cat .opencode/opencode.jsonc | grep -q "opencode/big-pickle" && echo "OK: Model pins verified" || echo "FAIL: Model pins missing"
-  $OCX_BIN oc run "echo hello"
+  # Run with isolated instruction sources: no global profiles and no ~/.claude fallback
+  OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1 XDG_CONFIG_HOME=/tmp/ocx-13.9-xdg $OCX_BIN config show --origin > /tmp/ocx-13.9-config.txt
+  # Deterministic verification: CONTEXT fallback is selected when AGENTS/CLAUDE are absent,
+  # and no profile/global instruction source is present in this run.
+  python3 - << 'PY'
+  from pathlib import Path
+  import sys
+  text = Path('/tmp/ocx-13.9-config.txt').read_text()
+  ok = (
+      'ocx-v2-test-project/CONTEXT.md' in text
+      and 'ocx-v2-test-project/AGENTS.md' not in text
+      and 'ocx-v2-test-project/CLAUDE.md' not in text
+      and '/profiles/' not in text
+      and '/.claude/CLAUDE.md' not in text
+  )
+  print('OK: CONTEXT fallback verified' if ok else 'FAIL: CONTEXT fallback verification failed')
+  sys.exit(0 if ok else 1)
+  PY
   ```
-- [ ] **Expected:** CONTEXT.md loads, but document that it is deprecated (AGENTS.md or CLAUDE.md preferred)
-- [ ] **Verify:** CONTEXT.md loaded successfully
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Complementary to 13.8: when same-directory AGENTS.md/CLAUDE.md are absent, CONTEXT.md loads as fallback (while remaining deprecated; AGENTS.md or CLAUDE.md preferred)
+- [x] **Verify:** `/tmp/ocx-13.9-config.txt` includes project `CONTEXT.md`, excludes project `AGENTS.md`/`CLAUDE.md`, and has no profile/global instruction origins (including `~/.claude/CLAUDE.md`)
+- [x] **Run result (2026-02-24):** PASS — with `XDG_CONFIG_HOME` isolated to `/tmp/ocx-13.9-xdg` and `OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1`, deterministic verification confirmed only project `CONTEXT.md` was loaded (project `AGENTS.md`/`CLAUDE.md`, profile, and `~/.claude/CLAUDE.md` sources were absent).
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 13.10 Profile Instructions Have Highest Priority
 
-- [ ] **Setup:** Profile with AGENTS.md, project with AGENTS.md
-- [ ] **Commands:**
+- [x] **Setup:** Profile with AGENTS.md, project with AGENTS.md
+- [x] **Commands:**
   ```bash
   # Idempotent: ensure work profile exists with model pins before running
   $OCX_BIN profile rm work --global 2>/dev/null || true
@@ -1796,108 +1835,123 @@ From PROFILES.md - advanced profile behaviors.
   echo '{"model": "opencode/big-pickle", "small_model": "opencode/big-pickle"}' > $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc
   echo "# Profile instructions" > $XDG_CONFIG_HOME/opencode/profiles/work/AGENTS.md
   echo "# Project instructions" > /tmp/ocx-v2-test-project/AGENTS.md
-  # Verify model pins before running
-  cat $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc | grep -q "opencode/big-pickle" && echo "OK: Model pins verified" || echo "FAIL: Model pins missing"
-  $OCX_BIN oc -p work run "echo hello"
+  $OCX_BIN config show --origin -p work > /tmp/ocx-13.10-config.txt
+  # Deterministic verification: profile and project instruction sources are both present;
+  # profile source is ordered before project source in resolved instructions.
+  python3 - << 'PY'
+  from pathlib import Path
+  import sys
+  text = Path('/tmp/ocx-13.10-config.txt').read_text()
+  profile_idx = text.find('/profiles/work/AGENTS.md')
+  project_idx = text.find('ocx-v2-test-project/AGENTS.md')
+  ok = profile_idx != -1 and project_idx != -1 and profile_idx < project_idx
+  print('OK: profile/project precedence sources verified' if ok else 'FAIL: profile/project precedence verification failed')
+  sys.exit(0 if ok else 1)
+  PY
   ```
-- [ ] **Expected:** Profile instructions loaded last (highest priority)
-- [ ] **Verify:** Profile AGENTS.md overrides project
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Resolved instructions include both profile and project AGENTS.md entries with profile source ordered before project source
+- [x] **Verify:** `/tmp/ocx-13.10-config.txt` contains both entries and shows profile source ordering ahead of project
+- [x] **Run result (2026-02-24):** PASS — global `work` profile was recreated with pinned model and profile/project AGENTS files; deterministic config output showed both sources with profile entry ordered before project entry.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 13.11 Global-Only Profile Model
 
 Profiles are global-only. All profile commands require the `--global` flag. Local profile directories (`.opencode/profiles/*`) are not supported.
 
 #### Test: Profile add requires --global flag
-- [ ] **Setup:** In a project directory without global initialization
-- [ ] **Command:** `$OCX_BIN profile add test-local`
-- [ ] **Expected:** Fails with error requiring `--global` flag
-- [ ] **Verify:** Error message indicates profiles are global-only and `--global` is required
+- [x] **Setup:** In a project directory without global initialization
+- [x] **Command:** `$OCX_BIN profile add test-local`
+- [x] **Expected:** Fails with error requiring `--global` flag
+- [x] **Verify:** Error message indicates profiles are global-only and `--global` is required
 
 #### Test: Profile list requires --global flag
-- [ ] **Setup:** No global profiles initialized
-- [ ] **Command:** `$OCX_BIN profile list`
-- [ ] **Expected:** Fails with error requiring `--global` flag
-- [ ] **Verify:** Error message indicates `--global` is required
+- [x] **Setup:** No global profiles initialized
+- [x] **Command:** `$OCX_BIN profile list`
+- [x] **Expected:** Fails with error requiring `--global` flag
+- [x] **Verify:** Error message indicates `--global` is required
 
 #### Test: Creates global profile with --global flag
-- [ ] **Setup:** Global config initialized
-- [ ] **Commands:**
+- [x] **Setup:** Global config initialized
+- [x] **Commands:**
   ```bash
   # Cleanup: remove test-global profile from prior runs to avoid collisions
   rm -rf $XDG_CONFIG_HOME/opencode/profiles/test-global
   $OCX_BIN profile add test-global --global
   ```
-- [ ] **Expected:** Creates global profile at `$XDG_CONFIG_HOME/opencode/profiles/test-global/`
-- [ ] **Verify:**
+- [x] **Expected:** Creates global profile at `$XDG_CONFIG_HOME/opencode/profiles/test-global/`
+- [x] **Verify:**
   ```bash
   ls $XDG_CONFIG_HOME/opencode/profiles/test-global/  # Should exist
   ```
 
 #### Test: ocx profile list --global shows global profiles
-- [ ] **Setup:** Global profiles exist
-- [ ] **Command:** `$OCX_BIN profile list --global`
-- [ ] **Expected:** Shows all global profiles
-- [ ] **Verify:** Output contains expected profile names
+- [x] **Setup:** Global profiles exist
+- [x] **Command:** `$OCX_BIN profile list --global`
+- [x] **Expected:** Shows all global profiles
+- [x] **Verify:** Output contains expected profile names
+- [x] **Run result (2026-02-24):** PASS — local-mode profile commands (`add`, `list`) hard-failed with `--global` guidance; `profile add test-global --global` succeeded and `profile list --global` included `test-global`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 13.12 Negative Tests: Local Profile Hard-Fail
 
 These tests verify that local profile usage produces hard errors.
 
 #### Test: profile add without --global fails
-- [ ] **Setup:** Fresh environment, no global init
-- [ ] **Command:** `$OCX_BIN profile add local-profile`
-- [ ] **Expected:** Hard error with message indicating `--global` flag is required
-- [ ] **Verify:**
+- [x] **Setup:** Fresh environment, no global init
+- [x] **Command:** `$OCX_BIN profile add local-profile`
+- [x] **Expected:** Hard error with message indicating `--global` flag is required
+- [x] **Verify:**
   - Exit code is non-zero
   - Error message mentions `--global` flag requirement
   - No `.opencode/profiles/` directory is created
 
 #### Test: profile list without --global fails
-- [ ] **Setup:** Fresh environment
-- [ ] **Command:** `$OCX_BIN profile list`
-- [ ] **Expected:** Hard error requiring `--global` flag
-- [ ] **Verify:**
+- [x] **Setup:** Fresh environment
+- [x] **Command:** `$OCX_BIN profile list`
+- [x] **Expected:** Hard error requiring `--global` flag
+- [x] **Verify:**
   - Exit code is non-zero
   - Error message indicates profiles are global-only
 
 #### Test: profile remove without --global fails
-- [ ] **Setup:** Fresh environment
-- [ ] **Command:** `$OCX_BIN profile remove some-profile`
-- [ ] **Expected:** Hard error requiring `--global` flag
-- [ ] **Verify:**
+- [x] **Setup:** Fresh environment
+- [x] **Command:** `$OCX_BIN profile remove some-profile`
+- [x] **Expected:** Hard error requiring `--global` flag
+- [x] **Verify:**
   - Exit code is non-zero
   - Error message indicates `--global` is required
 
 #### Test: profile move without --global fails
-- [ ] **Setup:** Fresh environment
-- [ ] **Command:** `$OCX_BIN profile move old new`
-- [ ] **Expected:** Hard error requiring `--global` flag
-- [ ] **Verify:**
+- [x] **Setup:** Fresh environment
+- [x] **Command:** `$OCX_BIN profile move old new`
+- [x] **Expected:** Hard error requiring `--global` flag
+- [x] **Verify:**
   - Exit code is non-zero
   - Error message indicates `--global` is required
 
 #### Test: profile show without --global fails (when no local profile exists)
-- [ ] **Setup:** Fresh environment
-- [ ] **Command:** `$OCX_BIN profile show some-profile`
-- [ ] **Expected:** Hard error requiring `--global` flag
-- [ ] **Verify:**
+- [x] **Setup:** Fresh environment
+- [x] **Command:** `$OCX_BIN profile show some-profile`
+- [x] **Expected:** Hard error requiring `--global` flag
+- [x] **Verify:**
   - Exit code is non-zero
   - Error message indicates `--global` is required
 
 #### Test: No local profiles directory is created
-- [ ] **Setup:** Run any profile command without --global in a project
-- [ ] **Commands:**
+- [x] **Setup:** Run any profile command without --global in a project
+- [x] **Commands:**
   ```bash
   cd /tmp/ocx-v2-test-project
   test -f .opencode/ocx.jsonc || $OCX_BIN init
   $OCX_BIN profile add test 2>/dev/null || true
   ```
-- [ ] **Expected:** Command fails and no `.opencode/profiles/` directory exists
-- [ ] **Verify:**
+- [x] **Expected:** Command fails and no `.opencode/profiles/` directory exists
+- [x] **Verify:**
   ```bash
   test -d .opencode/profiles && echo "FAIL: profiles dir exists" || echo "OK: No local profiles"
   ```
+- [x] **Run result (2026-02-24):** PASS — all local profile commands failed with explicit global-only errors (exit 78), and `.opencode/profiles/` was not created.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ---
 
@@ -1907,32 +1961,35 @@ Common errors from CLI.md error tables.
 
 ### 14.1 Error: No ocx.jsonc Found (Init)
 
-- [ ] **Setup:** Empty directory, no config
-- [ ] **Command:** `$OCX_BIN add kdco/researcher`
-- [ ] **Expected:** Error: "No ocx.jsonc found"
-- [ ] **Verify:** Exit code 78 (CONFIG error)
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Empty directory, no config
+- [x] **Command:** `$OCX_BIN add kdco/researcher`
+- [x] **Expected:** Error: "No ocx.jsonc found"
+- [x] **Verify:** Exit code 78 (CONFIG error)
+- [x] **Run result (2026-02-24):** PASS — command failed with `No ocx.jsonc found... Run 'ocx init' first.` and exit code `78`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 14.2 Error: Registry Not Found
 
-- [ ] **Setup:** Config initialized, registry not configured
-- [ ] **Command:** `$OCX_BIN add unknown/component`
-- [ ] **Expected:** Error: "Registry not found"
-- [ ] **Verify:** Exit code 66 (NOT_FOUND)
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Config initialized, registry not configured
+- [x] **Command:** `$OCX_BIN add unknown/component`
+- [x] **Expected:** Error: "Registry not found"
+- [x] **Verify:** Exit code 66 (NOT_FOUND)
+- [x] **Run result (2026-02-24):** PASS — command failed with `Registry alias 'unknown' not found...` and exit code `66`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 14.3 Error: Component Not Installed (Update)
 
-- [ ] **Setup:** Config initialized, component not installed
-- [ ] **Command:** `$OCX_BIN update kdco/researcher`
-- [ ] **Expected:** Error: "Component 'kdco/researcher' is not installed"
-- [ ] **Verify:** Exit code 66 (NOT_FOUND)
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Config initialized, component not installed
+- [x] **Command:** `$OCX_BIN update kdco/researcher`
+- [x] **Expected:** Error: "Component 'kdco/researcher' is not installed"
+- [x] **Verify:** Exit code 66 (NOT_FOUND)
+- [x] **Run result (2026-02-24):** PASS — command failed with `Component 'kdco/researcher' is not installed...` and exit code `66`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 14.4 Error: File Conflict (Add)
 
-- [ ] **Setup:** Fresh environment, local config initialized, kdco registry added, component installed once
-- [ ] **Commands:**
+- [x] **Setup:** Fresh environment, local config initialized, kdco registry added, component installed once
+- [x] **Commands:**
   ```bash
   # Idempotent: init only if local config does not exist (sequential runs)
   test -f .opencode/ocx.jsonc || $OCX_BIN init
@@ -1945,75 +2002,87 @@ Common errors from CLI.md error tables.
   # Attempt to re-add to trigger conflict error
   $OCX_BIN add kdco/researcher
   ```
-- [ ] **Expected:** Error: "File conflicts detected"
-- [ ] **Verify:** Exit code 6 (CONFLICT)
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Error: "File conflicts detected"
+- [x] **Verify:** Exit code 6 (CONFLICT)
+- [x] **Run result (2026-02-24):** PASS — after modifying `.opencode/agents/researcher.md`, re-add failed with `File conflicts detected` and exit code `6`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 14.5 Error: Registry Already Exists (Add Registry)
 
-- [ ] **Setup:** Registry configured (ensure kdco exists before conflict test)
-- [ ] **Commands:**
+- [x] **Setup:** Registry configured (ensure kdco exists before conflict test)
+- [x] **Commands:**
   ```bash
   # Idempotent: ensure kdco registry exists first
   $OCX_BIN registry list | grep -q "kdco" || $OCX_BIN registry add http://localhost:8787 --name kdco
   # Attempt to add conflicting registry with same name
   $OCX_BIN registry add http://localhost:8788 --name kdco
   ```
-- [ ] **Expected:** Error: "Registry 'kdco' already exists"
-- [ ] **Verify:** Exit code 6 (CONFLICT)
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Error: "Registry 'kdco' already exists"
+- [x] **Verify:** Exit code 6 (CONFLICT)
+- [x] **Run result (2026-02-24):** PASS — adding `--name kdco` with a new URL failed with `Registry "kdco" already exists...` and exit code `6`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 14.6 Error: Invalid Version Specifier (Update)
 
-- [ ] **Setup:** Component installed
-- [ ] **Command:** `$OCX_BIN update kdco/researcher@`
-- [ ] **Expected:** Error: "Invalid version specifier"
-- [ ] **Verify:** Exit code 78 (CONFIG)
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Component installed
+- [x] **Command:** `$OCX_BIN update kdco/researcher@`
+- [x] **Expected:** Error: "Invalid version specifier"
+- [x] **Verify:** Exit code 78 (CONFIG)
+- [x] **Run result (2026-02-24):** PASS — command failed with trailing-`@` version specifier error and exit code `78`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 14.7 Error: Mutually Exclusive Options (Update)
 
-- [ ] **Setup:** Components installed
-- [ ] **Command:** `$OCX_BIN update --all --registry kdco`
-- [ ] **Expected:** Error: "Cannot use --all with --registry"
-- [ ] **Verify:** Exit code 1 (GENERAL)
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Components installed
+- [x] **Command:** `$OCX_BIN update --all --registry kdco`
+- [x] **Expected:** Error: "Cannot use --all with --registry"
+- [x] **Verify:** Exit code 1 (GENERAL)
+- [x] **Run result (2026-02-24):** PASS — command failed with mutually exclusive options error and exit code `1`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 14.8 Error: Profile Not Found (Move)
 
-- [ ] **Setup:** Global profiles initialized
-- [ ] **Command:** `$OCX_BIN profile move nonexistent new-name --global`
-- [ ] **Expected:** Error: "Profile 'nonexistent' not found"
-- [ ] **Verify:** Exit code 66 (NOT_FOUND)
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Setup:** Global profiles initialized
+- [x] **Command:** `$OCX_BIN profile move nonexistent new-name --global`
+- [x] **Expected:** Error: "Profile 'nonexistent' not found"
+- [x] **Verify:** Exit code 66 (NOT_FOUND)
+- [x] **Run result (2026-02-24):** PASS — command failed with `Profile "nonexistent" not found` and exit code `66`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 14.9 Error: Profile Already Exists (Move)
 
-- [ ] **Setup:** Multiple global profiles exist
-- [ ] **Commands:**
+- [x] **Setup:** Multiple global profiles exist
+- [x] **Commands:**
   ```bash
+  # Pre-clean for deterministic reruns
+  $OCX_BIN profile rm work --global 2>/dev/null || true
+  $OCX_BIN profile rm client --global 2>/dev/null || true
   $OCX_BIN profile add work --global
   $OCX_BIN profile add client --global
   $OCX_BIN profile move work client --global
   ```
-- [ ] **Expected:** Error: "Cannot move: profile 'client' already exists"
-- [ ] **Verify:** Exit code 6 (CONFLICT)
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Error: "Cannot move: profile 'client' already exists"
+- [x] **Verify:** Exit code 6 (CONFLICT)
+- [x] **Run result (2026-02-24):** PASS — pre-cleaned existing `work`/`client` profiles for deterministic sequential run, then documented commands produced `Cannot move: profile "client" already exists...` with exit code `6`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 14.10 Error: Integrity Check Failed
 
-- [ ] **Setup:** Component installed with mismatched hash
-- [ ] **Commands:**
+- [x] **Setup:** Component installed with mismatched hash
+- [x] **Commands:**
   ```bash
-  # Manually corrupt hash in receipt, then verify
+  # Explicitly corrupt receipt hash, then verify
+  perl -0pi -e 's/"hash"\s*:\s*"[^"]+"/"hash":"0000bad"/' .ocx/receipt.jsonc
+  cat .ocx/receipt.jsonc | grep -q '"hash":"0000bad"' && echo "OK: hash corrupted" || echo "FAIL: hash corruption failed"
   $OCX_BIN verify kdco/researcher
   ```
-- [ ] **Expected:** Error: "Integrity check failed"
-- [ ] **Verify:**
+- [x] **Expected:** Error: "Integrity check failed"
+- [x] **Verify:**
   - Command fails with integrity check error
   - Exit code 6 (CONFLICT)
-- [ ] **Note:** `ocx update` behavior is separate from integrity verification; use `verify` to explicitly check component integrity
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Note:** `ocx update` behavior is separate from integrity verification; use `verify` to explicitly check component integrity
+- [x] **Run result (2026-02-24):** PASS — after manually corrupting the receipt hash, `ocx verify kdco/researcher` reported integrity failure (`Modified: .opencode/agents/researcher.md`) and exited `6`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ---
 
@@ -2023,7 +2092,18 @@ Smoke tests for the v1.4.6 → v2 receipt migration command.
 
 ### 15.1 Preview Mode (No Writes)
 
-- [x] **Setup:** Project with legacy `ocx.lock` (at `.opencode/ocx.lock` or root `ocx.lock`; install a component with an older OCX version, or create a minimal v1 lock file manually)
+- [x] **Setup:** Create a deterministic legacy v1 project fixture with both `.opencode/ocx.lock` and `.opencode/ocx.jsonc`
+  ```bash
+  cd /tmp/ocx-v2-test-project
+  rm -rf .opencode .ocx
+  mkdir -p .opencode
+  cat > .opencode/ocx.lock << 'EOF'
+  {"lockVersion":1,"installed":{"kdco/researcher":{"registry":"kdco","version":"1.0.0","hash":"abc123","files":[".opencode/agents/researcher.md"],"installedAt":"2025-06-01T00:00:00.000Z"}}}
+  EOF
+  cat > .opencode/ocx.jsonc << 'EOF'
+  {"registries":{"kdco":{"url":"http://localhost:8787"}}}
+  EOF
+  ```
 - [x] **Command:** `$OCX_BIN migrate`
 - [x] **Expected:** Prints migration plan without modifying any files
 - [x] **Verify:**
@@ -2032,11 +2112,19 @@ Smoke tests for the v1.4.6 → v2 receipt migration command.
   md5sum .opencode/ocx.lock  # Same hash as before command
   test ! -f .ocx/receipt.jsonc && echo "OK: No receipt created" || echo "FAIL: receipt.jsonc should not exist yet"
   ```
-- [x] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Run result (2026-02-24):** PASS — with a minimal legacy `.opencode/ocx.lock` and `.opencode/ocx.jsonc`, `$OCX_BIN migrate` printed a preview plan (`kdco/researcher → http://localhost:8787::kdco/researcher@1.0.0`) and exited `0`; lock hash was unchanged and no receipt was created.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 15.2 Apply Migration
 
-- [x] **Setup:** Same v1 project as 15.1 (re-create if needed)
+- [x] **Setup:** Same v1 project as 15.1 (for reruns, explicitly restore missing config files before applying)
+  ```bash
+  cd /tmp/ocx-v2-test-project
+  test -f .opencode/ocx.lock || cat > .opencode/ocx.lock << 'EOF'
+  {"lockVersion":1,"installed":{"kdco/researcher":{"registry":"kdco","version":"1.0.0","hash":"abc123","files":[".opencode/agents/researcher.md"],"installedAt":"2025-06-01T00:00:00.000Z"}}}
+  EOF
+  test -f .opencode/ocx.jsonc || echo '{"registries":{"kdco":{"url":"http://localhost:8787"}}}' > .opencode/ocx.jsonc
+  ```
 - [x] **Command:** `$OCX_BIN migrate --apply`
 - [x] **Expected:** Creates `.ocx/receipt.jsonc` and backs up lock file to `.bak` (or `.bak.N` if `.bak` already exists)
 - [x] **Verify:**
@@ -2044,7 +2132,8 @@ Smoke tests for the v1.4.6 → v2 receipt migration command.
   test -f .ocx/receipt.jsonc && echo "OK: receipt.jsonc created" || echo "FAIL: receipt.jsonc missing"
   ls .opencode/ocx.lock.bak* 2>/dev/null && echo "OK: lock backup exists" || echo "FAIL: lock backup missing"
   ```
-- [x] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Run result (2026-02-24):** PASS — `$OCX_BIN migrate --apply` created `.ocx/receipt.jsonc`, backed up lock to `.opencode/ocx.lock.bak`, and exited `0`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 15.3 Rerun Is Safe (Already Migrated)
 
@@ -2055,7 +2144,8 @@ Smoke tests for the v1.4.6 → v2 receipt migration command.
   ```bash
   cat .ocx/receipt.jsonc  # Should be unchanged from 15.2
   ```
-- [x] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Run result (2026-02-24):** PASS — rerunning `$OCX_BIN migrate --apply` printed `Already migrated to receipt format (.ocx/receipt.jsonc).`, exited `0`, and left `.ocx/receipt.jsonc` unchanged.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 15.4 Global Preview Mode (No Writes)
 
@@ -2083,7 +2173,8 @@ Smoke tests for the v1.4.6 → v2 receipt migration command.
   test -f $XDG_CONFIG_HOME/opencode/profiles/work/ocx.lock && echo "OK: profile lock unchanged" || echo "FAIL: profile lock missing"
   test ! -f $XDG_CONFIG_HOME/opencode/profiles/work/.ocx/receipt.jsonc && echo "OK: No profile receipt created" || echo "FAIL: profile receipt should not exist yet"
   ```
-- [x] **Last tested:** _v2.0.0 on 2026-02-13_
+- [x] **Run result (2026-02-24):** FAIL — `$OCX_BIN migrate --global` exited `0` with no writes, but emitted `warn [preview] Could not parse lock/config at "/tmp/ocx-v2-test/opencode/profiles/work"; component count may be incomplete.` and reported `profile:work: nothing to migrate` instead of the expected work-profile migration preview.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 15.5 Global Apply Migration (Root + Profile Fan-Out)
 
@@ -2117,7 +2208,8 @@ Smoke tests for the v1.4.6 → v2 receipt migration command.
   ls $XDG_CONFIG_HOME/opencode/profiles/work/ocx.lock.bak* 2>/dev/null && echo "OK: profile lock backup exists" || echo "FAIL: profile lock backup missing"
   cat $XDG_CONFIG_HOME/opencode/profiles/work/ocx.jsonc | grep -q '"version"' && echo "FAIL: profile version field still present" || echo "OK: profile version field removed"
   ```
-- [x] **Last tested:** _v2.0.0 on 2026-02-13_
+- [x] **Run result (2026-02-24):** PASS — `$OCX_BIN migrate --global --apply` migrated root and `work`, created both receipts and lock backups, removed deprecated `registries.*.version`, and exited `0`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 15.6 Global Rerun Is Safe (Already Migrated)
 
@@ -2130,28 +2222,40 @@ Smoke tests for the v1.4.6 → v2 receipt migration command.
   cat $XDG_CONFIG_HOME/opencode/ocx.jsonc  # Should be unchanged from 15.5
   cat $XDG_CONFIG_HOME/opencode/profiles/work/.ocx/receipt.jsonc  # Should be unchanged from 15.5
   ```
-- [x] **Last tested:** _v2.0.0 on 2026-02-13_
+- [x] **Run result (2026-02-24):** PASS — rerunning `$OCX_BIN migrate --global --apply` reported all targets already up to date, exited `0`, and receipt/config hashes remained unchanged.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 15.7 Global Apply Continues on Partial Failure
 
-- [x] **Setup:** Global root already migrated, but one profile has a legacy lock
+- [x] **Setup:** Global root already migrated; one profile is migratable and one profile is intentionally invalid
   ```bash
   # Ensure global root is already migrated (receipt exists, no legacy lock)
-  # Profile with legacy lock
+  # Passing profile: has legacy lock + matching registry mapping
+  $OCX_BIN profile rm passing --global 2>/dev/null || true
+  $OCX_BIN profile add passing --global
+  cat > $XDG_CONFIG_HOME/opencode/profiles/passing/ocx.lock << 'EOF'
+  {"lockVersion":1,"installed":{"kdco/notify":{"registry":"kdco","version":"0.5.0","hash":"def456","files":[".opencode/skills/notify/SKILL.md"],"installedAt":"2025-07-01T00:00:00.000Z"}}}
+  EOF
+  echo '{"registries":{"kdco":{"url":"http://localhost:8787"}}}' > $XDG_CONFIG_HOME/opencode/profiles/passing/ocx.jsonc
+  # Failing profile: legacy lock references kdco but ocx.jsonc omits kdco mapping
   $OCX_BIN profile rm failing --global 2>/dev/null || true
   $OCX_BIN profile add failing --global
   cat > $XDG_CONFIG_HOME/opencode/profiles/failing/ocx.lock << 'EOF'
   {"lockVersion":1,"installed":{"kdco/workspace":{"registry":"kdco","version":"1.0.0","hash":"bad789","files":[".opencode/workspace.md"],"installedAt":"2025-08-01T00:00:00.000Z"}}}
   EOF
+  echo '{"registries":{}}' > $XDG_CONFIG_HOME/opencode/profiles/failing/ocx.jsonc
   ```
 - [x] **Command:** `$OCX_BIN migrate --global --apply`
-- [x] **Expected:** Global root reports already migrated, failing profile is migrated successfully. Per-target summaries printed for both.
+- [x] **Expected:** Global root reports already migrated, `passing` migrates successfully, `failing` reports registry-mapping error, and command exits non-zero after processing all targets.
 - [x] **Verify:**
   ```bash
-  test -f $XDG_CONFIG_HOME/opencode/profiles/failing/.ocx/receipt.jsonc && echo "OK: failing profile receipt created" || echo "FAIL: failing profile receipt missing"
-  ls $XDG_CONFIG_HOME/opencode/profiles/failing/ocx.lock.bak* 2>/dev/null && echo "OK: profile lock backup exists" || echo "FAIL: profile lock backup missing"
+  test -f $XDG_CONFIG_HOME/opencode/profiles/passing/.ocx/receipt.jsonc && echo "OK: passing profile receipt created" || echo "FAIL: passing profile receipt missing"
+  ls $XDG_CONFIG_HOME/opencode/profiles/passing/ocx.lock.bak* 2>/dev/null && echo "OK: passing profile lock backup exists" || echo "FAIL: passing profile lock backup missing"
+  test ! -f $XDG_CONFIG_HOME/opencode/profiles/failing/.ocx/receipt.jsonc && echo "OK: failing profile did not migrate" || echo "FAIL: failing profile receipt should not exist"
+  test ! -f $XDG_CONFIG_HOME/opencode/profiles/failing/ocx.lock.bak && echo "OK: failing profile lock not backed up" || echo "FAIL: failing profile lock backup should not exist"
   ```
-- [x] **Last tested:** _v2.0.0 on 2026-02-13_
+- [x] **Run result (2026-02-24):** FAIL — `$OCX_BIN migrate --global --apply` failed for `profile:failing` with `Registry "kdco" referenced in lock key "kdco/workspace" is not configured in ocx.jsonc. Add it before migrating.` (exit `1`); no receipt or `.bak` was created for that profile.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ---
 
