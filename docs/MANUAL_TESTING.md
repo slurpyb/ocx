@@ -218,15 +218,16 @@ If the version does not match the current codebase, verify `$OCX_BIN` points to 
 
 ### 1.3 Complete Teardown
 
-- [ ] **Setup:** After all tests complete
-- [ ] **Commands:**
+- [x] **Setup:** After all tests complete
+- [x] **Commands:**
   ```bash
   unset XDG_CONFIG_HOME
   rm -rf /tmp/ocx-v2-test /tmp/ocx-v2-test-project
   ```
-- [ ] **Expected:** Environment cleaned up
-- [ ] **Verify:** No leftover test artifacts
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Expected:** Environment cleaned up
+- [x] **Verify:** No leftover test artifacts
+- [x] **Run result (2026-02-24):** PASS — ran `unset XDG_CONFIG_HOME` and `rm -rf /tmp/ocx-v2-test /tmp/ocx-v2-test-project`; verification confirmed both paths were removed.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 1.4 Stop Local Registry Servers
 
@@ -235,11 +236,12 @@ If the version does not match the current codebase, verify `$OCX_BIN` points to 
 - [x] **Commands:**
   1. Go to each terminal running `wrangler dev`
   2. Press `Ctrl+C` to stop the server
-- [ ] **Verify:** Servers no longer accessible
+- [x] **Verify:** Servers no longer accessible
 - [x] **Run result (2026-02-23):** FAIL — stop sequence was attempted, but at least
   one registry endpoint remained reachable during verification; rerun stop+verify
   before closing the session.
-- [x] **Last tested:** _v2.0.0 on 2026-02-23_
+- [x] **Run result (2026-02-24):** PASS — after stopping active `wrangler dev` processes, both `curl -sf http://localhost:8787/index.json` and `curl -sf http://localhost:8788/index.json` failed as expected, confirming the registries were no longer reachable.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ---
 
@@ -310,21 +312,23 @@ Test cases from README.md lines 34-53.
 > - Skip this section, OR
 > - Remove the existing profile first: `ocx profile rm work --global`
 
-- [ ] **Setup:** Global registry configured (Section 2.3)
-- [ ] **Commands:**
+- [x] **Setup:** Global registry configured (Section 2.3)
+- [x] **Commands:**
   ```bash
   $OCX_BIN profile add work --source kit/omo --global
   # Pin to free Zen model for manual testing
   echo '{"model": "opencode/big-pickle", "small_model": "opencode/big-pickle"}' > $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc
   ```
-- [ ] **Expected:** Downloads and installs profile from registry with model pins
-- [ ] **Verify:**
+- [x] **Expected:** Downloads and installs profile from registry with model pins
+- [x] **Verify:**
   ```bash
    $OCX_BIN profile show work --global
    ls -la $XDG_CONFIG_HOME/opencode/profiles/work/
    cat $XDG_CONFIG_HOME/opencode/profiles/work/opencode.jsonc  # Should contain model pins
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Run result (2026-02-24):** FAIL — after running the alternative-path precondition (`$OCX_BIN profile rm work --global`), `$OCX_BIN profile add work --source kit/omo --global` failed with `error Registry "kit" is not configured globally.` and instructed to run `ocx registry add <url> --name kit --global`.
+- [x] **Run result (2026-02-24, retry with prerequisite):** PASS — confirmed `kit` was missing from global config, ran `$OCX_BIN registry add http://localhost:8788 --name kit --global`, then `$OCX_BIN profile add work --source kit/omo --global` succeeded and `opencode.jsonc` was pinned to `opencode/big-pickle` as documented.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 2.5 Launch OpenCode with Profile
 
@@ -409,14 +413,15 @@ Test cases from README.md lines 79-96.
 > - Skip this section, OR
 > - Reset the environment first (see 3.2 reset commands)
 
-- [ ] **Setup:** Local config initialized (Section 3.1), plugin not already added
-- [ ] **Command:** `$OCX_BIN add npm:@franlol/opencode-md-table-formatter`
-- [ ] **Expected:** Plugin is registered in `.opencode/opencode.jsonc`; actual installation is handled by OpenCode runtime
-- [ ] **Verify:**
+- [x] **Setup:** Local config initialized (Section 3.1), plugin not already added
+- [x] **Command:** `$OCX_BIN add npm:@franlol/opencode-md-table-formatter`
+- [x] **Expected:** Plugin is registered in `.opencode/opencode.jsonc`; actual installation is handled by OpenCode runtime
+- [x] **Verify:**
   ```bash
   cat .opencode/opencode.jsonc  # Should contain plugin in "plugin" array
   ```
-- [ ] **Last tested:** _v2.0.0 on 2026-02-12_
+- [x] **Run result (2026-02-24):** PASS — after running the documented 3.2 reset sequence (`rm -rf` sandbox dirs, re-init project, `$OCX_BIN init`), `$OCX_BIN add npm:@franlol/opencode-md-table-formatter` completed successfully and `.opencode/opencode.jsonc` includes the plugin entry.
+- [x] **Last tested:** _v2.0.0 on 2026-02-24_
 
 ### 3.4 Add Registry Permanently (Local)
 
@@ -2267,9 +2272,10 @@ Master summary for full test sessions.
 
 ### 16.1 All README Commands Verified
 
-- [ ] Quick Start Profiles (Section 2): 6 test cases
-- [ ] Quick Start Components (Section 3): 4 test cases
-- [x] **Run result (2026-02-24):** PARTIAL — Sections 2.1, 2.2, 2.3, 2.5, 2.6 and 3.1, 3.2, 3.4 are complete; alternative-path checks 2.4 and 3.3 remain intentionally unexecuted in this run.
+- [x] Quick Start Profiles (Section 2): 6 test cases
+- [x] Quick Start Components (Section 3): 4 test cases
+- [x] **Run result (2026-02-24):** PARTIAL — Sections 2.1, 2.2, 2.3, 2.5, 2.6 and 3.1, 3.2, 3.4 are complete; alternative-path checks 2.4 and 3.3 remained open at this checkpoint.
+- [x] **Run result (2026-02-24, continuation):** PASS — Section 2.4 was attempted, initially failed due missing global `kit` registry precondition, then passed on retry after adding `kit`; Section 3.3 also passed after running the documented reset/setup path.
 
 ### 16.2 All CLI.md Commands Verified
 
@@ -2301,12 +2307,13 @@ Master summary for full test sessions.
 
 ### 16.6 Documentation Sync
 
-- [ ] All README examples tested
+- [x] All README examples tested
 - [ ] All CLI.md examples tested (PARTIAL — Section 12.12 skipped under waiver: custom `OPENCODE_BIN` placeholder path unavailable in this environment)
 - [x] All PROFILES.md examples tested
 - [x] Error exit codes verified
 - [x] JSON output formats verified
-- [x] **Run result (2026-02-24):** PARTIAL — README remains intentionally partial because alternative-path tests 2.4 and 3.3 were not executed in this checkpoint continuation; CLI remains partial due to the documented Section 12.12 skip waiver.
+- [x] **Run result (2026-02-24):** PARTIAL — README remained partial at this checkpoint because alternative-path tests 2.4 and 3.3 had not yet been rerun; CLI remained partial due to the documented Section 12.12 skip waiver.
+- [x] **Run result (2026-02-24, continuation):** PARTIAL — README examples are now complete (including 2.4 retry + 3.3); checklist remains partial only because CLI Section 12.12 is still skipped under waiver.
 
 ---
 
@@ -2349,7 +2356,8 @@ For maintainability when commands change.
 - [ ] Update `last_full_test` date when complete session finishes
 - [x] Note platform tested (macOS, Linux)
 - [x] Track any skipped tests and reasons
-- [x] **Run result (2026-02-24):** PARTIAL — `ocx_version` remains current at `2.0.0`; platform/skips are documented; `last_full_test` intentionally not advanced because README alternatives (2.4, 3.3) and teardown checks (1.3, 1.4 verify) remain open.
+- [x] **Run result (2026-02-24):** PARTIAL — `ocx_version` remains current at `2.0.0`; platform/skips are documented; `last_full_test` was not advanced at this checkpoint because README alternatives (2.4, 3.3) and teardown checks (1.3, 1.4 verify) were still open.
+- [x] **Run result (2026-02-24, continuation):** PARTIAL — README alternatives and teardown follow-up are now complete; `last_full_test` remains unchanged because CLI Section 12.12 is still an active documented waiver/skip.
 
 ### 17.4 Automated Test Coverage
 
