@@ -149,4 +149,4 @@ Replace `prefix_*` with the tool prefix for your search engine (e.g., `kagi_*`, 
 
 ## Creating Your Own Registry
 
-See [Creating OCX Registries](../../docs/CREATING_REGISTRIES.md) for how to build and distribute your own component registry.
+See [Creating OCX Registries](../../docs/registries/create.mdx) for how to build and distribute your own component registry.

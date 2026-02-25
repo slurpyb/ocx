@@ -103,25 +103,25 @@ Mintlify does not support anchor-specific redirects. When anchors change:
 - Use explicit HTML anchors for stability: `<a name="stable-anchor"></a>`
 - Document anchor changes in migration commit messages
 
-## Legacy to New Mapping Examples
+## Source Label to Canonical Route Examples
 
-| Legacy Path | Mintlify Path | Notes |
-|-------------|---------------|-------|
+| Source Label | Canonical Route | Notes |
+|--------------|-----------------|-------|
 | `README.md` (installation) | `/getting-started/installation` | Extracted section |
 | `README.md` (quick start) | `/getting-started/quick-start` | Extracted section |
-| `docs/CLI.md` | `/cli/commands` | Full command reference |
-| `docs/PROFILES.md` (config) | `/profiles/configuration` | Split from overview |
-| `docs/PROFILES.md` (security) | `/profiles/security` | Lock down recipe |
-| `docs/CREATING_REGISTRIES.md` | `/registries/create` | Guide format |
-| `docs/REGISTRY_PROTOCOL.md` | `/registries/protocol` | Technical spec |
-| `docs/OPENCODE_REFERENCE.md` | `/reference/opencode` | Integration docs |
-| `docs/ENTERPRISE.md` | `/enterprise/overview` | Feature overview |
+| `/cli/commands` | `/cli/commands` | Full command reference |
+| `/profiles/overview` (config split) | `/profiles/configuration` | Split from overview |
+| `/profiles/overview` (security split) | `/profiles/security` | Lock down recipe |
+| `/registries/create` | `/registries/create` | Guide format |
+| `/registries/protocol` | `/registries/protocol` | Technical spec |
+| `/reference/opencode` | `/reference/opencode` | Integration docs |
+| `/enterprise/overview` | `/enterprise/overview` | Feature overview |
 | `SECURITY.md` (policy) | `/security/policy` | Disclosure policy |
 | `SECURITY.md` (verification) | `/security/verification` | Integrity system |
-| `docs/guides/README.md` | `/guides` | Guides index page |
-| `docs/guides/oh-my-opencode.md` | `/guides/oh-my-opencode` | Tutorial format |
-| `docs/guides/kdco-workspace.md` | `/guides/kdco-workspace` | Tutorial format |
-| `docs/MIGRATION-v1.4.0.md` | `/maintainers/migration-v1-4-0` | Internal doc |
+| `/guides/index` | `/guides/index` | Guides index page |
+| `/guides/oh-my-opencode` | `/guides/oh-my-opencode` | Tutorial format |
+| `/guides/kdco-workspace` | `/guides/kdco-workspace` | Tutorial format |
+| `/maintainers/migration-v1-4-0` | `/maintainers/migration-v1-4-0` | Internal doc |
 | `docs/MANUAL_TESTING.md` | `/maintainers/manual-testing` | Internal doc |
 | `facades/opencode-worktree/README.md` | `/integrations/worktree` | Facade docs |
 | `facades/opencode-notify/README.md` | `/integrations/notify` | Facade docs |

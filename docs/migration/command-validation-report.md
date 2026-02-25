@@ -4,17 +4,19 @@ Generated: 2026-02-11
 
 ## Scope
 
-This report documents validation of all CLI command snippets in Phase 2 Mintlify pages against the source documentation (`docs/CLI.md`, `docs/PROFILES.md`, `README.md`).
+This report documents validation of all CLI command snippets in Phase 2 Mintlify pages against canonical-route content (`/cli/commands`, `/profiles/overview`) plus `README.md` quick-start content.
 
 ## Validation Methodology
 
 Each code snippet was manually cross-referenced against:
 
-1. **Source documentation** (`docs/CLI.md`) — canonical CLI reference.
+1. **Source documentation** (`/cli/commands`) — canonical CLI reference.
 2. **README.md** — user-facing quick-start commands.
-3. **docs/PROFILES.md** — profile workflow commands.
-4. **docs/ENTERPRISE.md** — enterprise feature commands.
-5. **docs/MIGRATION-v1.4.0.md** — migration commands.
+3. **/profiles/overview** — profile workflow commands.
+4. **/enterprise/overview** — enterprise feature commands.
+5. **/maintainers/migration-v1-4-0** — migration commands.
+
+The **Source** column in result tables preserves pre-migration filename labels (for line-level historical traceability), even when those sources now map to canonical routes.
 
 Validation checks:
 - Command syntax matches source exactly.
@@ -38,7 +40,7 @@ Validation checks:
 |---------|--------|--------|-------|
 | `curl -fsSL https://ocx.kdco.dev/install.sh \| sh` | README.md L27 | ✅ Pass | Exact match |
 | `npm install -g ocx` | README.md L29 | ✅ Pass | Exact match |
-| `ocx --version` | General CLI convention | ✅ Pass | Standard version check |
+| `ocx --version` | CLI.md L25-L31 | ✅ Pass | Standard version check |
 | `ocx self update` | CLI.md L653 | ✅ Pass | Exact match |
 | `ocx self uninstall` | CLI.md L686 | ✅ Pass | Exact match |
 | `ocx self uninstall --dry-run` | CLI.md L713 | ✅ Pass | Exact match |

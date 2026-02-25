@@ -15,7 +15,7 @@ ocx profile add ws --source kit/ws --from https://ocx-kit.kdco.dev --global
 ocx oc -p ws
 ```
 
-See the [full installation guide](../../docs/guides/kdco-workspace.md) for customization options.
+See the [full installation guide](../../docs/guides/kdco-workspace.mdx) for customization options.
 
 ## What This Is
 

@@ -519,9 +519,9 @@ Push to GitHub and connect to Netlify. The `netlify.toml` handles configuration.
 
 For comprehensive documentation, refer to:
 
-- **OpenCode Reference:** https://raw.githubusercontent.com/kdcokenny/ocx/main/docs/OPENCODE_REFERENCE.md
-- **OCX CLI Documentation:** https://github.com/kdcokenny/ocx
-- **Registry Protocol:** https://raw.githubusercontent.com/kdcokenny/ocx/main/docs/REGISTRY_PROTOCOL.md
+- **OpenCode Reference:** https://ocx.kdco.dev/reference/opencode
+- **OCX CLI Documentation:** https://ocx.kdco.dev/cli/commands
+- **Registry Protocol:** https://ocx.kdco.dev/registries/protocol
 
 ---
 

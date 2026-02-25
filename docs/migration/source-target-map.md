@@ -33,48 +33,48 @@ A page moves to "Done" only when **all** of the following are true:
 | `README.md` | `getting-started/introduction` | Getting Started | @kdcokenny | Done | Landing page, overview content |
 | `README.md` | `getting-started/installation` | Getting Started | @kdcokenny | Done | Extract installation section |
 | `README.md` | `getting-started/quick-start` | Getting Started | @kdcokenny | Done | Extract quick start section |
-| `docs/CLI.md` | `cli/commands` | CLI | @kdcokenny | Done | Command overview, global opts, exit codes, env vars, config |
-| `docs/CLI.md` | `cli/init` | CLI | @kdcokenny | Done | Init command reference |
-| `docs/CLI.md` | `cli/add` | CLI | @kdcokenny | Done | Add command reference |
-| `docs/CLI.md` | `cli/remove` | CLI | @kdcokenny | Done | Remove command reference (Phase 3) |
-| `docs/CLI.md` | `cli/update` | CLI | @kdcokenny | Done | Update command reference (Phase 3) |
-| `docs/CLI.md` | `cli/search` | CLI | @kdcokenny | Done | Search/list command reference (Phase 3) |
-| `docs/CLI.md` | `cli/verify` | CLI | @kdcokenny | Done | Verify command reference (Phase 3) |
-| `docs/CLI.md` | `cli/registry` | CLI | @kdcokenny | Done | Registry subcommands reference |
-| `docs/CLI.md` | `cli/build` | CLI | @kdcokenny | Done | Build command reference (Phase 3) |
-| `docs/CLI.md` | `cli/self` | CLI | @kdcokenny | Done | Self update/uninstall reference (Phase 3) |
-| `docs/CLI.md` | `cli/profile` | CLI | @kdcokenny | Done | Profile subcommands reference |
-| `docs/CLI.md` | `cli/config` | CLI | @kdcokenny | Done | Config show/edit reference (Phase 3) |
-| `docs/CLI.md` | `cli/opencode` | CLI | @kdcokenny | Done | Opencode command reference |
-| `docs/PROFILES.md` | `profiles/overview` | Profiles | @kdcokenny | Done | Core concepts |
-| `docs/PROFILES.md` | `profiles/configuration` | Profiles | @kdcokenny | Done | Config file reference |
-| `docs/PROFILES.md` | `profiles/security` | Profiles | @kdcokenny | Done | Lock down recipe section |
+| `/cli/commands` | `cli/commands` | CLI | @kdcokenny | Done | Command overview, global opts, exit codes, env vars, config |
+| `/cli/commands` | `cli/init` | CLI | @kdcokenny | Done | Init command reference |
+| `/cli/commands` | `cli/add` | CLI | @kdcokenny | Done | Add command reference |
+| `/cli/commands` | `cli/remove` | CLI | @kdcokenny | Done | Remove command reference (Phase 3) |
+| `/cli/commands` | `cli/update` | CLI | @kdcokenny | Done | Update command reference (Phase 3) |
+| `/cli/commands` | `cli/search` | CLI | @kdcokenny | Done | Search/list command reference (Phase 3) |
+| `/cli/commands` | `cli/verify` | CLI | @kdcokenny | Done | Verify command reference (Phase 3) |
+| `/cli/commands` | `cli/registry` | CLI | @kdcokenny | Done | Registry subcommands reference |
+| `/cli/commands` | `cli/build` | CLI | @kdcokenny | Done | Build command reference (Phase 3) |
+| `/cli/commands` | `cli/self` | CLI | @kdcokenny | Done | Self update/uninstall reference (Phase 3) |
+| `/cli/commands` | `cli/profile` | CLI | @kdcokenny | Done | Profile subcommands reference |
+| `/cli/commands` | `cli/config` | CLI | @kdcokenny | Done | Config show/edit reference (Phase 3) |
+| `/cli/commands` | `cli/opencode` | CLI | @kdcokenny | Done | Opencode command reference |
+| `/profiles/overview` | `profiles/overview` | Profiles | @kdcokenny | Done | Core concepts |
+| `/profiles/overview` | `profiles/configuration` | Profiles | @kdcokenny | Done | Config file reference |
+| `/profiles/overview` | `profiles/security` | Profiles | @kdcokenny | Done | Lock down recipe section |
 
 ## Registry Documentation
 
 | Source Path | Target Mintlify Path | Section | Owner | Status | Notes |
 |-------------|---------------------|---------|-------|--------|-------|
-| `docs/CREATING_REGISTRIES.md` | `registries/create` | Registries | @kdcokenny | Done | Building registries (Phase 3) |
-| `docs/REGISTRY_PROTOCOL.md` | `registries/protocol` | Registries | @kdcokenny | Done | Technical specification (Phase 3) |
+| `/registries/create` | `registries/create` | Registries | @kdcokenny | Done | Building registries (Phase 3) |
+| `/registries/protocol` | `registries/protocol` | Registries | @kdcokenny | Done | Technical specification (Phase 3) |
 
 ## Reference Documentation
 
 | Source Path | Target Mintlify Path | Section | Owner | Status | Notes |
 |-------------|---------------------|---------|-------|--------|-------|
-| `docs/OPENCODE_REFERENCE.md` | `reference/opencode` | Reference | @kdcokenny | Done | Index/landing page (Phase 3) |
-| `docs/OPENCODE_REFERENCE.md` §1 | `reference/plugins` | Reference | @kdcokenny | Done | Plugin development (Phase 3) |
-| `docs/OPENCODE_REFERENCE.md` §2 | `reference/configuration` | Reference | @kdcokenny | Done | opencode.jsonc config, SDK (Phase 3) |
-| `docs/OPENCODE_REFERENCE.md` §3 | `reference/agents` | Reference | @kdcokenny | Done | Agent configuration (Phase 3) |
-| `docs/OPENCODE_REFERENCE.md` §4 | `reference/skills` | Reference | @kdcokenny | Done | Skills & instruction discovery (Phase 3) |
-| `docs/OPENCODE_REFERENCE.md` §5 | `reference/tools` | Reference | @kdcokenny | Done | Custom tool dev (Phase 3) |
-| `docs/OPENCODE_REFERENCE.md` §6 | `reference/mcp` | Reference | @kdcokenny | Done | MCP server config (Phase 3) |
-| `docs/OPENCODE_REFERENCE.md` §7 | `reference/permissions` | Reference | @kdcokenny | Done | Permission system (Phase 3) |
+| `/reference/opencode` | `reference/opencode` | Reference | @kdcokenny | Done | Index/landing page (Phase 3) |
+| `/reference/opencode` §1 | `reference/plugins` | Reference | @kdcokenny | Done | Plugin development (Phase 3) |
+| `/reference/opencode` §2 | `reference/configuration` | Reference | @kdcokenny | Done | opencode.jsonc config, SDK (Phase 3) |
+| `/reference/opencode` §3 | `reference/agents` | Reference | @kdcokenny | Done | Agent configuration (Phase 3) |
+| `/reference/opencode` §4 | `reference/skills` | Reference | @kdcokenny | Done | Skills & instruction discovery (Phase 3) |
+| `/reference/opencode` §5 | `reference/tools` | Reference | @kdcokenny | Done | Custom tool dev (Phase 3) |
+| `/reference/opencode` §6 | `reference/mcp` | Reference | @kdcokenny | Done | MCP server config (Phase 3) |
+| `/reference/opencode` §7 | `reference/permissions` | Reference | @kdcokenny | Done | Permission system (Phase 3) |
 
 ## Enterprise & Security
 
 | Source Path | Target Mintlify Path | Section | Owner | Status | Notes |
 |-------------|---------------------|---------|-------|--------|-------|
-| `docs/ENTERPRISE.md` | `enterprise/overview` | Enterprise | @kdcokenny | Done | Enterprise features |
+| `/enterprise/overview` | `enterprise/overview` | Enterprise | @kdcokenny | Done | Enterprise features |
 | `SECURITY.md` | `security/policy` | Security | @kdcokenny | Done | Security policy |
 | `SECURITY.md` | `security/verification` | Security | @kdcokenny | Done | Integrity verification |
 
@@ -82,15 +82,15 @@ A page moves to "Done" only when **all** of the following are true:
 
 | Source Path | Target Mintlify Path | Section | Owner | Status | Notes |
 |-------------|---------------------|---------|-------|--------|-------|
-| `docs/guides/README.md` | `guides/index` | Guides | @kdcokenny | Done | Guides landing page (Phase 3) |
-| `docs/guides/oh-my-opencode.md` | `guides/oh-my-opencode` | Guides | @kdcokenny | Done | Profile tutorial (Phase 3) |
-| `docs/guides/kdco-workspace.md` | `guides/kdco-workspace` | Guides | @kdcokenny | Done | Workspace setup guide (Phase 3) |
+| `/guides/index` | `guides/index` | Guides | @kdcokenny | Done | Guides landing page (Phase 3) |
+| `/guides/oh-my-opencode` | `guides/oh-my-opencode` | Guides | @kdcokenny | Done | Profile tutorial (Phase 3) |
+| `/guides/kdco-workspace` | `guides/kdco-workspace` | Guides | @kdcokenny | Done | Workspace setup guide (Phase 3) |
 
 ## Maintenance & Testing
 
 | Source Path | Target Mintlify Path | Section | Owner | Status | Notes |
 |-------------|---------------------|---------|-------|--------|-------|
-| `docs/MIGRATION-v1.4.0.md` | `maintainers/migration-v1-4-0` | Maintainers | @kdcokenny | Done | v1.4.0 migration notes |
+| `/maintainers/migration-v1-4-0` | `maintainers/migration-v1-4-0` | Maintainers | @kdcokenny | Done | v1.4.0 migration notes |
 | `docs/MANUAL_TESTING.md` | `maintainers/manual-testing` | Maintainers | @kdcokenny | Pending | Testing procedures |
 
 ## Package Documentation
@@ -140,22 +140,22 @@ The registry starter example README is **excluded** from Mintlify migration for 
 ### Phase 1: Foundation (Complete)
 
 1. ✅ `README.md` → Getting Started section
-2. ✅ `docs/CLI.md` → CLI section (high-traffic pages)
-3. ✅ `docs/PROFILES.md` → Profiles section
+2. ✅ `/cli/commands` → CLI section (high-traffic pages)
+3. ✅ `/profiles/overview` → Profiles section
 
 ### Phase 2: Core Ecosystem (Complete)
 
-1. ✅ `docs/ENTERPRISE.md` → Enterprise section
+1. ✅ `/enterprise/overview` → Enterprise section
 2. ✅ `SECURITY.md` → Security section
-3. ✅ `docs/MIGRATION-v1.4.0.md` → Maintainers section
+3. ✅ `/maintainers/migration-v1-4-0` → Maintainers section
 
 ### Phase 3: Full CLI, Reference, Registries, Guides, Ecosystem (Complete)
 
-1. ✅ `docs/CLI.md` → Full CLI section (remaining commands: remove, update, search, verify, build, self, config)
-2. ✅ `docs/OPENCODE_REFERENCE.md` → Reference section (split into 8 pages)
-3. ✅ `docs/CREATING_REGISTRIES.md` → Registries section
-4. ✅ `docs/REGISTRY_PROTOCOL.md` → Registries section
-5. ✅ `docs/guides/*.md` → Guides section (index + 2 guides)
+1. ✅ `/cli/commands` → Full CLI section (remaining commands: remove, update, search, verify, build, self, config)
+2. ✅ `/reference/opencode` → Reference section (split into 8 pages)
+3. ✅ `/registries/create` → Registries section
+4. ✅ `/registries/protocol` → Registries section
+5. ✅ `/guides/*` → Guides section (index + 2 guides)
 6. ✅ `facades/*/README.md` → Integrations section (4 facades)
 7. ✅ `workers/*/README.md` → Maintainers section (hidden, 2 workers)
 8. ✅ `workers/ocx-kit/files/profiles/*/README.md` → Profiles section (2 profiles)
@@ -181,14 +181,14 @@ When migrating, preserve these internal links:
 
 | From Page | Link Target | New Target Path |
 |-----------|-------------|-----------------|
-| `README.md` | `./docs/PROFILES.md` | `/profiles/overview` |
-| `README.md` | `./docs/CLI.md` | `/cli/commands` |
-| `README.md` | `./docs/guides/oh-my-opencode.md` | `/guides/oh-my-opencode` |
-| `README.md` | `./docs/guides/` | `/guides/index` |
-| `README.md` | `./docs/CREATING_REGISTRIES.md` | `/registries/create` |
-| `docs/guides/oh-my-opencode.md` | `../PROFILES.md` | `/profiles/overview` |
-| `docs/CREATING_REGISTRIES.md` | `./REGISTRY_PROTOCOL.md` | `/registries/protocol` |
-| `docs/OPENCODE_REFERENCE.md` | (internal sections) | `/reference/*` (split pages) |
+| `README.md` | `/profiles/overview` | `/profiles/overview` |
+| `README.md` | `/cli/commands` | `/cli/commands` |
+| `README.md` | `/guides/oh-my-opencode` | `/guides/oh-my-opencode` |
+| `README.md` | `/guides/index` | `/guides/index` |
+| `README.md` | `/registries/create` | `/registries/create` |
+| `/guides/oh-my-opencode` | `/profiles/overview` | `/profiles/overview` |
+| `/registries/create` | `/registries/protocol` | `/registries/protocol` |
+| `/reference/opencode` | (internal sections) | `/reference/*` (split pages) |
 
 ---
 

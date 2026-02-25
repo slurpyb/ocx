@@ -669,7 +669,7 @@ Test cases from README.md lines 79-96.
 
 ## 4. CLI Reference: ocx init
 
-All variations from CLI.md lines 53-91.
+All variations from `cli/commands.mdx` (init section).
 
 ### 4.1 `ocx init` (Default Local)
 
@@ -773,7 +773,7 @@ All variations from CLI.md lines 53-91.
 
 ## 5. CLI Reference: ocx add
 
-All variations from CLI.md lines 94-147.
+All variations from `cli/commands.mdx` (add section).
 
 > **Section Setup:** Run cleanup (Section 1.2) before starting this section to ensure
 > no existing local config or cwd state interferes with `init` commands.
@@ -948,7 +948,7 @@ All variations from CLI.md lines 94-147.
 
 ## 6. CLI Reference: ocx update
 
-All variations from CLI.md lines 195-244.
+All variations from `cli/commands.mdx` (update section).
 
 ### 6.1 Update Specific Component
 
@@ -1033,7 +1033,7 @@ All variations from CLI.md lines 195-244.
 
 ## 7. CLI Reference: ocx search
 
-All variations from CLI.md lines 247-320.
+All variations from `cli/commands.mdx` (search section).
 
 ### 7.1 Search All Available Components
 
@@ -1099,7 +1099,7 @@ All variations from CLI.md lines 247-320.
 
 ## 8. CLI Reference: ocx registry
 
-All subcommands from CLI.md lines 362-556.
+All subcommands from `cli/commands.mdx` (registry section).
 
 > **Section Setup:** Run cleanup (Section 1.2) before starting this section to ensure
 > no existing `kdco` registry from earlier sections interferes with these tests.
@@ -1225,7 +1225,7 @@ All subcommands from CLI.md lines 362-556.
 
 ## 9. CLI Reference: ocx build
 
-All variations from CLI.md lines 559-645.
+All variations from `cli/commands.mdx` (build section).
 
 ### 9.1 Build Registry in Current Directory
 
@@ -1300,7 +1300,7 @@ All variations from CLI.md lines 559-645.
 
 ## 10. CLI Reference: ocx profile
 
-All subcommands from CLI.md lines 933-1207.
+All subcommands from `cli/commands.mdx` (profile section).
 
 ### 10.1 `ocx profile list`
 
@@ -1571,7 +1571,7 @@ All subcommands from CLI.md lines 933-1207.
 
 ## 11. CLI Reference: ocx config
 
-All subcommands from CLI.md lines 1209-1314.
+All subcommands from `cli/commands.mdx` (config section).
 
 > **Section setup (deterministic sequential runs):** Ensure the current profile
 > reference resolves before running `config show`.
@@ -1652,7 +1652,7 @@ All subcommands from CLI.md lines 1209-1314.
 
 ## 12. CLI Reference: ocx opencode
 
-All variations from CLI.md lines 1316-1448.
+All variations from `cli/commands.mdx` (opencode section).
 
 > **Section setup (deterministic sequential runs):** Clear inherited profile
 > environment and ensure a known global profile exists before running `ocx opencode`
@@ -1831,7 +1831,7 @@ All variations from CLI.md lines 1316-1448.
 
 ## 13. Profile System Tests
 
-From PROFILES.md - advanced profile behaviors.
+From `profiles/overview.mdx` and `profiles/security.mdx` — advanced profile behaviors.
 
 ### 13.1 Profile Layering: Global Base + Local Overlay
 
@@ -2190,7 +2190,7 @@ These tests verify that local profile usage produces hard errors.
 
 ## 14. Error Path Tests
 
-Common errors from CLI.md error tables.
+Common errors from `cli/commands.mdx` error tables.
 
 ### 14.1 Error: No ocx.jsonc Found (Init)
 
@@ -2505,7 +2505,7 @@ Master summary for full test sessions.
 - [x] **Run result (2026-02-24):** PARTIAL — Sections 2.1, 2.2, 2.3, 2.5, 2.6 and 3.1, 3.2, 3.4 are complete; alternative-path checks 2.4 and 3.3 remained open at this checkpoint.
 - [x] **Run result (2026-02-24, continuation):** PASS — Section 2.4 was attempted, initially failed due missing global `kit` registry precondition, then passed on retry after adding `kit`; Section 3.3 also passed after running the documented reset/setup path.
 
-### 16.2 All CLI.md Commands Verified
+### 16.2 All CLI Commands Verified
 
 - [x] ocx init (Section 4): 8 test cases
 - [x] ocx add (Section 5): 11 test cases
@@ -2536,8 +2536,8 @@ Master summary for full test sessions.
 ### 16.6 Documentation Sync
 
 - [x] All README examples tested
-- [ ] All CLI.md examples tested (PARTIAL — Section 12.12 skipped under waiver: custom `OPENCODE_BIN` placeholder path unavailable in this environment)
-- [x] All PROFILES.md examples tested
+- [ ] All CLI examples tested (PARTIAL — Section 12.12 skipped under waiver: custom `OPENCODE_BIN` placeholder path unavailable in this environment)
+- [x] All Profiles examples tested
 - [x] Error exit codes verified
 - [x] JSON output formats verified
 - [x] **Run result (2026-02-24):** PARTIAL — README remained partial at this checkpoint because alternative-path tests 2.4 and 3.3 had not yet been rerun; CLI remained partial due to the documented Section 12.12 skip waiver.
@@ -2561,22 +2561,22 @@ For maintainability when commands change.
 
 ### 17.2 Cross-Reference Links
 
-| Section | Source Document | Lines |
+| Section | Source Document | Reference |
 |---------|----------------|-------|
 | Section 2 | [README.md](../README.md) | 34-53 |
 | Section 3 | [README.md](../README.md) | 79-96 |
-| Section 4 | [CLI.md](./CLI.md) | 53-91 |
-| Section 5 | [CLI.md](./CLI.md) | 94-147 |
-| Section 6 | [CLI.md](./CLI.md) | 195-244 |
-| Section 7 | [CLI.md](./CLI.md) | 247-320 |
-| Section 8 | [CLI.md](./CLI.md) | 362-556 |
-| Section 9 | [CLI.md](./CLI.md) | 559-645 |
-| Section 10 | [CLI.md](./CLI.md) | 933-1207 |
-| Section 11 | [CLI.md](./CLI.md) | 1209-1314 |
-| Section 12 | [CLI.md](./CLI.md) | 1316-1448 |
-| Section 13 | [PROFILES.md](./PROFILES.md) | Full document |
-| Section 14 | [CLI.md](./CLI.md) | Error tables throughout |
-| Section 15 | [README.md](../README.md), [CLI.md](./CLI.md) | 98-113, 649-701 |
+| Section 4 | [CLI Commands](./cli/commands.mdx) | init section |
+| Section 5 | [CLI Commands](./cli/commands.mdx) | add section |
+| Section 6 | [CLI Commands](./cli/commands.mdx) | update section |
+| Section 7 | [CLI Commands](./cli/commands.mdx) | search section |
+| Section 8 | [CLI Commands](./cli/commands.mdx) | registry section |
+| Section 9 | [CLI Commands](./cli/commands.mdx) | build section |
+| Section 10 | [CLI Commands](./cli/commands.mdx) | profile section |
+| Section 11 | [CLI Commands](./cli/commands.mdx) | config section |
+| Section 12 | [CLI Commands](./cli/commands.mdx) | opencode section |
+| Section 13 | [Profiles Overview](./profiles/overview.mdx), [Profiles Security](./profiles/security.mdx) | Full docs |
+| Section 14 | [CLI Commands](./cli/commands.mdx) | Error tables |
+| Section 15 | [README.md](../README.md), [CLI Commands](./cli/commands.mdx) | migration + command docs |
 
 ### 17.3 Version Tracking
 

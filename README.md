@@ -15,7 +15,7 @@ Your OpenCode config, anywhere.
 
 ![OCX Profiles Demo](./assets/profiles-demo.gif)
 
-*Demo uses [oh-my-opencode](./docs/guides/oh-my-opencode.md). See [more guides](./docs/guides/).*
+*Demo uses [oh-my-opencode](https://ocx.kdco.dev/guides/oh-my-opencode). See [more guides](https://ocx.kdco.dev/guides/index).*
 
 ## Installation
 
@@ -56,9 +56,9 @@ Profiles control what OpenCode sees through `exclude`/`include` patterns. Each p
 
 > **Visual Profile Builder:** Prefer a UI? [TweakOC](https://tweakoc.com) helps you build and configure profiles (OhMyOpenCode, KDCO Workspace, etc.) visually, then outputs an `ocx profile add` command you can run.
 
-> **Security Note:** An empty exclude list includes all project instruction files; the default profile template ships a secure exclude list. For trusted repos, edit your profile to loosen the template's exclude list. See [Lock Down Recipe](./docs/PROFILES.md#lock-down-recipe).
+> **Security Note:** An empty exclude list includes all project instruction files; the default profile template ships a secure exclude list. For trusted repos, edit your profile to loosen the template's exclude list. See [Lock Down Recipe](https://ocx.kdco.dev/profiles/security#lock-down-recipe).
 
-**[Profile Deep Dive →](./docs/PROFILES.md)**
+**[Profile Deep Dive →](https://ocx.kdco.dev/profiles/overview)**
 
 ## Common Commands
 
@@ -74,7 +74,7 @@ Profiles control what OpenCode sees through `exclude`/`include` patterns. Each p
 | `ocx migrate --global` | Dry-run preview of global root + all profiles migration |
 | `ocx migrate --global --apply` | Apply migration across global root and profiles |
 
-**[Full CLI Reference →](./docs/CLI.md)**
+**[Full CLI Reference →](https://ocx.kdco.dev/cli/commands)**
 
 ## Advanced Usage
 
@@ -93,7 +93,7 @@ ocx registry add https://registry.kdco.dev --name kdco
 ocx add kdco/workspace
 ```
 
-See [Components & Registries](./docs/REGISTRIES.md) for more.
+See [Components & Registries](https://ocx.kdco.dev/registries/create) for more.
 
 ### Upgrading from v1.4.6
 
@@ -120,7 +120,7 @@ Scaffold and deploy your own registry:
 npx ocx init --registry my-registry
 ```
 
-See [Creating Registries](./docs/CREATING_REGISTRIES.md) for details.
+See [Creating Registries](https://ocx.kdco.dev/registries/create) for details.
 
 ## Philosophy
 
@@ -132,10 +132,10 @@ Like **Cargo**, OCX resolves dependencies and verifies integrity. Every componen
 
 ## Documentation
 
-- **[Profiles](./docs/PROFILES.md)** — Deep dive into profile configuration and isolation
-- **[CLI Reference](./docs/CLI.md)** — Complete command documentation
-- **[Creating Registries](./docs/CREATING_REGISTRIES.md)** — Build and distribute your own components
-- **[Guides](./docs/guides/)** — Step-by-step tutorials
+- **[Profiles](https://ocx.kdco.dev/profiles/overview)** — Deep dive into profile configuration and isolation
+- **[CLI Reference](https://ocx.kdco.dev/cli/commands)** — Complete command documentation
+- **[Creating Registries](https://ocx.kdco.dev/registries/create)** — Build and distribute your own components
+- **[Guides](https://ocx.kdco.dev/guides/index)** — Step-by-step tutorials
 
 ## Disclaimer
 

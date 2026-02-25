@@ -141,9 +141,9 @@ Edit `netlify.toml`. Build command and publish directory are pre-configured.
 ## Documentation
 
 - [AGENTS.md](./AGENTS.md) - Complete guide including [best practices](./AGENTS.md#best-practices)
-- [OCX CLI Documentation](https://github.com/kdcokenny/ocx)
-- [OpenCode Reference](https://raw.githubusercontent.com/kdcokenny/ocx/main/docs/OPENCODE_REFERENCE.md)
-- [Registry Protocol](https://raw.githubusercontent.com/kdcokenny/ocx/main/docs/REGISTRY_PROTOCOL.md)
+- [OCX CLI Documentation](https://ocx.kdco.dev/cli/commands)
+- [OpenCode Reference](https://ocx.kdco.dev/reference/opencode)
+- [Registry Protocol](https://ocx.kdco.dev/registries/protocol)
 
 ## License
 

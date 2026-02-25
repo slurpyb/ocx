@@ -24,13 +24,13 @@ The OCX documentation migration is **substantially complete**. Phases 1–4 have
 
 ### Phase 1: Foundation (Complete)
 
-Migrated core user-facing documentation from `README.md`, `docs/CLI.md`, and `docs/PROFILES.md`.
+Migrated core user-facing documentation from `README.md`, `/cli/commands`, and `/profiles/overview`.
 
 | Source | Destination |
 |--------|-------------|
 | `README.md` | `getting-started/introduction`, `installation`, `quick-start` |
-| `docs/CLI.md` (core) | `cli/commands`, `cli/init`, `cli/add`, `cli/registry`, `cli/profile`, `cli/opencode` |
-| `docs/PROFILES.md` | `profiles/overview`, `profiles/configuration`, `profiles/security` |
+| `/cli/commands` (core) | `cli/commands`, `cli/init`, `cli/add`, `cli/registry`, `cli/profile`, `cli/opencode` |
+| `/profiles/overview` | `profiles/overview`, `profiles/configuration`, `profiles/security` |
 
 ### Phase 2: Core Ecosystem (Complete)
 
@@ -38,9 +38,9 @@ Migrated enterprise and security documentation with maintainer-only migration no
 
 | Source | Destination |
 |--------|-------------|
-| `docs/ENTERPRISE.md` | `enterprise/overview` |
+| `/enterprise/overview` | `enterprise/overview` |
 | `SECURITY.md` | `security/policy`, `security/verification` |
-| `docs/MIGRATION-v1.4.0.md` | `maintainers/migration-v1-4-0` (hidden) |
+| `/maintainers/migration-v1-4-0` | `maintainers/migration-v1-4-0` (hidden) |
 
 ### Phase 3: Full CLI, Reference, Registries, Guides, Ecosystem (Complete)
 
