@@ -9,7 +9,7 @@
 
 import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises"
-import { dirname, join } from "node:path"
+import { dirname, join, relative } from "node:path"
 import { parse } from "jsonc-parser"
 import type { ConfigProvider } from "../../config/provider"
 import { getProfileDir, getProfilesDir } from "../../profile/paths"
@@ -19,8 +19,11 @@ import type { RegistryConfig } from "../../schemas/config"
 import { writeReceipt } from "../../schemas/config"
 import { profileOcxConfigSchema } from "../../schemas/ocx"
 import { normalizeComponentManifest } from "../../schemas/registry"
+import { resolveComponentTargetRoot } from "../../utils/component-root-resolution"
 import { ConfigError, ConflictError, NotFoundError, ValidationError } from "../../utils/errors"
 import { createSpinner, logger } from "../../utils/index"
+import { PathValidationError, validatePath } from "../../utils/path-security"
+import { registerPlannedWriteOrThrow } from "../../utils/planned-writes"
 import { isPlainObject } from "../../utils/type-guards"
 import { runAddCore } from "../add"
 
@@ -39,6 +42,53 @@ export interface InstallProfileOptions {
 	registryUrl: string
 	/** Suppress output */
 	quiet?: boolean
+}
+
+function formatProfileRollbackCleanupWarning(
+	action: string,
+	targetPath: string,
+	error: unknown,
+): string {
+	const errorMessage = error instanceof Error ? error.message : String(error)
+	return `${action} "${targetPath}" (${errorMessage})`
+}
+
+/**
+ * Resolve an embedded .opencode/* profile target to a safe staging-relative path.
+ * Re-validates containment after stripping the legacy prefix.
+ */
+export function resolveEmbeddedProfileTarget(rawTarget: string, stagingDir: string): string {
+	if (!rawTarget.startsWith(".opencode/")) {
+		throw new ValidationError(
+			`Invalid embedded target "${rawTarget}": expected .opencode/ prefix for embedded profile files.`,
+		)
+	}
+
+	const strippedTarget = rawTarget.slice(".opencode/".length)
+	if (!strippedTarget) {
+		throw new ValidationError(
+			`Invalid embedded target "${rawTarget}": missing path after .opencode/ prefix.`,
+		)
+	}
+
+	let safeAbsolutePath: string
+	try {
+		safeAbsolutePath = validatePath(stagingDir, strippedTarget)
+	} catch (error) {
+		if (error instanceof PathValidationError) {
+			throw new ValidationError(`Invalid embedded target "${rawTarget}": ${error.message}`)
+		}
+		throw error
+	}
+
+	const safeRelativeTarget = relative(stagingDir, safeAbsolutePath).replace(/\\/g, "/")
+	if (safeRelativeTarget === "." || safeRelativeTarget === "") {
+		throw new ValidationError(
+			`Invalid embedded target "${rawTarget}": target must resolve to a file path.`,
+		)
+	}
+
+	return safeRelativeTarget
 }
 
 // =============================================================================
@@ -177,6 +227,8 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 	const profilesDir = getProfilesDir()
 	await mkdir(profilesDir, { recursive: true, mode: 0o700 })
 	const stagingDir = await mkdtemp(join(profilesDir, ".staging-"))
+	let profilePromoted = false
+	let installCommitted = false
 
 	try {
 		// ==========================================================================
@@ -186,34 +238,54 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 		const writeSpin = quiet ? null : createSpinner({ text: "Writing profile files..." })
 		writeSpin?.start()
 
-		for (const file of profileFiles) {
-			const targetPath = join(stagingDir, file.target)
-			const targetDir = dirname(targetPath)
-
-			if (!existsSync(targetDir)) {
-				await mkdir(targetDir, { recursive: true })
+		const plannedWrites = new Map<
+			string,
+			{
+				absolutePath: string
+				relativePath: string
+				content: Buffer
+				source: string
 			}
+		>()
 
-			await writeFile(targetPath, file.content)
+		for (const file of profileFiles) {
+			const resolvedTarget = resolveComponentTargetRoot(file.target, stagingDir)
+			const targetPath = join(stagingDir, resolvedTarget)
+
+			registerPlannedWriteOrThrow(plannedWrites, {
+				absolutePath: targetPath,
+				relativePath: resolvedTarget,
+				content: file.content,
+				source: `${component}:${file.path}`,
+			})
 		}
 
 		// Write embedded files flat (strip .opencode/ prefix for profile mode)
 		for (const file of embeddedFiles) {
-			// Strip .opencode/ prefix since profiles are flat
-			const target = file.target.startsWith(".opencode/")
-				? file.target.slice(".opencode/".length)
-				: file.target
-			const targetPath = join(stagingDir, target)
+			const target = resolveEmbeddedProfileTarget(file.target, stagingDir)
+			const resolvedTarget = resolveComponentTargetRoot(target, stagingDir)
+			const targetPath = join(stagingDir, resolvedTarget)
+
+			registerPlannedWriteOrThrow(plannedWrites, {
+				absolutePath: targetPath,
+				relativePath: resolvedTarget,
+				content: file.content,
+				source: `${component}:${file.path}`,
+			})
+		}
+
+		for (const plannedWrite of plannedWrites.values()) {
+			const targetPath = plannedWrite.absolutePath
 			const targetDir = dirname(targetPath)
 
 			if (!existsSync(targetDir)) {
 				await mkdir(targetDir, { recursive: true })
 			}
 
-			await writeFile(targetPath, file.content)
+			await writeFile(targetPath, plannedWrite.content)
 		}
 
-		writeSpin?.succeed(`Wrote ${profileFiles.length + embeddedFiles.length} profile files`)
+		writeSpin?.succeed(`Wrote ${plannedWrites.size} profile files`)
 
 		// ==========================================================================
 		// Phase 5: Initialize V2 receipt in staging directory
@@ -239,6 +311,7 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 		}
 
 		await rename(stagingDir, profileDir)
+		profilePromoted = true
 		renameSpin?.succeed("Profile installed")
 
 		// ==========================================================================
@@ -297,6 +370,8 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 			}
 		}
 
+		installCommitted = true
+
 		// ==========================================================================
 		// Summary
 		// ==========================================================================
@@ -310,20 +385,50 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 				logger.info(`  ${file.target}`)
 			}
 			for (const file of embeddedFiles) {
-				const target = file.target.startsWith(".opencode/")
-					? file.target.slice(".opencode/".length)
-					: file.target
+				const target = resolveEmbeddedProfileTarget(file.target, profileDir)
 				logger.info(`  ${target}`)
 			}
 		}
 	} catch (error) {
+		const cleanupWarnings: string[] = []
+
 		// Cleanup staging directory on failure
 		try {
 			if (existsSync(stagingDir)) {
 				await rm(stagingDir, { recursive: true })
 			}
-		} catch {
-			// Ignore cleanup errors
+		} catch (cleanupError) {
+			cleanupWarnings.push(
+				formatProfileRollbackCleanupWarning(
+					"Profile add rollback cleanup warning: failed to remove staging directory",
+					stagingDir,
+					cleanupError,
+				),
+			)
+		}
+
+		// Roll back promoted profile when dependency install (or later commit work) fails.
+		// This keeps failure deterministic: command failure leaves no blocking partial profile.
+		if (profilePromoted && !installCommitted) {
+			try {
+				if (existsSync(profileDir)) {
+					await rm(profileDir, { recursive: true, force: true })
+				}
+			} catch (cleanupError) {
+				cleanupWarnings.push(
+					formatProfileRollbackCleanupWarning(
+						"Profile add rollback cleanup warning: failed to remove promoted profile",
+						profileDir,
+						cleanupError,
+					),
+				)
+			}
+		}
+
+		if (!quiet) {
+			for (const warning of cleanupWarnings) {
+				logger.warn(warning)
+			}
 		}
 		throw error
 	}

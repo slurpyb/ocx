@@ -3,9 +3,10 @@
  * Install components from registries
  */
 
+import { randomUUID } from "node:crypto"
 import { existsSync } from "node:fs"
-import { mkdir, writeFile } from "node:fs/promises"
-import { dirname, join } from "node:path"
+import { lstat, mkdir, rename, rm, stat, writeFile } from "node:fs/promises"
+import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 
 import type { Command } from "commander"
 import type { ConfigProvider } from "../config/provider"
@@ -16,10 +17,17 @@ import { getProfileDir } from "../profile/paths"
 import { fetchFileContent, fetchRegistryIndex } from "../registry/fetcher"
 import type { ResolvedComponent } from "../registry/resolver"
 import { resolveDependencies } from "../registry/resolver"
-import { createCanonicalId, type Receipt, readReceipt, writeReceipt } from "../schemas/config"
+import {
+	createCanonicalId,
+	findReceipt,
+	type Receipt,
+	readReceipt,
+	writeReceipt,
+} from "../schemas/config"
 import type { ComponentFileObject, RegistryIndex } from "../schemas/registry"
 import { parseQualifiedComponent } from "../schemas/registry"
 import {
+	findOpencodeConfig,
 	readOpencodeJsonConfig,
 	updateOpencodeJsonConfig,
 } from "../updaters/update-opencode-config"
@@ -52,6 +60,7 @@ import {
 } from "../utils/npm-registry"
 import { PathValidationError, validatePath } from "../utils/path-security"
 import { resolveTargetPath } from "../utils/paths"
+import { registerPlannedWriteOrThrow } from "../utils/planned-writes"
 import { hashBundle, hashContent } from "../utils/receipt"
 import { addCommonOptions, addGlobalOption, addVerboseOption } from "../utils/shared-options"
 
@@ -165,6 +174,32 @@ interface RegistryAddResult {
 	installed: string[]
 	opencode: boolean
 	dryRun: boolean
+}
+
+interface AppliedAddWrite {
+	targetPath: string
+	backupPath: string | null
+}
+
+interface AddWriteTransaction {
+	writeFileAtomically: (params: {
+		targetPath: string
+		resolvedTarget: string
+		content: Buffer
+	}) => Promise<void>
+	rollback: () => Promise<void>
+	commit: () => Promise<void>
+}
+
+interface AddManifestSideEffectTransaction {
+	rollback: () => Promise<void>
+	commit: () => void
+}
+
+interface FileSnapshot {
+	path: string
+	existed: boolean
+	content: string
 }
 
 export function registerAddCommand(program: Command): void {
@@ -500,6 +535,8 @@ async function runRegistryAddCore(
 
 	const spin = suppressHumanOutput ? null : createSpinner({ text: "Resolving dependencies..." })
 	spin?.start()
+	let writeTransaction: AddWriteTransaction | null = null
+	let manifestSideEffectTransaction: AddManifestSideEffectTransaction | null = null
 
 	try {
 		// Pre-validate registry indexes before resolution (fail fast on incompatible formats)
@@ -626,7 +663,7 @@ async function runRegistryAddCore(
 			// Layer 2 path safety: Verify all target paths are inside cwd (runtime containment)
 			for (const file of component.files) {
 				// V2: Resolve target path based on mode (flattened vs local)
-				const resolvedTarget = resolveTargetPath(file.target, isFlattened)
+				const resolvedTarget = resolveTargetPath(file.target, isFlattened, cwd)
 				const targetPath = join(cwd, resolvedTarget)
 				try {
 					validatePath(cwd, resolvedTarget)
@@ -675,26 +712,47 @@ async function runRegistryAddCore(
 
 		// Phase 2: Pre-flight conflict detection (check ALL files before writing ANY)
 		// This ensures atomic behavior: either all files install or none do
-		const allConflicts: Array<{ path: string; owningComponent: string | null }> = []
+		const plannedWrites = new Map<
+			string,
+			{
+				absolutePath: string
+				relativePath: string
+				content: Buffer
+				source: string
+			}
+		>()
 
 		for (const { component, files } of componentBundles) {
 			for (const file of files) {
 				const componentFile = component.files.find((f: ComponentFileObject) => f.path === file.path)
 				if (!componentFile) continue
 
-				// V2: Resolve target path based on mode (flattened vs local)
-				const resolvedTarget = resolveTargetPath(componentFile.target, isFlattened)
+				const resolvedTarget = resolveTargetPath(componentFile.target, isFlattened, cwd)
 				const targetPath = join(cwd, resolvedTarget)
-				if (existsSync(targetPath)) {
-					const existingContent = await Bun.file(targetPath).text()
-					const incomingContent = file.content.toString("utf-8")
 
-					if (!isContentIdentical(existingContent, incomingContent)) {
-						// Find which component owns this file (if any)
-						const owningComponent = findOwningComponent(receipt, resolvedTarget)
-						allConflicts.push({ path: resolvedTarget, owningComponent })
-					}
-				}
+				registerPlannedWriteOrThrow(plannedWrites, {
+					absolutePath: targetPath,
+					relativePath: resolvedTarget,
+					content: file.content,
+					source: `${component.registryName}/${component.name}:${componentFile.path}`,
+				})
+			}
+		}
+
+		const allConflicts: Array<{ path: string; owningComponent: string | null }> = []
+
+		for (const plannedWrite of plannedWrites.values()) {
+			if (!existsSync(plannedWrite.absolutePath)) {
+				continue
+			}
+
+			const existingContent = await Bun.file(plannedWrite.absolutePath).text()
+			const incomingContent = plannedWrite.content.toString("utf-8")
+
+			if (!isContentIdentical(existingContent, incomingContent)) {
+				// Find which component owns this file (if any)
+				const owningComponent = findOwningComponent(receipt, plannedWrite.relativePath)
+				allConflicts.push({ path: plannedWrite.relativePath, owningComponent })
 			}
 		}
 
@@ -759,12 +817,29 @@ async function runRegistryAddCore(
 			? null
 			: createSpinner({ text: "Installing components..." })
 		installSpin?.start()
+		manifestSideEffectTransaction = await createAddManifestSideEffectTransaction({
+			cwd,
+			isFlattened,
+			trackOpencodeConfig: Boolean(resolved.opencode && Object.keys(resolved.opencode).length > 0),
+			trackNpmManifests:
+				resolved.npmDependencies.length > 0 || resolved.npmDevDependencies.length > 0,
+			quiet: options.quiet,
+		})
+		const installWriteTransaction = createAddWriteTransaction({ quiet: options.quiet })
+		writeTransaction = installWriteTransaction
 
 		for (const { component, files, computedHash, canonicalId } of componentBundles) {
 			// Install component
-			const installResult = await installComponent(component, files, cwd, isFlattened, {
-				verbose: options.verbose,
-			})
+			const installResult = await installComponent(
+				component,
+				files,
+				cwd,
+				isFlattened,
+				installWriteTransaction,
+				{
+					verbose: options.verbose,
+				},
+			)
 
 			// Log results in verbose mode
 			if (options.verbose) {
@@ -793,7 +868,7 @@ async function runRegistryAddCore(
 			for (const file of files) {
 				const componentFile = component.files.find((f: ComponentFileObject) => f.path === file.path)
 				if (!componentFile) throw new Error(`File ${file.path} not found in component manifest`)
-				const resolvedTarget = resolveTargetPath(componentFile.target, isFlattened)
+				const resolvedTarget = resolveTargetPath(componentFile.target, isFlattened, cwd)
 				fileHashes.push({
 					path: resolvedTarget, // Resolved path (with .opencode/ prefix if local mode)
 					hash: hashContent(file.content),
@@ -882,6 +957,13 @@ async function runRegistryAddCore(
 
 		// V1: Save receipt file
 		await writeReceipt(cwd, receipt)
+		if (!writeTransaction) {
+			throw new Error("Internal error: missing add write transaction after install phase.")
+		}
+		await writeTransaction.commit()
+		writeTransaction = null
+		manifestSideEffectTransaction?.commit()
+		manifestSideEffectTransaction = null
 
 		if (options.json && emitJson) {
 			outputJson({
@@ -900,6 +982,15 @@ async function runRegistryAddCore(
 			dryRun: false,
 		}
 	} catch (error) {
+		if (writeTransaction) {
+			await writeTransaction.rollback()
+			writeTransaction = null
+		}
+		if (manifestSideEffectTransaction) {
+			await manifestSideEffectTransaction.rollback()
+			manifestSideEffectTransaction = null
+		}
+
 		// Only fail the resolve spinner if it's still running (error during resolution)
 		// Other spinners handle their own failures
 		if (spin && !spin.isSpinning) {
@@ -908,6 +999,311 @@ async function runRegistryAddCore(
 			spin?.fail("Failed to add components")
 		}
 		throw error
+	}
+}
+
+/**
+ * Build a consistent warning message for rollback cleanup failures.
+ */
+function formatRollbackCleanupWarning(action: string, targetPath: string, error: unknown): string {
+	const errorMessage = error instanceof Error ? error.message : String(error)
+	return `${action} "${targetPath}" (${errorMessage})`
+}
+
+/**
+ * Returns true when candidate path is inside boundary directory.
+ */
+function isWithinBoundary(candidatePath: string, boundaryPath: string): boolean {
+	const rel = relative(boundaryPath, candidatePath)
+	return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel)
+}
+
+/**
+ * Remove empty parent directories up to (but not including) boundary.
+ */
+async function removeEmptyParentDirectories(startDir: string, boundaryDir: string): Promise<void> {
+	let currentDir = resolve(startDir)
+	const boundary = resolve(boundaryDir)
+
+	while (isWithinBoundary(currentDir, boundary)) {
+		let currentEntryExists = true
+		try {
+			const currentEntryStats = await lstat(currentDir)
+			if (!currentEntryStats.isDirectory()) {
+				// Never remove non-directory paths during cleanup.
+				break
+			}
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code
+			if (code === "ENOENT") {
+				currentEntryExists = false
+			} else {
+				throw error
+			}
+		}
+
+		try {
+			if (currentEntryExists) {
+				await rm(currentDir, { recursive: false })
+			}
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code
+			if (code === "ENOENT") {
+				// Already gone; continue walking upward.
+			} else if (code === "ENOTEMPTY" || code === "EEXIST" || code === "EBUSY") {
+				// Stop at first non-empty/in-use directory.
+				break
+			} else if (code === "ENOTDIR") {
+				// Path changed to non-directory between lstat and rm.
+				break
+			} else {
+				throw error
+			}
+		}
+
+		const parentDir = dirname(currentDir)
+		if (parentDir === currentDir) {
+			break
+		}
+		currentDir = parentDir
+	}
+}
+
+/**
+ * Capture the current state of a file path for rollback.
+ */
+async function captureFileSnapshot(filePath: string): Promise<FileSnapshot> {
+	if (!existsSync(filePath)) {
+		return {
+			path: filePath,
+			existed: false,
+			content: "",
+		}
+	}
+
+	return {
+		path: filePath,
+		existed: true,
+		content: await Bun.file(filePath).text(),
+	}
+}
+
+/**
+ * Restore a file path to its captured state.
+ */
+async function restoreFileSnapshot(snapshot: FileSnapshot, cwd: string): Promise<void> {
+	if (snapshot.existed) {
+		await mkdir(dirname(snapshot.path), { recursive: true })
+		await Bun.write(snapshot.path, snapshot.content)
+		return
+	}
+
+	if (existsSync(snapshot.path)) {
+		await rm(snapshot.path, { force: true, recursive: true })
+	}
+
+	await removeEmptyParentDirectories(dirname(snapshot.path), cwd)
+}
+
+/**
+ * Snapshot manifest-side effect files so add can roll back atomically on failure.
+ */
+async function createAddManifestSideEffectTransaction(options: {
+	cwd: string
+	isFlattened: boolean
+	trackOpencodeConfig: boolean
+	trackNpmManifests: boolean
+	quiet?: boolean
+}): Promise<AddManifestSideEffectTransaction> {
+	const snapshots: FileSnapshot[] = []
+	const trackedPaths = new Set<string>()
+	let finalized = false
+
+	const trackPath = async (filePath: string): Promise<void> => {
+		if (trackedPaths.has(filePath)) {
+			return
+		}
+		trackedPaths.add(filePath)
+		snapshots.push(await captureFileSnapshot(filePath))
+	}
+
+	if (options.trackOpencodeConfig) {
+		const opencodeConfigPath = findOpencodeConfig(options.cwd).path
+		await trackPath(opencodeConfigPath)
+	}
+
+	if (options.trackNpmManifests) {
+		const packageDir = options.isFlattened ? options.cwd : join(options.cwd, ".opencode")
+		await trackPath(join(packageDir, "package.json"))
+		if (!options.isFlattened) {
+			await trackPath(join(packageDir, ".gitignore"))
+		}
+	}
+
+	await trackPath(findReceipt(options.cwd).path)
+
+	const rollback = async (): Promise<void> => {
+		if (finalized) {
+			return
+		}
+
+		finalized = true
+		const rollbackWarnings: string[] = []
+
+		for (const snapshot of [...snapshots].reverse()) {
+			try {
+				await restoreFileSnapshot(snapshot, options.cwd)
+			} catch (error) {
+				rollbackWarnings.push(
+					formatRollbackCleanupWarning(
+						"Add rollback cleanup warning: failed to restore",
+						snapshot.path,
+						error,
+					),
+				)
+			}
+		}
+
+		if (!options.quiet) {
+			for (const warning of rollbackWarnings) {
+				logger.warn(warning)
+			}
+		}
+	}
+
+	const commit = (): void => {
+		finalized = true
+	}
+
+	return { rollback, commit }
+}
+
+/**
+ * Creates an atomic write transaction for add installs.
+ * Files are swapped via temp+rename and can be rolled back on failure.
+ */
+function createAddWriteTransaction(options: { quiet?: boolean }): AddWriteTransaction {
+	const appliedWrites: AppliedAddWrite[] = []
+	const tempPaths = new Set<string>()
+	let finalized = false
+
+	const rollback = async (): Promise<void> => {
+		if (finalized) {
+			return
+		}
+
+		finalized = true
+		const rollbackWarnings: string[] = []
+
+		for (const tempPath of tempPaths) {
+			try {
+				await rm(tempPath, { force: true })
+			} catch (error) {
+				rollbackWarnings.push(
+					formatRollbackCleanupWarning(
+						"Add rollback cleanup warning: failed to remove temp file",
+						tempPath,
+						error,
+					),
+				)
+			}
+		}
+
+		for (const appliedWrite of [...appliedWrites].reverse()) {
+			try {
+				if (appliedWrite.backupPath) {
+					if (existsSync(appliedWrite.targetPath)) {
+						await rm(appliedWrite.targetPath, { force: true, recursive: true })
+					}
+					if (existsSync(appliedWrite.backupPath)) {
+						await rename(appliedWrite.backupPath, appliedWrite.targetPath)
+					}
+				} else if (existsSync(appliedWrite.targetPath)) {
+					await rm(appliedWrite.targetPath, { force: true, recursive: true })
+				}
+			} catch (error) {
+				rollbackWarnings.push(
+					formatRollbackCleanupWarning(
+						"Add rollback cleanup warning: failed to restore target",
+						appliedWrite.targetPath,
+						error,
+					),
+				)
+			}
+		}
+
+		if (!options.quiet) {
+			for (const warning of rollbackWarnings) {
+				logger.warn(warning)
+			}
+		}
+	}
+
+	const commit = async (): Promise<void> => {
+		if (finalized) {
+			return
+		}
+
+		finalized = true
+
+		for (const appliedWrite of appliedWrites) {
+			if (!appliedWrite.backupPath || !existsSync(appliedWrite.backupPath)) {
+				continue
+			}
+
+			try {
+				await rm(appliedWrite.backupPath, { force: true })
+			} catch (error) {
+				if (!options.quiet) {
+					const errorMessage = error instanceof Error ? error.message : String(error)
+					logger.warn(
+						`Post-add cleanup warning: failed to remove backup "${appliedWrite.backupPath}" (${errorMessage})`,
+					)
+				}
+			}
+		}
+	}
+
+	const writeFileAtomically: AddWriteTransaction["writeFileAtomically"] = async ({
+		targetPath,
+		resolvedTarget,
+		content,
+	}) => {
+		const targetDir = dirname(targetPath)
+		if (!existsSync(targetDir)) {
+			await mkdir(targetDir, { recursive: true })
+		}
+
+		if (existsSync(targetPath)) {
+			const targetStats = await stat(targetPath)
+			if (targetStats.isDirectory()) {
+				throw new ValidationError(`Cannot install "${resolvedTarget}": target path is a directory.`)
+			}
+		}
+
+		const tempPath = `${targetPath}.ocx-add-tmp-${randomUUID()}`
+		await writeFile(tempPath, content)
+		tempPaths.add(tempPath)
+
+		let backupPath: string | null = null
+		if (existsSync(targetPath)) {
+			backupPath = `${targetPath}.ocx-add-backup-${randomUUID()}`
+			await rename(targetPath, backupPath)
+			appliedWrites.push({ targetPath, backupPath })
+		}
+
+		await rename(tempPath, targetPath)
+		tempPaths.delete(tempPath)
+
+		if (!backupPath) {
+			appliedWrites.push({ targetPath, backupPath: null })
+		}
+	}
+
+	return {
+		writeFileAtomically,
+		rollback,
+		commit,
 	}
 }
 
@@ -921,6 +1317,7 @@ async function installComponent(
 	files: { path: string; content: Buffer }[],
 	cwd: string,
 	isFlattened: boolean,
+	writeTransaction: AddWriteTransaction,
 	_options: { verbose?: boolean },
 ): Promise<{ written: string[]; skipped: string[]; overwritten: string[] }> {
 	const result = {
@@ -934,10 +1331,8 @@ async function installComponent(
 		if (!componentFile) continue
 
 		// V2: Resolve target path based on mode (flattened vs local)
-		const resolvedTarget = resolveTargetPath(componentFile.target, isFlattened)
+		const resolvedTarget = resolveTargetPath(componentFile.target, isFlattened, cwd)
 		const targetPath = join(cwd, resolvedTarget)
-		const targetDir = dirname(targetPath)
-
 		// Check if file exists
 		if (existsSync(targetPath)) {
 			// Read existing content and compare
@@ -956,12 +1351,11 @@ async function installComponent(
 			result.written.push(resolvedTarget)
 		}
 
-		// Create directory if needed
-		if (!existsSync(targetDir)) {
-			await mkdir(targetDir, { recursive: true })
-		}
-
-		await writeFile(targetPath, file.content)
+		await writeTransaction.writeFileAtomically({
+			targetPath,
+			resolvedTarget,
+			content: file.content,
+		})
 	}
 
 	return result

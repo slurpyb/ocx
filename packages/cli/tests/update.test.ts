@@ -1,7 +1,17 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { existsSync } from "node:fs"
-import { readFile, writeFile } from "node:fs/promises"
+import * as fsPromises from "node:fs/promises"
+import {
+	rename as fsRename,
+	rm as fsRm,
+	mkdir,
+	readdir,
+	readFile,
+	writeFile,
+} from "node:fs/promises"
 import { join } from "node:path"
+import { resolveUpdateFailureMessage, runUpdateCore } from "../src/commands/update"
+import { LocalConfigProvider } from "../src/config/provider"
 import { _clearFetcherCacheForTests } from "../src/registry/fetcher"
 import { cleanupTempDir, createTempDir, parseJsonc, runCLI } from "./helpers"
 import { type MockRegistry, startMockRegistry } from "./mock-registry"
@@ -467,6 +477,207 @@ describe("ocx update", () => {
 			"utf-8",
 		)
 		expect(agentContent).toBe("# Agent v2")
+	})
+
+	it("preflights target resolution before writing any files during update", async () => {
+		testDir = await setupProject("update-preflight-target-resolution")
+
+		await installComponent(testDir, "kdco/test-plugin")
+
+		const pluginPath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
+		const originalPluginContent = await readFile(pluginPath, "utf-8")
+
+		await writeFile(join(testDir, ".opencode", "command"), "blocker")
+
+		registry.setRouteError(
+			"/components/test-plugin.json",
+			200,
+			JSON.stringify({
+				name: "test-plugin",
+				"dist-tags": {
+					latest: "1.0.0",
+				},
+				versions: {
+					"1.0.0": {
+						name: "test-plugin",
+						type: "plugin",
+						description: "Preflight failure fixture",
+						files: [
+							{ path: "index.ts", target: "plugins/test-plugin.ts" },
+							{ path: "extra.md", target: "command/update-preflight-collision.md" },
+						],
+						dependencies: [],
+					},
+				},
+			}),
+		)
+		registry.setFileContent("test-plugin", "index.ts", "// should-not-be-written")
+		registry.setFileContent("test-plugin", "extra.md", "extra")
+		_clearFetcherCacheForTests()
+
+		try {
+			const { exitCode, output } = await runCLI(["update", "kdco/test-plugin"], testDir)
+
+			expect(exitCode).not.toBe(0)
+			expect(output).toContain("not a directory")
+
+			const afterFailurePluginContent = await readFile(pluginPath, "utf-8")
+			expect(afterFailurePluginContent).toBe(originalPluginContent)
+		} finally {
+			registry.clearRouteOverrides()
+			registry.clearFileContent()
+			_clearFetcherCacheForTests()
+		}
+	})
+
+	it("rolls back already-written files when apply phase fails mid-update", async () => {
+		testDir = await setupProject("update-atomic-rollback")
+
+		await installComponent(testDir, "kdco/test-plugin")
+
+		const pluginPath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
+		const receiptPath = join(testDir, ".ocx", "receipt.jsonc")
+		const originalPluginContent = await readFile(pluginPath, "utf-8")
+		const originalReceiptContent = await readFile(receiptPath, "utf-8")
+
+		await mkdir(join(testDir, ".opencode", "plugins", "directory-target"), { recursive: true })
+
+		registry.setRouteError(
+			"/components/test-plugin.json",
+			200,
+			JSON.stringify({
+				name: "test-plugin",
+				"dist-tags": {
+					latest: "1.0.0",
+				},
+				versions: {
+					"1.0.0": {
+						name: "test-plugin",
+						type: "plugin",
+						description: "Apply phase failure fixture",
+						files: [
+							{ path: "index.ts", target: "plugins/test-plugin.ts" },
+							{ path: "second.md", target: "plugins/directory-target" },
+						],
+						dependencies: [],
+					},
+				},
+			}),
+		)
+		registry.setFileContent("test-plugin", "index.ts", "// should-be-rolled-back")
+		registry.setFileContent("test-plugin", "second.md", "second")
+		_clearFetcherCacheForTests()
+
+		try {
+			const { exitCode, output } = await runCLI(["update", "kdco/test-plugin"], testDir)
+
+			expect(exitCode).not.toBe(0)
+			expect(output).toContain("target path is a directory")
+
+			expect(await readFile(pluginPath, "utf-8")).toBe(originalPluginContent)
+			expect(await readFile(receiptPath, "utf-8")).toBe(originalReceiptContent)
+		} finally {
+			registry.clearRouteOverrides()
+			registry.clearFileContent()
+			_clearFetcherCacheForTests()
+		}
+	})
+
+	it("maps update failure phases to accurate spinner messages", () => {
+		expect(resolveUpdateFailureMessage("check")).toBe("Failed to check for updates")
+		expect(resolveUpdateFailureMessage("apply")).toBe("Failed to update components")
+	})
+
+	it("succeeds when backup cleanup fails after commit and leaves committed state", async () => {
+		testDir = await setupProject("update-post-commit-cleanup-failure")
+
+		await installComponent(testDir, "kdco/test-plugin")
+
+		const pluginPath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
+		const receiptPath = join(testDir, ".ocx", "receipt.jsonc")
+		const originalReceiptContent = await readFile(receiptPath, "utf-8")
+
+		registry.setFileContent("test-plugin", "index.ts", "// committed-despite-cleanup-failure")
+		_clearFetcherCacheForTests()
+
+		const provider = await LocalConfigProvider.requireInitialized(testDir)
+		const rmSpy = spyOn(fsPromises, "rm").mockImplementation(
+			async (
+				targetPath: Parameters<typeof fsPromises.rm>[0],
+				options?: Parameters<typeof fsPromises.rm>[1],
+			) => {
+				if (String(targetPath).includes(".ocx-update-backup-")) {
+					throw new Error("injected backup cleanup failure")
+				}
+
+				return fsRm(targetPath, options)
+			},
+		)
+
+		try {
+			await expect(
+				runUpdateCore(["kdco/test-plugin"], { quiet: true }, provider),
+			).resolves.toBeUndefined()
+		} finally {
+			rmSpy.mockRestore()
+		}
+
+		expect(await readFile(pluginPath, "utf-8")).toBe("// committed-despite-cleanup-failure")
+		expect(await readFile(receiptPath, "utf-8")).not.toBe(originalReceiptContent)
+	})
+
+	it("restores original file when swap rename fails after backup exists", async () => {
+		testDir = await setupProject("update-swap-rename-failure")
+
+		await installComponent(testDir, "kdco/test-plugin")
+
+		const pluginPath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
+		const receiptPath = join(testDir, ".ocx", "receipt.jsonc")
+		const originalPluginContent = await readFile(pluginPath, "utf-8")
+		const originalReceiptContent = await readFile(receiptPath, "utf-8")
+
+		registry.setFileContent("test-plugin", "index.ts", "// rename-boundary-failure")
+		_clearFetcherCacheForTests()
+
+		let sawBackupRename = false
+		let sawInjectedSwapFailure = false
+		const provider = await LocalConfigProvider.requireInitialized(testDir)
+
+		const renameWithInjectedSwapFailure = async (
+			oldPath: string,
+			newPath: string,
+		): Promise<void> => {
+			if (newPath.includes(".ocx-update-backup-")) {
+				await fsRename(oldPath, newPath)
+				sawBackupRename = true
+				return
+			}
+
+			if (
+				oldPath.includes(".ocx-update-tmp-") &&
+				/[\\/]plugins[\\/]test-plugin\.ts$/.test(newPath)
+			) {
+				sawInjectedSwapFailure = true
+				throw new Error("injected swap rename failure")
+			}
+
+			await fsRename(oldPath, newPath)
+		}
+
+		await expect(
+			runUpdateCore(["kdco/test-plugin"], { quiet: true }, provider, {
+				rename: renameWithInjectedSwapFailure,
+			}),
+		).rejects.toThrow(/injected swap rename failure/)
+
+		expect(sawBackupRename).toBe(true)
+		expect(sawInjectedSwapFailure).toBe(true)
+		expect(await readFile(pluginPath, "utf-8")).toBe(originalPluginContent)
+		expect(await readFile(receiptPath, "utf-8")).toBe(originalReceiptContent)
+
+		const pluginDirEntries = await readdir(join(testDir, ".opencode", "plugins"))
+		expect(pluginDirEntries.some((entry) => entry.includes(".ocx-update-backup-"))).toBe(false)
+		expect(pluginDirEntries.some((entry) => entry.includes(".ocx-update-tmp-"))).toBe(false)
 	})
 
 	it("should fail if not initialized", async () => {

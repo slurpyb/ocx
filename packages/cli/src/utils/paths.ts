@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import { isAbsolute, join, relative, resolve } from "node:path"
+import { resolveComponentTargetRoot } from "./component-root-resolution"
 import { ValidationError } from "./errors"
 import { PathValidationError, validatePath } from "./path-security"
 
@@ -57,15 +58,25 @@ export async function globalDirectoryExists(): Promise<boolean> {
  *
  * @param target - Root-relative target path from registry (e.g., "plugins/foo.ts")
  * @param isFlattened - Whether install mode is flattened (global/profile)
+ * @param installRoot - Absolute install root for adaptive root resolution
  * @returns Resolved install path for the active mode
  */
-export function resolveTargetPath(target: string, isFlattened: boolean): string {
+export function resolveTargetPath(
+	target: string,
+	isFlattened: boolean,
+	installRoot?: string,
+): string {
 	if (isFlattened) {
-		return target
+		if (!installRoot) {
+			return target
+		}
+
+		return resolveComponentTargetRoot(target, installRoot)
 	}
 
 	const localRelativeTarget = stripLocalPrefix(target)
-	const localRootAbsolute = resolve(LOCAL_CONFIG_ROOT)
+	const installRootAbsolute = installRoot ? resolve(installRoot) : process.cwd()
+	const localRootAbsolute = resolve(installRootAbsolute, LOCAL_CONFIG_ROOT)
 
 	let safeAbsoluteTarget: string
 	try {
@@ -86,5 +97,9 @@ export function resolveTargetPath(target: string, isFlattened: boolean): string 
 		return LOCAL_CONFIG_ROOT
 	}
 
-	return `${LOCAL_CONFIG_PREFIX}${normalizedRelativeTarget}`
+	const adaptiveLocalTarget = installRoot
+		? resolveComponentTargetRoot(normalizedRelativeTarget, localRootAbsolute)
+		: normalizedRelativeTarget
+
+	return `${LOCAL_CONFIG_PREFIX}${adaptiveLocalTarget}`
 }

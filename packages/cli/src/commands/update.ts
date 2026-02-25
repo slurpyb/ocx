@@ -3,8 +3,9 @@
  * Update installed components from registries
  */
 
+import { randomUUID } from "node:crypto"
 import { existsSync } from "node:fs"
-import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 
 import type { Command } from "commander"
@@ -20,6 +21,7 @@ import { type DryRunAction, type DryRunResult, outputDryRun } from "../utils/dry
 import { ConfigError, NotFoundError, ValidationError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
 import { resolveTargetPath } from "../utils/paths"
+import { registerPlannedWriteOrThrow } from "../utils/planned-writes"
 import { hashBundle, hashContent } from "../utils/receipt"
 import { addCommonOptions, addVerboseOption } from "../utils/shared-options"
 
@@ -46,6 +48,48 @@ interface UpdateResult {
 	oldVersion: string
 	newVersion: string
 	status: "updated" | "up-to-date" | "would-update"
+}
+
+interface PreparedUpdateFile {
+	resolvedTarget: string
+	targetPath: string
+	content: Buffer
+}
+
+interface PendingUpdate {
+	canonicalId: string
+	component: ReturnType<typeof normalizeComponentManifest>
+	files: { path: string; content: Buffer }[]
+	newHash: string
+	newVersion: string
+	baseUrl: string
+	registryName: string
+	name: string
+}
+
+interface PreparedUpdate {
+	update: PendingUpdate
+	preparedFiles: PreparedUpdateFile[]
+}
+
+interface AppliedWrite {
+	targetPath: string
+	backupPath: string | null
+}
+
+interface AppliedWriteTransaction {
+	commit: () => Promise<void>
+	rollback: () => Promise<void>
+}
+
+interface UpdateFileOps {
+	rename?: (oldPath: string, newPath: string) => Promise<void>
+}
+
+type UpdateFailurePhase = "check" | "apply"
+
+export function resolveUpdateFailureMessage(phase: UpdateFailurePhase): string {
+	return phase === "apply" ? "Failed to update components" : "Failed to check for updates"
 }
 
 // =============================================================================
@@ -89,6 +133,7 @@ export async function runUpdateCore(
 	componentNames: string[],
 	options: UpdateOptions,
 	provider: ConfigProvider,
+	fileOps?: UpdateFileOps,
 ): Promise<void> {
 	const registries = provider.getRegistries()
 	const componentPath = provider.getComponentPath()
@@ -175,18 +220,12 @@ export async function runUpdateCore(
 
 	const spin = options.quiet ? null : createSpinner({ text: "Checking for updates..." })
 	spin?.start()
+	let installSpin: ReturnType<typeof createSpinner> | null = null
+	let failurePhase: UpdateFailurePhase = "check"
+	let appliedWriteTransaction: AppliedWriteTransaction | null = null
 
 	const results: UpdateResult[] = []
-	const updates: {
-		canonicalId: string
-		component: ReturnType<typeof normalizeComponentManifest>
-		files: { path: string; content: Buffer }[]
-		newHash: string
-		newVersion: string
-		baseUrl: string
-		registryName: string
-		name: string
-	}[] = []
+	const updates: PendingUpdate[] = []
 
 	try {
 		for (const spec of componentsToUpdate) {
@@ -285,31 +324,63 @@ export async function runUpdateCore(
 			return
 		}
 
-		const installSpin = options.quiet ? null : createSpinner({ text: "Updating components..." })
+		failurePhase = "apply"
+		installSpin = options.quiet ? null : createSpinner({ text: "Updating components..." })
 		installSpin?.start()
 
+		const plannedWrites = new Map<
+			string,
+			{
+				absolutePath: string
+				relativePath: string
+				content: Buffer
+				source: string
+			}
+		>()
+
+		const preparedUpdates: PreparedUpdate[] = []
+
 		for (const update of updates) {
-			// Write files
+			const preparedFiles: PreparedUpdateFile[] = []
+
 			for (const file of update.files) {
 				const fileObj = update.component.files.find(
 					(f: ComponentFileObject) => f.path === file.path,
 				)
-				if (!fileObj) continue
+				if (!fileObj) {
+					throw new ValidationError(
+						`File "${file.path}" not found in component manifest for "${update.registryName}/${update.name}".`,
+					)
+				}
 
-				const resolvedTarget = resolveTargetPath(fileObj.target, isFlattened)
+				const resolvedTarget = resolveTargetPath(fileObj.target, isFlattened, provider.cwd)
 				const targetPath = join(provider.cwd, resolvedTarget)
-				const targetDir = dirname(targetPath)
 
-				if (!existsSync(targetDir)) {
-					await mkdir(targetDir, { recursive: true })
-				}
+				registerPlannedWriteOrThrow(plannedWrites, {
+					absolutePath: targetPath,
+					relativePath: resolvedTarget,
+					content: file.content,
+					source: `${update.registryName}/${update.name}:${fileObj.path}`,
+				})
 
-				await writeFile(targetPath, file.content)
-
-				if (options.verbose) {
-					logger.info(`  ✓ Updated ${resolvedTarget}`)
-				}
+				preparedFiles.push({
+					resolvedTarget,
+					targetPath,
+					content: file.content,
+				})
 			}
+
+			preparedUpdates.push({ update, preparedFiles })
+		}
+
+		appliedWriteTransaction = await applyPreparedUpdatesAtomically(preparedUpdates, {
+			verbose: options.verbose,
+			quiet: options.quiet,
+			fileOps,
+		})
+
+		for (const prepared of preparedUpdates) {
+			const { update, preparedFiles } = prepared
 
 			// Update receipt entry - we know it exists because we validated in resolveComponentsToUpdate
 			const existingEntry = receipt.installed[update.canonicalId]
@@ -319,15 +390,10 @@ export async function runUpdateCore(
 
 			// Compute individual file hashes
 			const fileHashes: Array<{ path: string; hash: string }> = []
-			for (const file of update.files) {
-				const componentFile = update.component.files.find(
-					(f: ComponentFileObject) => f.path === file.path,
-				)
-				if (!componentFile) throw new Error(`File ${file.path} not found in component manifest`)
-				const resolvedTarget = resolveTargetPath(componentFile.target, isFlattened)
+			for (const preparedFile of preparedFiles) {
 				fileHashes.push({
-					path: resolvedTarget,
-					hash: hashContent(file.content),
+					path: preparedFile.resolvedTarget,
+					hash: hashContent(preparedFile.content),
 				})
 			}
 
@@ -347,10 +413,15 @@ export async function runUpdateCore(
 			}
 		}
 
-		installSpin?.succeed(`Updated ${updates.length} component(s)`)
-
 		// Save receipt file
 		await writeReceipt(provider.cwd, receipt)
+		if (!appliedWriteTransaction) {
+			throw new Error("Internal error: missing applied write transaction after update apply phase.")
+		}
+		await appliedWriteTransaction.commit()
+		appliedWriteTransaction = null
+
+		installSpin?.succeed(`Updated ${updates.length} component(s)`)
 
 		// -------------------------------------------------------------------------
 		// Output results
@@ -381,7 +452,15 @@ export async function runUpdateCore(
 			logger.success(`Done! Updated ${updates.length} component(s).`)
 		}
 	} catch (error) {
-		spin?.fail("Failed to check for updates")
+		if (failurePhase === "apply") {
+			if (appliedWriteTransaction) {
+				await appliedWriteTransaction.rollback()
+				appliedWriteTransaction = null
+			}
+			installSpin?.fail(resolveUpdateFailureMessage("apply"))
+		} else {
+			spin?.fail(resolveUpdateFailureMessage("check"))
+		}
 		throw error
 	}
 }
@@ -389,6 +468,130 @@ export async function runUpdateCore(
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
+
+async function applyPreparedUpdatesAtomically(
+	preparedUpdates: PreparedUpdate[],
+	options: { verbose?: boolean; quiet?: boolean; fileOps?: UpdateFileOps },
+): Promise<AppliedWriteTransaction> {
+	const appliedWrites: AppliedWrite[] = []
+	const tempPaths = new Set<string>()
+	let finalized = false
+	const renameFile = options.fileOps?.rename ?? rename
+
+	const rollback = async (): Promise<void> => {
+		if (finalized) {
+			return
+		}
+
+		finalized = true
+
+		for (const tempPath of tempPaths) {
+			try {
+				await rm(tempPath, { force: true })
+			} catch {
+				// best-effort cleanup
+			}
+		}
+
+		for (const appliedWrite of [...appliedWrites].reverse()) {
+			try {
+				if (appliedWrite.backupPath) {
+					if (existsSync(appliedWrite.targetPath)) {
+						await rm(appliedWrite.targetPath, { force: true, recursive: true })
+					}
+					if (existsSync(appliedWrite.backupPath)) {
+						await renameFile(appliedWrite.backupPath, appliedWrite.targetPath)
+					}
+				} else if (existsSync(appliedWrite.targetPath)) {
+					await rm(appliedWrite.targetPath, { force: true, recursive: true })
+				}
+			} catch {
+				// best-effort rollback
+			}
+		}
+	}
+
+	const commit = async (): Promise<void> => {
+		if (finalized) {
+			return
+		}
+
+		finalized = true
+
+		for (const appliedWrite of appliedWrites) {
+			if (!appliedWrite.backupPath) {
+				continue
+			}
+
+			if (existsSync(appliedWrite.backupPath)) {
+				try {
+					await rm(appliedWrite.backupPath, { force: true })
+				} catch (error) {
+					if (!options.quiet) {
+						const errorMessage = error instanceof Error ? error.message : String(error)
+						logger.warn(
+							`Post-update cleanup warning: failed to remove backup "${appliedWrite.backupPath}" (${errorMessage})`,
+						)
+					}
+				}
+			}
+		}
+	}
+
+	try {
+		for (const prepared of preparedUpdates) {
+			for (const preparedFile of prepared.preparedFiles) {
+				const targetDir = dirname(preparedFile.targetPath)
+
+				if (!existsSync(targetDir)) {
+					await mkdir(targetDir, { recursive: true })
+				}
+
+				if (existsSync(preparedFile.targetPath)) {
+					const currentTargetStats = await stat(preparedFile.targetPath)
+					if (currentTargetStats.isDirectory()) {
+						throw new ValidationError(
+							`Cannot update "${preparedFile.resolvedTarget}": target path is a directory.`,
+						)
+					}
+				}
+
+				const tempPath = `${preparedFile.targetPath}.ocx-update-tmp-${randomUUID()}`
+				await writeFile(tempPath, preparedFile.content)
+				tempPaths.add(tempPath)
+
+				let backupPath: string | null = null
+				if (existsSync(preparedFile.targetPath)) {
+					backupPath = `${preparedFile.targetPath}.ocx-update-backup-${randomUUID()}`
+					await renameFile(preparedFile.targetPath, backupPath)
+					appliedWrites.push({
+						targetPath: preparedFile.targetPath,
+						backupPath,
+					})
+				}
+
+				await renameFile(tempPath, preparedFile.targetPath)
+				tempPaths.delete(tempPath)
+
+				if (!backupPath) {
+					appliedWrites.push({
+						targetPath: preparedFile.targetPath,
+						backupPath: null,
+					})
+				}
+
+				if (options.verbose) {
+					logger.info(`  ✓ Updated ${preparedFile.resolvedTarget}`)
+				}
+			}
+		}
+
+		return { commit, rollback }
+	} catch (error) {
+		await rollback()
+		throw error
+	}
+}
 
 /**
  * Parse and validate a component specifier.

@@ -10,7 +10,7 @@ import {
 	spyOn,
 } from "bun:test"
 import { existsSync } from "node:fs"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { handleError } from "../src/utils/handle-error"
 import { cleanupTempDir, createTempDir, parseJsonc, runCLI } from "./helpers"
@@ -240,6 +240,234 @@ describe("ocx add", () => {
 		expect(exitCode).not.toBe(0)
 		expect(output).toContain("Integrity verification failed")
 		expect(output).toContain("The registry content has changed since this component was locked")
+	})
+
+	it("should resolve command root to singular when only singular directory exists", async () => {
+		testDir = await createTempDir("add-adaptive-singular-command")
+
+		await runCLI(["init"], testDir)
+
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as {
+			registries?: Record<string, { url: string }>
+		}
+		config.registries = {
+			kdco: { url: registry.url },
+		}
+		await writeFile(configPath, JSON.stringify(config, null, 2))
+
+		await mkdir(join(testDir, ".opencode", "command"), { recursive: true })
+
+		const { exitCode, output } = await runCLI(["add", "kdco/test-command"], testDir)
+
+		if (exitCode !== 0) {
+			console.log(output)
+		}
+		expect(exitCode).toBe(0)
+		expect(existsSync(join(testDir, ".opencode", "command", "test-command.md"))).toBe(true)
+		expect(existsSync(join(testDir, ".opencode", "commands", "test-command.md"))).toBe(false)
+	})
+
+	it("should fail loud on cross-root logical collision", async () => {
+		testDir = await createTempDir("add-adaptive-cross-root-collision")
+
+		await runCLI(["init"], testDir)
+
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as {
+			registries?: Record<string, { url: string }>
+		}
+		config.registries = {
+			kdco: { url: registry.url },
+		}
+		await writeFile(configPath, JSON.stringify(config, null, 2))
+
+		await mkdir(join(testDir, ".opencode", "command"), { recursive: true })
+		await mkdir(join(testDir, ".opencode", "commands"), { recursive: true })
+		await writeFile(join(testDir, ".opencode", "command", "test-command.md"), "existing")
+
+		const { exitCode, output } = await runCLI(["add", "kdco/test-command"], testDir)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("Cross-root logical collision")
+		expect(output).toContain("command/test-command.md")
+	})
+
+	it("should fail loud on intra-batch collisions from dependency installs", async () => {
+		testDir = await createTempDir("add-intra-batch-collision")
+
+		await runCLI(["init"], testDir)
+
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as {
+			registries?: Record<string, { url: string }>
+		}
+		config.registries = {
+			kdco: { url: registry.url },
+		}
+		await writeFile(configPath, JSON.stringify(config, null, 2))
+
+		const { exitCode, output } = await runCLI(["add", "kdco/collision-parent"], testDir)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("Intra-batch target collision")
+		expect(output).toContain("commands/shared-collision.md")
+
+		expect(existsSync(join(testDir, ".opencode", "commands", "shared-collision.md"))).toBe(false)
+		expect(existsSync(join(testDir, ".opencode", "command", "shared-collision.md"))).toBe(false)
+	})
+
+	it("should fail loud on intra-batch collisions even when duplicate content matches", async () => {
+		testDir = await createTempDir("add-intra-batch-same-content")
+
+		await runCLI(["init"], testDir)
+
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as {
+			registries?: Record<string, { url: string }>
+		}
+		config.registries = {
+			kdco: { url: registry.url },
+		}
+		await writeFile(configPath, JSON.stringify(config, null, 2))
+
+		registry.setFileContent("collision-command-a", "A.md", "same")
+		registry.setFileContent("collision-command-b", "B.md", "same")
+
+		try {
+			const { exitCode, output } = await runCLI(["add", "kdco/collision-parent"], testDir)
+
+			expect(exitCode).not.toBe(0)
+			expect(output).toContain("Intra-batch target collision")
+			expect(output).toContain("commands/shared-collision.md")
+		} finally {
+			registry.clearFileContent()
+		}
+	})
+
+	it("rolls back files and preserves receipt when install fails mid-write", async () => {
+		testDir = await createTempDir("add-atomic-mid-write-failure")
+
+		await runCLI(["init"], testDir)
+
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as {
+			registries?: Record<string, { url: string }>
+		}
+		config.registries = {
+			kdco: { url: registry.url },
+		}
+		await writeFile(configPath, JSON.stringify(config, null, 2))
+
+		const { exitCode: baselineInstallExit } = await runCLI(["add", "kdco/test-command"], testDir)
+		expect(baselineInstallExit).toBe(0)
+
+		const receiptPath = join(testDir, ".ocx", "receipt.jsonc")
+		const baselineReceipt = await readFile(receiptPath, "utf-8")
+
+		registry.setRouteError(
+			"/components/test-write-failure.json",
+			200,
+			JSON.stringify({
+				name: "test-write-failure",
+				"dist-tags": {
+					latest: "1.0.0",
+				},
+				versions: {
+					"1.0.0": {
+						name: "test-write-failure",
+						type: "plugin",
+						description: "Fixture for mid-write add failure",
+						files: [
+							{ path: "first.ts", target: "plugins/test-write-failure.ts" },
+							{ path: "keep.md", target: "plugins/write-failure-dir/.keep" },
+							{ path: "second.md", target: "plugins/write-failure-dir" },
+						],
+						dependencies: [],
+					},
+				},
+			}),
+		)
+
+		registry.setFileContent("test-write-failure", "first.ts", "// should be rolled back")
+		registry.setFileContent("test-write-failure", "keep.md", "keep")
+		registry.setFileContent("test-write-failure", "second.md", "second")
+
+		try {
+			const { exitCode } = await runCLI(["add", "kdco/test-write-failure"], testDir)
+			expect(exitCode).not.toBe(0)
+
+			expect(existsSync(join(testDir, ".opencode", "plugins", "test-write-failure.ts"))).toBe(false)
+			expect(existsSync(join(testDir, ".opencode", "plugins", "write-failure-dir", ".keep"))).toBe(
+				false,
+			)
+			expect(await readFile(receiptPath, "utf-8")).toBe(baselineReceipt)
+		} finally {
+			registry.clearRouteOverrides()
+			registry.clearFileContent()
+		}
+	})
+
+	it("rolls back manifest side effects when receipt write fails after install", async () => {
+		testDir = await createTempDir("add-atomic-manifest-rollback")
+
+		await runCLI(["init"], testDir)
+
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as {
+			registries?: Record<string, { url: string }>
+		}
+		config.registries = {
+			kdco: { url: registry.url },
+		}
+		await writeFile(configPath, JSON.stringify(config, null, 2))
+
+		const opencodePath = join(testDir, ".opencode", "opencode.jsonc")
+		const packageJsonPath = join(testDir, ".opencode", "package.json")
+		const gitignorePath = join(testDir, ".opencode", ".gitignore")
+
+		const baselineOpencode = await readFile(opencodePath, "utf-8")
+		const baselinePackageExists = existsSync(packageJsonPath)
+		const baselinePackageContent = baselinePackageExists
+			? await readFile(packageJsonPath, "utf-8")
+			: null
+		const baselineGitignoreExists = existsSync(gitignorePath)
+		const baselineGitignoreContent = baselineGitignoreExists
+			? await readFile(gitignorePath, "utf-8")
+			: null
+
+		// Force late failure at receipt write to exercise manifest rollback.
+		// writeReceipt() expects .ocx to be a directory; a file here guarantees failure after
+		// component and manifest side effects have been attempted.
+		const receiptRootPath = join(testDir, ".ocx")
+		if (existsSync(receiptRootPath)) {
+			await rm(receiptRootPath, { recursive: true, force: true })
+		}
+		await writeFile(receiptRootPath, "receipt-dir-blocker")
+
+		const { exitCode } = await runCLI(["add", "kdco/test-agent"], testDir)
+		expect(exitCode).not.toBe(0)
+
+		// Component files should be rolled back.
+		expect(existsSync(join(testDir, ".opencode", "agents", "test-agent.md"))).toBe(false)
+		expect(existsSync(join(testDir, ".opencode", "skills", "test-skill", "SKILL.md"))).toBe(false)
+		expect(existsSync(join(testDir, ".opencode", "plugins", "test-plugin.ts"))).toBe(false)
+
+		// Manifest side effects should also be rolled back.
+		expect(await readFile(opencodePath, "utf-8")).toBe(baselineOpencode)
+		expect(existsSync(packageJsonPath)).toBe(baselinePackageExists)
+		if (baselinePackageExists) {
+			expect(await readFile(packageJsonPath, "utf-8")).toBe(baselinePackageContent)
+		}
+		expect(existsSync(gitignorePath)).toBe(baselineGitignoreExists)
+		if (baselineGitignoreExists) {
+			expect(await readFile(gitignorePath, "utf-8")).toBe(baselineGitignoreContent)
+		}
+
+		// Regression guard: rollback must not delete pre-existing blocker files.
+		expect(existsSync(receiptRootPath)).toBe(true)
+		expect((await stat(receiptRootPath)).isFile()).toBe(true)
+		expect(await readFile(receiptRootPath, "utf-8")).toBe("receipt-dir-blocker")
 	})
 })
 

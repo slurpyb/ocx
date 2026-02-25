@@ -1,8 +1,10 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import { existsSync } from "node:fs"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { parseSourceOption } from "../src/commands/profile/add"
+import { resolveEmbeddedProfileTarget } from "../src/commands/profile/install-from-registry"
+import { _clearFetcherCacheForTests } from "../src/registry/fetcher"
 import { validateSafePath } from "../src/schemas/registry"
 import { ValidationError } from "../src/utils/errors"
 import { cleanupTempDir, createTempDir, parseJsonc, runCLI } from "./helpers"
@@ -58,6 +60,20 @@ describe("parseSourceOption()", () => {
 // =============================================================================
 
 describe("Path security", () => {
+	describe("resolveEmbeddedProfileTarget()", () => {
+		it("fails loud on post-strip traversal escapes", () => {
+			expect(() => resolveEmbeddedProfileTarget(".opencode/../victim.txt", "/tmp/staging")).toThrow(
+				ValidationError,
+			)
+		})
+
+		it("returns safe relative embedded target when containment holds", () => {
+			expect(
+				resolveEmbeddedProfileTarget(".opencode/commands/safe-command.md", "/tmp/profile-staging"),
+			).toBe("commands/safe-command.md")
+		})
+	})
+
 	describe("validateSafePath()", () => {
 		it("accepts normal relative paths", () => {
 			expect(() => validateSafePath("ocx.jsonc")).not.toThrow()
@@ -699,56 +715,6 @@ describe("ocx profile add --clone (profile cloning)", () => {
 		expect(clonedConfig.exclude).toContain("**/SECRET.md")
 	})
 
-	// Local profiles are unsupported — local-to-local cloning is no longer valid
-	it.todo("clones settings from existing local profile (local to local)", async () => {
-		// Setup global config
-		const globalConfigDir = join(testDir, "opencode")
-		const profilesDir = join(globalConfigDir, "profiles")
-		await mkdir(profilesDir, { recursive: true })
-		await writeFile(join(globalConfigDir, "ocx.jsonc"), JSON.stringify({ registries: {} }, null, 2))
-
-		// Create default profile
-		await mkdir(join(profilesDir, "default"), { recursive: true })
-		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
-
-		const workDir = join(testDir, "workspace")
-		await mkdir(workDir, { recursive: true })
-
-		// Create local source profile with specific config
-		const localProfilesDir = join(workDir, ".opencode", "profiles")
-		const sourceProfileDir = join(localProfilesDir, "local-source")
-		await mkdir(sourceProfileDir, { recursive: true })
-		const sourceConfig = {
-			registries: {
-				local: { url: "https://local.registry.com" },
-			},
-			exclude: ["**/LOCAL.md"],
-		}
-		await writeFile(join(sourceProfileDir, "ocx.jsonc"), JSON.stringify(sourceConfig, null, 2))
-
-		// V2: Clone using --clone option (local to local, no --global flag)
-		const { exitCode, output } = await runCLI(
-			["profile", "add", "local-cloned", "--clone", "local-source"],
-			workDir,
-			{
-				env: { XDG_CONFIG_HOME: testDir },
-				isolated: true,
-			},
-		)
-
-		expect(exitCode).toBe(0)
-		expect(output).toContain("cloned from")
-		expect(output).toContain("local profile")
-
-		// Verify cloned profile has source's config
-		const clonedConfig = parseJsonc(
-			await readFile(join(localProfilesDir, "local-cloned", "ocx.jsonc"), "utf-8"),
-		) as typeof sourceConfig
-
-		expect(clonedConfig.registries?.local?.url).toBe("https://local.registry.com")
-		expect(clonedConfig.exclude).toContain("**/LOCAL.md")
-	})
-
 	it("preserves raw ocx.jsonc bytes exactly when cloning global profile to global profile", async () => {
 		// Setup global config
 		const globalConfigDir = join(testDir, "opencode")
@@ -810,68 +776,6 @@ describe("ocx profile add --clone (profile cloning)", () => {
 		expect(clonedConfig.exclude).toContain("**/SECRET.md")
 	})
 
-	// Local profiles are unsupported — local-to-local byte preservation is no longer valid
-	it.todo("preserves raw ocx.jsonc bytes exactly when cloning local profile to local profile", async () => {
-		// Setup global config
-		const globalConfigDir = join(testDir, "opencode")
-		const profilesDir = join(globalConfigDir, "profiles")
-		await mkdir(profilesDir, { recursive: true })
-		await writeFile(join(globalConfigDir, "ocx.jsonc"), JSON.stringify({ registries: {} }, null, 2))
-
-		// Create default profile
-		await mkdir(join(profilesDir, "default"), { recursive: true })
-		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
-
-		const workDir = join(testDir, "workspace")
-		await mkdir(workDir, { recursive: true })
-
-		// Create local source profile with non-trivial JSONC formatting/comments/newline
-		const localProfilesDir = join(workDir, ".opencode", "profiles")
-		const sourceProfileDir = join(localProfilesDir, "byte-source-local")
-		await mkdir(sourceProfileDir, { recursive: true })
-		const sourcePath = join(sourceProfileDir, "ocx.jsonc")
-		const sourceBytes = `{
-	"registries": {
-		"local": { "url": "https://local.registry.com" }
-	},
-	"exclude": [
-		"**/LOCAL.md"
-	],
-	// trailing comment and newline must survive clone
-	"include": []
-}
-`
-		await writeFile(sourcePath, sourceBytes)
-		const sourceRawBeforeClone = await readFile(sourcePath, "utf-8")
-
-		const { exitCode } = await runCLI(
-			["profile", "add", "byte-cloned-local", "--clone", "byte-source-local"],
-			workDir,
-			{
-				env: { XDG_CONFIG_HOME: testDir },
-				isolated: true,
-			},
-		)
-
-		expect(exitCode).toBe(0)
-
-		const sourceRawAfterClone = await readFile(sourcePath, "utf-8")
-		const clonedPath = join(localProfilesDir, "byte-cloned-local", "ocx.jsonc")
-		const clonedRaw = await readFile(clonedPath, "utf-8")
-
-		expect(sourceRawAfterClone).toBe(sourceRawBeforeClone)
-		// RED contract: preserve exact bytes (comments/format/newline)
-		expect(clonedRaw).toBe(sourceRawBeforeClone)
-
-		// Keep semantic clone assertions intact
-		const clonedConfig = parseJsonc(clonedRaw) as {
-			registries?: { local?: { url?: string } }
-			exclude?: string[]
-		}
-		expect(clonedConfig.registries?.local?.url).toBe("https://local.registry.com")
-		expect(clonedConfig.exclude).toContain("**/LOCAL.md")
-	})
-
 	it("preserves default profile AGENTS.md comment line when cloning", async () => {
 		// Setup global config
 		const globalConfigDir = join(testDir, "opencode")
@@ -924,41 +828,6 @@ describe("ocx profile add --clone (profile cloning)", () => {
 		// RED contract: commented AGENTS.md line (and full raw bytes) must be preserved
 		expect(clonedRaw).toContain('// "**/AGENTS.md",')
 		expect(clonedRaw).toBe(sourceRawBeforeClone)
-	})
-
-	// Local profiles are unsupported — scope mismatch concept is no longer valid
-	it.todo("fails when source profile exists only in wrong scope", async () => {
-		// Setup global config
-		const globalConfigDir = join(testDir, "opencode")
-		const profilesDir = join(globalConfigDir, "profiles")
-		await mkdir(profilesDir, { recursive: true })
-		await writeFile(join(globalConfigDir, "ocx.jsonc"), JSON.stringify({ registries: {} }, null, 2))
-
-		// Create default profile
-		await mkdir(join(profilesDir, "default"), { recursive: true })
-		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
-
-		// Create GLOBAL source profile
-		const sourceProfileDir = join(profilesDir, "global-only-profile")
-		await mkdir(sourceProfileDir, { recursive: true })
-		await writeFile(join(sourceProfileDir, "ocx.jsonc"), "{}")
-
-		const workDir = join(testDir, "workspace")
-		await mkdir(workDir, { recursive: true })
-
-		// V2: Try to clone from global profile to LOCAL using --clone (should fail - wrong scope)
-		const { exitCode, output } = await runCLI(
-			["profile", "add", "wrong-scope-clone", "--clone", "global-only-profile"],
-			workDir,
-			{
-				env: { XDG_CONFIG_HOME: testDir },
-				isolated: true,
-			},
-		)
-
-		expect(exitCode).not.toBe(0)
-		expect(output).toContain("not found")
-		expect(output).toContain("local scope")
 	})
 
 	it("fails when source profile does not exist", async () => {
@@ -1177,6 +1046,203 @@ describe("ocx profile add --source (registry installation)", () => {
 		expect(Object.keys(receiptContent.installed).length).toBeGreaterThan(0)
 		expect("profileSource" in receiptContent).toBe(false)
 		expect("installedFrom" in receiptContent).toBe(false)
+	})
+
+	it("rolls back promoted profile when dependency install fails after rename", async () => {
+		const globalConfigDir = join(testDir, "opencode")
+		const profilesDir = join(globalConfigDir, "profiles")
+		await mkdir(profilesDir, { recursive: true })
+		await writeFile(
+			join(globalConfigDir, "ocx.jsonc"),
+			JSON.stringify({ registries: { kdco: { url: registry.url } } }, null, 2),
+		)
+
+		await mkdir(join(profilesDir, "default"), { recursive: true })
+		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
+
+		registry.setRouteError(
+			"/components/test-plugin.json",
+			200,
+			JSON.stringify({
+				name: "test-plugin",
+				"dist-tags": {
+					latest: "1.0.0",
+				},
+				versions: {
+					"1.0.0": {
+						name: "test-plugin",
+						type: "plugin",
+						description: "Dependency failure fixture",
+						files: [
+							{ path: "first.ts", target: "plugins/test-plugin.ts" },
+							{ path: "keep.md", target: "plugins/write-failure-dir/.keep" },
+							{ path: "second.md", target: "plugins/write-failure-dir" },
+						],
+						dependencies: [],
+					},
+				},
+			}),
+		)
+		registry.setFileContent("test-plugin", "first.ts", "// dependency should roll back")
+		registry.setFileContent("test-plugin", "keep.md", "keep")
+		registry.setFileContent("test-plugin", "second.md", "second")
+		_clearFetcherCacheForTests()
+
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+		const profileName = "broken-profile"
+		const profileDir = join(profilesDir, profileName)
+
+		const firstAttempt = await runCLI(
+			["profile", "add", profileName, "--source", "kdco/test-profile-with-deps", "--global"],
+			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
+		)
+
+		expect(firstAttempt.exitCode).not.toBe(0)
+		expect(existsSync(profileDir)).toBe(false)
+		const profileRootEntries = await readdir(profilesDir)
+		expect(profileRootEntries.some((entry) => entry.startsWith(".staging-"))).toBe(false)
+
+		registry.clearRouteOverrides()
+		registry.clearFileContent()
+		_clearFetcherCacheForTests()
+
+		const retryAttempt = await runCLI(
+			["profile", "add", profileName, "--source", "kdco/test-profile-with-deps", "--global"],
+			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
+		)
+
+		expect(retryAttempt.exitCode).toBe(0)
+		expect(existsSync(join(profileDir, "plugins", "test-plugin.ts"))).toBe(true)
+	})
+
+	it("normalizes singular command targets to plural during profile install flows", async () => {
+		const globalConfigDir = join(testDir, "opencode")
+		const profilesDir = join(globalConfigDir, "profiles")
+		await mkdir(profilesDir, { recursive: true })
+		await writeFile(
+			join(globalConfigDir, "ocx.jsonc"),
+			JSON.stringify({ registries: { kdco: { url: registry.url } } }, null, 2),
+		)
+
+		await mkdir(join(profilesDir, "default"), { recursive: true })
+		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
+
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode, output } = await runCLI(
+			[
+				"profile",
+				"add",
+				"command-root-profile",
+				"--source",
+				"kdco/test-profile-with-command-deps",
+				"--global",
+			],
+			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
+		)
+
+		if (exitCode !== 0) {
+			console.log("Output:", output)
+		}
+		expect(exitCode).toBe(0)
+
+		const profileDir = join(profilesDir, "command-root-profile")
+		expect(existsSync(join(profileDir, "commands", ".keep"))).toBe(true)
+		expect(existsSync(join(profileDir, "commands", "test-command-singular.md"))).toBe(true)
+		expect(existsSync(join(profileDir, "command", "test-command-singular.md"))).toBe(false)
+	})
+
+	it("fails loud on intra-batch collisions while writing profile files", async () => {
+		const globalConfigDir = join(testDir, "opencode")
+		const profilesDir = join(globalConfigDir, "profiles")
+		await mkdir(profilesDir, { recursive: true })
+		await writeFile(
+			join(globalConfigDir, "ocx.jsonc"),
+			JSON.stringify({ registries: { kdco: { url: registry.url } } }, null, 2),
+		)
+
+		await mkdir(join(profilesDir, "default"), { recursive: true })
+		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
+
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode, output } = await runCLI(
+			[
+				"profile",
+				"add",
+				"profile-collision",
+				"--source",
+				"kdco/test-profile-with-file-collision",
+				"--global",
+			],
+			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("Intra-batch target collision")
+		expect(output).toContain("commands/shared-profile-collision.md")
+		expect(existsSync(join(profilesDir, "profile-collision"))).toBe(false)
+	})
+
+	it("fails on malicious embedded traversal targets and leaves sibling profiles untouched", async () => {
+		const globalConfigDir = join(testDir, "opencode")
+		const profilesDir = join(globalConfigDir, "profiles")
+		await mkdir(profilesDir, { recursive: true })
+		await writeFile(
+			join(globalConfigDir, "ocx.jsonc"),
+			JSON.stringify({ registries: { kdco: { url: registry.url } } }, null, 2),
+		)
+
+		await mkdir(join(profilesDir, "default"), { recursive: true })
+		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
+
+		const siblingProfileDir = join(profilesDir, "safe-profile")
+		await mkdir(siblingProfileDir, { recursive: true })
+		await writeFile(join(siblingProfileDir, "AGENTS.md"), "safe-sentinel")
+
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode, output } = await runCLI(
+			[
+				"profile",
+				"add",
+				"malicious-profile",
+				"--source",
+				"kdco/test-profile-malicious-embedded",
+				"--global",
+			],
+			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toMatch(/Invalid embedded target|Unsafe target/)
+		expect(existsSync(join(profilesDir, "victim.txt"))).toBe(false)
+		expect(existsSync(join(profilesDir, "malicious-profile"))).toBe(false)
+		expect(await readFile(join(siblingProfileDir, "AGENTS.md"), "utf-8")).toBe("safe-sentinel")
 	})
 })
 
