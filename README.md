@@ -39,22 +39,16 @@ Work in any repo without modifying it. Your config, their code.
 # One-time setup
 ocx init --global
 
-# Install a pre-configured profile from a registry
-# Registry name comes from the source reference (e.g., kit/omo uses 'kit')
-ocx profile add omo --source kit/omo --from https://ocx-kit.kdco.dev --global
+# Install the KDCO workspace profile (OpenCode Free Models Only)
+ocx profile add ws --source tweak/p-1vp4xoqv --from https://tweakoc.com/r --global
 
-# Use in any repo
-cd ~/oss/some-project
-ocx oc -p omo              # Launch OpenCode with your profile
-
-# Or set a default
-export OCX_PROFILE=omo
-ocx oc                     # Uses omo profile automatically
+# Launch OpenCode with the profile
+ocx oc -p ws
 ```
 
-Profiles control what OpenCode sees through `exclude`/`include` patterns. Each profile has isolated registries for security. OpenCode config merges safely between profile and local settings.
+Need a custom profile? Open the KDCO Workspace harness in TweakOC: https://tweakoc.com/h/kdco-workspace
 
-> **Visual Profile Builder:** Prefer a UI? [TweakOC](https://tweakoc.com) helps you build and configure profiles (OhMyOpenCode, KDCO Workspace, etc.) visually, then outputs an `ocx profile add` command you can run.
+Profiles control what OpenCode sees through `exclude`/`include` patterns. Each profile has isolated registries for security. OpenCode config merges safely between profile and local settings.
 
 > **Security Note:** An empty exclude list includes all project instruction files; the default profile template ships a secure exclude list. For trusted repos, edit your profile to loosen the template's exclude list. See [Lock Down Recipe](https://ocx.kdco.dev/profiles/security#lock-down-recipe).
 
