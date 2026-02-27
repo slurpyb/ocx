@@ -686,6 +686,98 @@ describe("fetchComponentVersion legacy manifest adaptation", () => {
 		expect(manifest.files[0]).toEqual({ path: "plugin.ts", target: "plugins/legacy-plugin.ts" })
 	})
 
+	it("adapts legacy manifest when schema mode is null (index fetch fails)", async () => {
+		globalThis.fetch = mock((input) => {
+			const requestUrl = new URL(String(input))
+
+			if (requestUrl.pathname === "/index.json") {
+				return Promise.resolve(
+					new Response("Service Unavailable", {
+						status: 503,
+						statusText: "Service Unavailable",
+					}),
+				)
+			}
+
+			return Promise.resolve(
+				new Response(
+					JSON.stringify({
+						name: "null-mode-legacy-plugin",
+						"dist-tags": { latest: "1.0.0" },
+						versions: {
+							"1.0.0": {
+								name: "null-mode-legacy-plugin",
+								type: "ocx:plugin",
+								description: "Legacy-signaled manifest",
+								files: [
+									{
+										path: "index.ts",
+										target: ".opencode/plugin/null-mode-legacy-plugin.ts",
+									},
+								],
+								dependencies: [],
+							},
+						},
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json" },
+					},
+				),
+			)
+		})
+
+		const { manifest } = await fetchComponentVersion(
+			"https://null-mode-index-fails.example.com",
+			"null-mode-legacy-plugin",
+		)
+
+		expect(manifest.type).toBe("plugin")
+		expect(manifest.files[0]).toEqual({
+			path: "index.ts",
+			target: "plugins/null-mode-legacy-plugin.ts",
+		})
+	})
+
+	it("does not apply v2-only legacy rejection errors when schema mode is null", async () => {
+		globalThis.fetch = mock((input) => {
+			const requestUrl = new URL(String(input))
+
+			if (requestUrl.pathname === "/index.json") {
+				return Promise.resolve(new Response("Not Found", { status: 404, statusText: "Not Found" }))
+			}
+
+			return Promise.resolve(
+				new Response(
+					JSON.stringify({
+						name: "null-mode-legacy-target",
+						"dist-tags": { latest: "2.0.0" },
+						versions: {
+							"2.0.0": {
+								name: "null-mode-legacy-target",
+								type: "plugin",
+								description: "Legacy target shorthand with unknown schema mode",
+								files: [".opencode/profiles/null-mode-legacy-target.jsonc"],
+								dependencies: [],
+							},
+						},
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json" },
+					},
+				),
+			)
+		})
+
+		const result = await fetchComponentVersion(
+			"https://null-mode-no-v2-rejection.example.com",
+			"null-mode-legacy-target",
+		)
+
+		expect(result.manifest.files[0]).toBe("profiles/null-mode-legacy-target.jsonc")
+	})
+
 	for (const typeCase of prefixedTypeCases) {
 		it(`rejects v2 manifests that use legacy prefixed type ${typeCase.prefixed}`, async () => {
 			globalThis.fetch = mock((input) => {

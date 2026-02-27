@@ -28,17 +28,7 @@ const cache = new Map<string, Promise<unknown>>()
 type RegistrySchemaMode = "legacy-v1" | "v2"
 const registrySchemaModeCache = new Map<string, RegistrySchemaMode>()
 
-const LEGACY_V2_TYPE_ALIAS_MAP = {
-	"ocx:agent": "agent",
-	"ocx:skill": "skill",
-	"ocx:plugin": "plugin",
-	"ocx:command": "command",
-	"ocx:tool": "tool",
-	"ocx:bundle": "bundle",
-	"ocx:profile": "profile",
-} as const
-
-const LEGACY_COMPONENT_TYPE_MAP = {
+const LEGACY_COMPONENT_TYPE_ALIAS_MAP = {
 	"ocx:agent": "agent",
 	"ocx:skill": "skill",
 	"ocx:plugin": "plugin",
@@ -98,7 +88,7 @@ function mapLegacyComponentType(type: unknown, context: string): string {
 	}
 
 	const mappedType =
-		LEGACY_COMPONENT_TYPE_MAP[type as keyof typeof LEGACY_COMPONENT_TYPE_MAP] ?? type
+		LEGACY_COMPONENT_TYPE_ALIAS_MAP[type as keyof typeof LEGACY_COMPONENT_TYPE_ALIAS_MAP] ?? type
 	const parsedType = componentTypeSchema.safeParse(mappedType)
 	if (!parsedType.success) {
 		throw new ValidationError(
@@ -110,8 +100,8 @@ function mapLegacyComponentType(type: unknown, context: string): string {
 	return parsedType.data
 }
 
-function isLegacyV2TypeAlias(type: unknown): type is keyof typeof LEGACY_V2_TYPE_ALIAS_MAP {
-	return typeof type === "string" && Object.hasOwn(LEGACY_V2_TYPE_ALIAS_MAP, type)
+function isLegacyV2TypeAlias(type: unknown): type is keyof typeof LEGACY_COMPONENT_TYPE_ALIAS_MAP {
+	return typeof type === "string" && Object.hasOwn(LEGACY_COMPONENT_TYPE_ALIAS_MAP, type)
 }
 
 function hasLegacyManifestTargetPrefix(target: string): boolean {
@@ -159,7 +149,7 @@ function collectLegacyManifestTargetIssues(
 
 function collectLegacyV2TypeIssues(data: unknown): Array<{
 	path: string
-	type: keyof typeof LEGACY_V2_TYPE_ALIAS_MAP
+	type: keyof typeof LEGACY_COMPONENT_TYPE_ALIAS_MAP
 }> {
 	if (!isPlainObject(data)) {
 		return []
@@ -172,7 +162,7 @@ function collectLegacyV2TypeIssues(data: unknown): Array<{
 
 	const issues: Array<{
 		path: string
-		type: keyof typeof LEGACY_V2_TYPE_ALIAS_MAP
+		type: keyof typeof LEGACY_COMPONENT_TYPE_ALIAS_MAP
 	}> = []
 
 	for (const [index, component] of components.entries()) {
@@ -509,7 +499,7 @@ export async function fetchRegistryIndex(baseUrl: string): Promise<RegistryIndex
 					throw new Error("Unexpected missing legacy type issue")
 				}
 
-				const canonicalType = LEGACY_V2_TYPE_ALIAS_MAP[firstIssue.type]
+				const canonicalType = LEGACY_COMPONENT_TYPE_ALIAS_MAP[firstIssue.type]
 				throw new RegistryCompatibilityError(
 					`Registry at ${url} uses legacy component type "${firstIssue.type}" in ${firstIssue.path}. Use "${canonicalType}" for v2 registries.`,
 					{
@@ -593,7 +583,7 @@ export async function fetchComponentVersion(
 		if (hasLegacySignalsInManifest(manifest)) {
 			const schemaMode = await resolveRegistrySchemaMode(baseUrl)
 
-			if (schemaMode === "legacy-v1") {
+			if (schemaMode !== "v2") {
 				candidateManifest = adaptLegacyComponentManifest(manifest, context)
 			} else {
 				const legacyTargetIssues = collectLegacyManifestTargetIssues(manifest)
@@ -606,7 +596,7 @@ export async function fetchComponentVersion(
 				}
 
 				if (isPlainObject(manifest) && isLegacyV2TypeAlias(manifest.type)) {
-					const canonicalType = LEGACY_V2_TYPE_ALIAS_MAP[manifest.type]
+					const canonicalType = LEGACY_COMPONENT_TYPE_ALIAS_MAP[manifest.type]
 					throw new ValidationError(
 						`Invalid component manifest for "${name}@${resolvedVersion}": type "${manifest.type}" is a legacy v1 alias. Use "${canonicalType}" for v2 registries.`,
 					)
