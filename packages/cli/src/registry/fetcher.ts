@@ -202,11 +202,24 @@ async function resolveRegistrySchemaMode(baseUrl: string): Promise<RegistrySchem
 
 	try {
 		await fetchRegistryIndex(normalizedBaseUrl)
-	} catch {
+	} catch (error) {
+		if (error instanceof NetworkError || error instanceof NotFoundError) {
+			return null
+		}
+
+		throw error
+	}
+
+	if (!registrySchemaModeCache.has(normalizedBaseUrl)) {
 		return null
 	}
 
-	return registrySchemaModeCache.get(normalizedBaseUrl) ?? null
+	const schemaMode = registrySchemaModeCache.get(normalizedBaseUrl)
+	if (!schemaMode) {
+		throw new Error(`Missing registry schema mode cache entry for ${normalizedBaseUrl}`)
+	}
+
+	return schemaMode
 }
 
 function canonicalizeLegacyTargetPath(rawTarget: string, context: string): string {

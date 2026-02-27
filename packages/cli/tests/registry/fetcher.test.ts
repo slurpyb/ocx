@@ -778,6 +778,87 @@ describe("fetchComponentVersion legacy manifest adaptation", () => {
 		expect(result.manifest.files[0]).toBe("profiles/null-mode-legacy-target.jsonc")
 	})
 
+	const incompatibleIndexCases = [
+		{
+			title: "unsupported schema version",
+			indexPayload: {
+				$schema: "https://ocx.kdco.dev/schemas/v3/registry.json",
+				author: "Future Registry",
+				components: [],
+			},
+			expectedIssue: "unsupported-schema-version",
+		},
+		{
+			title: "invalid schema URL",
+			indexPayload: {
+				$schema: "https://foreign.example.com/registry.json",
+				author: "Foreign Registry",
+				components: [],
+			},
+			expectedIssue: "invalid-schema-url",
+		},
+		{
+			title: "invalid index format",
+			indexPayload: {
+				$schema: REGISTRY_SCHEMA_V2_URL,
+				author: "Broken Registry",
+				components: [{ invalid: true }],
+			},
+			expectedIssue: "invalid-format",
+		},
+	] as const
+
+	for (const incompatibleIndexCase of incompatibleIndexCases) {
+		it(`fails loud for ${incompatibleIndexCase.title} (no null-mode fallback)`, async () => {
+			globalThis.fetch = mock((input) => {
+				const requestUrl = new URL(String(input))
+
+				if (requestUrl.pathname === "/index.json") {
+					return Promise.resolve(
+						new Response(JSON.stringify(incompatibleIndexCase.indexPayload), {
+							status: 200,
+							headers: { "content-type": "application/json" },
+						}),
+					)
+				}
+
+				return Promise.resolve(
+					new Response(
+						JSON.stringify({
+							name: "incompatible-index-no-fallback",
+							"dist-tags": { latest: "1.0.0" },
+							versions: {
+								"1.0.0": {
+									name: "incompatible-index-no-fallback",
+									type: "ocx:plugin",
+									description: "Legacy-signaled manifest should not bypass index incompatibility",
+									files: [".opencode/plugins/incompatible-index-no-fallback.ts"],
+									dependencies: [],
+								},
+							},
+						}),
+						{
+							status: 200,
+							headers: { "content-type": "application/json" },
+						},
+					),
+				)
+			})
+
+			try {
+				await fetchComponentVersion(
+					"https://incompatible-index-no-fallback.example.com",
+					"incompatible-index-no-fallback",
+				)
+				expect.unreachable("Should have thrown")
+			} catch (error) {
+				expect(error).toBeInstanceOf(RegistryCompatibilityError)
+				const compatibilityError = error as RegistryCompatibilityError
+				expect(compatibilityError.issue).toBe(incompatibleIndexCase.expectedIssue)
+			}
+		})
+	}
+
 	for (const typeCase of prefixedTypeCases) {
 		it(`rejects v2 manifests that use legacy prefixed type ${typeCase.prefixed}`, async () => {
 			globalThis.fetch = mock((input) => {
