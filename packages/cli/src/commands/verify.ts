@@ -5,11 +5,11 @@
 
 import type { Command } from "commander"
 import { LocalConfigProvider } from "../config/provider"
-import { type Receipt, readReceipt } from "../schemas/config"
-import { parseQualifiedComponent } from "../schemas/registry"
-import { ConflictError, EXIT_CODES, NotFoundError, ValidationError } from "../utils/errors"
+import { readReceipt } from "../schemas/config"
+import { resolveInstalledComponentRefs } from "../utils/component-ref-resolver"
+import { ConflictError, EXIT_CODES } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
-import { checkFileIntegrity, parseCanonicalId } from "../utils/receipt"
+import { checkFileIntegrity } from "../utils/receipt"
 import { addCommonOptions, addVerboseOption } from "../utils/shared-options"
 
 export interface VerifyOptions {
@@ -37,53 +37,6 @@ export function registerVerifyCommand(program: Command): void {
 	})
 }
 
-// =============================================================================
-// SHORTHAND RESOLUTION (Law 2: Parse at boundary)
-// =============================================================================
-
-/**
- * Resolve a user-provided component ref to its canonical receipt ID.
- * Supports both canonical IDs (direct lookup) and shorthand refs (namespace/name).
- *
- * @param ref - User-provided component reference (e.g., "kdco/researcher" or full canonical ID)
- * @param receipt - Receipt to search
- * @returns Canonical ID from the receipt
- * @throws NotFoundError if component is not installed
- * @throws ValidationError if multiple matches found (ambiguous shorthand)
- */
-function resolveComponentRef(ref: string, receipt: Receipt): string {
-	const installedKeys = Object.keys(receipt.installed)
-
-	// Fast path: direct canonical ID match
-	if (receipt.installed[ref]) {
-		return ref
-	}
-
-	// Shorthand path: resolve "registryName/name" against receipt entries
-	if (ref.includes("/") && !ref.includes("::")) {
-		const { namespace: prefix, component } = parseQualifiedComponent(ref)
-		const matchingIds = installedKeys.filter((id) => {
-			const parsed = parseCanonicalId(id)
-			return parsed.registryName === prefix && parsed.name === component
-		})
-
-		if (matchingIds.length === 1) {
-			return matchingIds[0] as string
-		}
-
-		if (matchingIds.length > 1) {
-			throw new ValidationError(
-				`Ambiguous component '${ref}'. Found ${matchingIds.length} matches:\n` +
-					matchingIds.map((id) => `  - ${id}`).join("\n") +
-					"\n\nPlease use the full canonical ID.",
-			)
-		}
-	}
-
-	// No match found
-	throw new NotFoundError(`Component '${ref}' is not installed.`)
-}
-
 async function runVerify(componentNames: string[], options: VerifyOptions): Promise<void> {
 	const cwd = options.cwd ?? process.cwd()
 	const provider = await LocalConfigProvider.requireInitialized(cwd)
@@ -103,7 +56,7 @@ async function runVerify(componentNames: string[], options: VerifyOptions): Prom
 	// Resolve shorthand refs (e.g., "kdco/researcher") to canonical receipt IDs
 	let toVerify: string[]
 	if (componentNames.length > 0) {
-		toVerify = componentNames.map((name) => resolveComponentRef(name, receipt))
+		toVerify = resolveInstalledComponentRefs(componentNames, receipt)
 	} else {
 		toVerify = Object.keys(receipt.installed)
 	}
@@ -164,7 +117,10 @@ async function runVerify(componentNames: string[], options: VerifyOptions): Prom
 		if (hasIssues) {
 			process.exit(EXIT_CODES.CONFLICT)
 		}
-	} else if (!options.quiet) {
+		return
+	}
+
+	if (!options.quiet) {
 		logger.info("")
 		for (const result of results) {
 			if (result.intact) {
@@ -181,17 +137,22 @@ async function runVerify(componentNames: string[], options: VerifyOptions): Prom
 				}
 			}
 		}
+	}
 
-		if (hasIssues) {
+	if (hasIssues) {
+		if (!options.quiet) {
 			logger.info("")
 			logger.warn(
 				"Some files have been modified or are missing. " +
-					"Review local changes with git, or use 'ocx update --force' to restore.",
+					"Review local changes with git, then run 'ocx update <alias/component>' or 'ocx update --all' to restore.",
 			)
-			throw new ConflictError("File integrity check failed for one or more components.")
-		} else {
-			logger.info("")
-			logger.success("All components verified successfully.")
 		}
+
+		throw new ConflictError("File integrity check failed for one or more components.")
+	}
+
+	if (!options.quiet) {
+		logger.info("")
+		logger.success("All components verified successfully.")
 	}
 }

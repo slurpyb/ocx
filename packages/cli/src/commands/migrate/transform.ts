@@ -24,6 +24,14 @@ export type MigrateStatus =
 	| "migrated"
 	| "partial_failure"
 
+export type MigrateLifecycleStatus = "preview_ok" | "preview_blocked" | "apply_ok" | "apply_failed"
+
+export interface MigrateBlocker {
+	code: string
+	message: string
+	path: string
+}
+
 /** Describes a single registry config normalization action */
 export interface ConfigNormalizationAction {
 	registry: string
@@ -34,6 +42,12 @@ export interface ConfigNormalizationAction {
 export interface MigrateResult {
 	success: boolean
 	status: MigrateStatus
+	/** Additive status field for the migrate contract */
+	lifecycle_status?: MigrateLifecycleStatus
+	/** Additive schema version field for the migrate contract */
+	schema_version?: 1
+	/** Additive aggregate blockers for the migrate contract */
+	blockers?: MigrateBlocker[]
 	scope: MigrateScope
 	count: number
 	components: Array<{
@@ -50,7 +64,13 @@ export interface MigrateResult {
 /** Result for a single migration target (global root or profile) */
 export interface TargetResult {
 	target: string
+	/** Additive target identity field for the migrate contract */
+	scope?: string
 	status: MigrateStatus | "error"
+	/** Additive target result field for the migrate contract */
+	result?: MigrateStatus | "error"
+	/** Additive target blockers field for the migrate contract */
+	blockers?: MigrateBlocker[]
 	count: number
 	components: MigrateResult["components"]
 	configActions: ConfigNormalizationAction[]

@@ -50,7 +50,15 @@ import { z } from "zod"
 
 const ComponentSchema = z.object({
   name: z.string(),
-  type: z.enum(["skill", "plugin", "agent", "bundle"]),
+  type: z.enum([
+    "skill",
+    "plugin",
+    "agent",
+    "command",
+    "tool",
+    "bundle",
+    "profile"
+  ]),
 })
 
 // Parse once at the boundary
@@ -157,6 +165,8 @@ OCX supports the following component types:
 | `skill` | Instructions for AI behavior | Markdown (SKILL.md) |
 | `plugin` | Code that extends OpenCode | TypeScript |
 | `agent` | Agent role definitions | Markdown |
+| `command` | Custom TUI commands | Markdown |
+| `tool` | Custom tool implementations | TypeScript |
 | `bundle` | Collection of components | JSON manifest |
 | `profile` | Shareable profile configuration | JSON |
 

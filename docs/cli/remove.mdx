@@ -17,7 +17,7 @@ Remove installed components from your project. OCX deletes the component files a
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `components...` | Yes | Canonical component IDs to remove (e.g., `kdco/researcher`) |
+| `components...` | Yes | Component references to remove. Canonical IDs are authoritative (e.g., `https://ocx.kdco.dev::kdco/researcher@1.0.0`); shorthand `alias/component` refs (e.g., `kdco/researcher`) are accepted as a convenience. |
 
 ## Flags
 
@@ -32,7 +32,13 @@ Remove installed components from your project. OCX deletes the component files a
 
 ## Examples
 
-### Remove a Single Component
+### Remove a Single Component (Canonical ID)
+
+```bash
+ocx remove https://registry.example.com::shadcn/button@1.2.3
+```
+
+### Remove a Single Component (Shorthand Convenience)
 
 ```bash
 ocx remove shadcn/button

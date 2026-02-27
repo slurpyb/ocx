@@ -371,7 +371,9 @@ export function expectStrictJsonSuccess(result: CLIResult): StrictJsonPayload {
  * Strict JSON failure contract:
  * - exitCode is non-zero
  * - exactly one output channel contains JSON (stdout or stderr)
- * - payload includes success: false and an error object
+ * - payload includes success: false and either:
+ *   - an error object (code + message), or
+ *   - blockers[] with at least one structured blocker (code + message + path)
  */
 export function expectStrictJsonFailure(result: CLIResult): StrictJsonPayload {
 	expect(result.exitCode).not.toBe(0)
@@ -380,15 +382,49 @@ export function expectStrictJsonFailure(result: CLIResult): StrictJsonPayload {
 	const payload = expectStrictJsonStdout(output, channel)
 	expect((payload as { success?: unknown }).success).toBe(false)
 
-	const errorPayload = (payload as { error?: unknown }).error
-	expect(typeof errorPayload).toBe("object")
-	expect(errorPayload).not.toBeNull()
+	const expectNonBlankString = (value: unknown): string => {
+		expect(typeof value).toBe("string")
+		const typedValue = value as string
+		expect(typedValue.trim().length).toBeGreaterThan(0)
+		return typedValue
+	}
 
-	const typedError = errorPayload as { code?: unknown; message?: unknown }
-	expect(typeof typedError.code).toBe("string")
-	expect(typeof typedError.message).toBe("string")
-	expect((typedError.code as string).length).toBeGreaterThan(0)
-	expect((typedError.message as string).length).toBeGreaterThan(0)
+	let validatedFailureShape = false
+
+	const errorPayload = (payload as { error?: unknown }).error
+	if (errorPayload !== undefined) {
+		expect(typeof errorPayload).toBe("object")
+		expect(errorPayload).not.toBeNull()
+
+		const typedError = errorPayload as { code?: unknown; message?: unknown }
+		expectNonBlankString(typedError.code)
+		expectNonBlankString(typedError.message)
+		validatedFailureShape = true
+	}
+
+	const blockers = (payload as { blockers?: unknown }).blockers
+	if (blockers !== undefined) {
+		expect(Array.isArray(blockers)).toBe(true)
+		const blockerList = blockers as unknown[]
+		expect(blockerList.length).toBeGreaterThan(0)
+
+		for (const blocker of blockerList) {
+			expect(typeof blocker).toBe("object")
+			expect(blocker).not.toBeNull()
+			const typedBlocker = blocker as { code?: unknown; message?: unknown; path?: unknown }
+			expectNonBlankString(typedBlocker.code)
+			expectNonBlankString(typedBlocker.message)
+			expectNonBlankString(typedBlocker.path)
+		}
+
+		validatedFailureShape = true
+	}
+
+	if (!validatedFailureShape) {
+		throw new Error(
+			"strict JSON failure payload must include a non-empty error object or blockers array.",
+		)
+	}
 
 	return payload
 }

@@ -279,6 +279,112 @@ describe("fetchRegistryIndex compatibility detection", () => {
 		_clearFetcherCacheForTests()
 	})
 
+	const prefixedTypeCases = [
+		{ prefixed: "ocx:agent", canonical: "agent" },
+		{ prefixed: "ocx:skill", canonical: "skill" },
+		{ prefixed: "ocx:plugin", canonical: "plugin" },
+		{ prefixed: "ocx:command", canonical: "command" },
+		{ prefixed: "ocx:tool", canonical: "tool" },
+		{ prefixed: "ocx:profile", canonical: "profile" },
+		{ prefixed: "ocx:bundle", canonical: "bundle" },
+	] as const
+
+	for (const typeCase of prefixedTypeCases) {
+		it(`rejects v2 index entries that use legacy prefixed type ${typeCase.prefixed}`, async () => {
+			globalThis.fetch = mock(() =>
+				Promise.resolve(
+					new Response(
+						JSON.stringify({
+							$schema: REGISTRY_SCHEMA_V2_URL,
+							author: "Test",
+							components: [
+								{
+									name: "legacy-prefixed",
+									type: typeCase.prefixed,
+									description: "Legacy-prefixed type in v2",
+								},
+							],
+						}),
+						{
+							status: 200,
+							headers: { "content-type": "application/json" },
+						},
+					),
+				),
+			)
+
+			await expect(fetchRegistryIndex("https://v2-prefixed.example.com")).rejects.toThrow(
+				typeCase.prefixed,
+			)
+			await expect(fetchRegistryIndex("https://v2-prefixed.example.com")).rejects.toThrow(
+				`Use "${typeCase.canonical}"`,
+			)
+		})
+	}
+
+	const prototypeLikeTypeKeys = ["__proto__", "toString", "constructor"] as const
+
+	for (const prototypeKey of prototypeLikeTypeKeys) {
+		it(`does not treat prototype key ${prototypeKey} as legacy v2 type alias`, async () => {
+			globalThis.fetch = mock(() =>
+				Promise.resolve(
+					new Response(
+						JSON.stringify({
+							$schema: REGISTRY_SCHEMA_V2_URL,
+							author: "Test",
+							components: [
+								{
+									name: "prototype-key",
+									type: prototypeKey,
+									description: "Prototype key should fail schema, not alias remediation",
+								},
+							],
+						}),
+						{
+							status: 200,
+							headers: { "content-type": "application/json" },
+						},
+					),
+				),
+			)
+
+			try {
+				await fetchRegistryIndex(`https://prototype-${prototypeKey}.example.com`)
+				expect.unreachable("Should have thrown")
+			} catch (error) {
+				expect(error).toBeInstanceOf(RegistryCompatibilityError)
+				const compatError = error as RegistryCompatibilityError
+				expect(compatError.issue).toBe("invalid-format")
+				expect(compatError.message).not.toContain("uses legacy component type")
+				expect(compatError.message).not.toContain("Replace legacy type")
+			}
+		})
+	}
+
+	it("accepts v2 index entries that use canonical profile/bundle types", async () => {
+		globalThis.fetch = mock(() =>
+			Promise.resolve(
+				new Response(
+					JSON.stringify({
+						$schema: REGISTRY_SCHEMA_V2_URL,
+						author: "Test",
+						components: [
+							{ name: "workspace", type: "bundle", description: "Bundle" },
+							{ name: "starter", type: "profile", description: "Profile" },
+						],
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json" },
+					},
+				),
+			),
+		)
+
+		const index = await fetchRegistryIndex("https://v2-canonical.example.com")
+		expect(index.components.map((component) => component.type)).toEqual(["bundle", "profile"])
+	})
+
 	it("adapts legacy v1 object index when schema URL is missing", async () => {
 		globalThis.fetch = mock(() =>
 			Promise.resolve(
@@ -508,6 +614,23 @@ describe("fetchRegistryIndex compatibility detection", () => {
 
 describe("fetchComponentVersion legacy manifest adaptation", () => {
 	const originalFetch = globalThis.fetch
+	const prefixedTypeCases = [
+		{ prefixed: "ocx:agent", canonical: "agent" },
+		{ prefixed: "ocx:skill", canonical: "skill" },
+		{ prefixed: "ocx:plugin", canonical: "plugin" },
+		{ prefixed: "ocx:command", canonical: "command" },
+		{ prefixed: "ocx:tool", canonical: "tool" },
+		{ prefixed: "ocx:bundle", canonical: "bundle" },
+		{ prefixed: "ocx:profile", canonical: "profile" },
+	] as const
+	const legacyTargetPrefixCases = [
+		".opencode/plugins/legacy-target.ts",
+		".opencode\\plugins\\legacy-target.ts",
+	] as const
+	const legacyTargetPrefixShorthandCases = [
+		".opencode/plugins/x.ts",
+		".opencode\\plugins\\x.ts",
+	] as const
 
 	afterEach(() => {
 		globalThis.fetch = originalFetch
@@ -515,8 +638,27 @@ describe("fetchComponentVersion legacy manifest adaptation", () => {
 	})
 
 	it("adapts .opencode/plugin target and ocx:* type to v2 manifest", async () => {
-		globalThis.fetch = mock(() =>
-			Promise.resolve(
+		globalThis.fetch = mock((input) => {
+			const requestUrl = new URL(String(input))
+
+			if (requestUrl.pathname === "/index.json") {
+				return Promise.resolve(
+					new Response(
+						JSON.stringify({
+							author: "Legacy",
+							components: [
+								{ name: "legacy-plugin", type: "ocx:plugin", description: "Legacy plugin" },
+							],
+						}),
+						{
+							status: 200,
+							headers: { "content-type": "application/json" },
+						},
+					),
+				)
+			}
+
+			return Promise.resolve(
 				new Response(
 					JSON.stringify({
 						name: "legacy-plugin",
@@ -536,12 +678,266 @@ describe("fetchComponentVersion legacy manifest adaptation", () => {
 						headers: { "content-type": "application/json" },
 					},
 				),
-			),
-		)
+			)
+		})
 
 		const { manifest } = await fetchComponentVersion("https://legacy.example.com", "legacy-plugin")
 		expect(manifest.type).toBe("plugin")
 		expect(manifest.files[0]).toEqual({ path: "plugin.ts", target: "plugins/legacy-plugin.ts" })
+	})
+
+	for (const typeCase of prefixedTypeCases) {
+		it(`rejects v2 manifests that use legacy prefixed type ${typeCase.prefixed}`, async () => {
+			globalThis.fetch = mock((input) => {
+				const requestUrl = new URL(String(input))
+
+				if (requestUrl.pathname === "/index.json") {
+					return Promise.resolve(
+						new Response(
+							JSON.stringify({
+								$schema: REGISTRY_SCHEMA_V2_URL,
+								author: "Canonical",
+								components: [
+									{
+										name: "legacy-prefixed-manifest",
+										type: typeCase.canonical,
+										description: "Canonical v2 index entry",
+									},
+								],
+							}),
+							{
+								status: 200,
+								headers: { "content-type": "application/json" },
+							},
+						),
+					)
+				}
+
+				return Promise.resolve(
+					new Response(
+						JSON.stringify({
+							name: "legacy-prefixed-manifest",
+							"dist-tags": { latest: "1.0.0" },
+							versions: {
+								"1.0.0": {
+									name: "legacy-prefixed-manifest",
+									type: typeCase.prefixed,
+									description: "Legacy-prefixed manifest type in v2",
+									files: [{ path: "index.ts", target: "plugins/legacy-prefixed-manifest.ts" }],
+									dependencies: [],
+								},
+							},
+						}),
+						{
+							status: 200,
+							headers: { "content-type": "application/json" },
+						},
+					),
+				)
+			})
+
+			await expect(
+				fetchComponentVersion(
+					"https://v2-prefixed-manifest.example.com",
+					"legacy-prefixed-manifest",
+				),
+			).rejects.toThrow(typeCase.prefixed)
+			await expect(
+				fetchComponentVersion(
+					"https://v2-prefixed-manifest.example.com",
+					"legacy-prefixed-manifest",
+				),
+			).rejects.toThrow(`Use "${typeCase.canonical}"`)
+		})
+	}
+
+	for (const legacyTarget of legacyTargetPrefixCases) {
+		it(`rejects v2 manifests that use legacy target prefix: ${legacyTarget}`, async () => {
+			globalThis.fetch = mock((input) => {
+				const requestUrl = new URL(String(input))
+
+				if (requestUrl.pathname === "/index.json") {
+					return Promise.resolve(
+						new Response(
+							JSON.stringify({
+								$schema: REGISTRY_SCHEMA_V2_URL,
+								author: "Canonical",
+								components: [
+									{
+										name: "legacy-target-prefix",
+										type: "plugin",
+										description: "Canonical v2 index entry",
+									},
+								],
+							}),
+							{
+								status: 200,
+								headers: { "content-type": "application/json" },
+							},
+						),
+					)
+				}
+
+				return Promise.resolve(
+					new Response(
+						JSON.stringify({
+							name: "legacy-target-prefix",
+							"dist-tags": { latest: "1.0.0" },
+							versions: {
+								"1.0.0": {
+									name: "legacy-target-prefix",
+									type: "plugin",
+									description: "Legacy target prefix in v2",
+									files: [{ path: "index.ts", target: legacyTarget }],
+									dependencies: [],
+								},
+							},
+						}),
+						{
+							status: 200,
+							headers: { "content-type": "application/json" },
+						},
+					),
+				)
+			})
+
+			await expect(
+				fetchComponentVersion("https://v2-legacy-target.example.com", "legacy-target-prefix"),
+			).rejects.toThrow(`target "${legacyTarget}"`)
+			await expect(
+				fetchComponentVersion("https://v2-legacy-target.example.com", "legacy-target-prefix"),
+			).rejects.toThrow("use canonical root-relative targets")
+			await expect(
+				fetchComponentVersion("https://v2-legacy-target.example.com", "legacy-target-prefix"),
+			).rejects.toThrow("without .opencode/")
+		})
+	}
+
+	for (const legacyTarget of legacyTargetPrefixShorthandCases) {
+		it(`rejects v2 manifests that use legacy target shorthand prefix: ${legacyTarget}`, async () => {
+			globalThis.fetch = mock((input) => {
+				const requestUrl = new URL(String(input))
+
+				if (requestUrl.pathname === "/index.json") {
+					return Promise.resolve(
+						new Response(
+							JSON.stringify({
+								$schema: REGISTRY_SCHEMA_V2_URL,
+								author: "Canonical",
+								components: [
+									{
+										name: "legacy-target-shorthand",
+										type: "plugin",
+										description: "Canonical v2 index entry",
+									},
+								],
+							}),
+							{
+								status: 200,
+								headers: { "content-type": "application/json" },
+							},
+						),
+					)
+				}
+
+				return Promise.resolve(
+					new Response(
+						JSON.stringify({
+							name: "legacy-target-shorthand",
+							"dist-tags": { latest: "1.0.0" },
+							versions: {
+								"1.0.0": {
+									name: "legacy-target-shorthand",
+									type: "plugin",
+									description: "Legacy target shorthand prefix in v2",
+									files: [legacyTarget],
+									dependencies: [],
+								},
+							},
+						}),
+						{
+							status: 200,
+							headers: { "content-type": "application/json" },
+						},
+					),
+				)
+			})
+
+			await expect(
+				fetchComponentVersion(
+					"https://v2-legacy-target-shorthand.example.com",
+					"legacy-target-shorthand",
+				),
+			).rejects.toThrow(`target "${legacyTarget}"`)
+			await expect(
+				fetchComponentVersion(
+					"https://v2-legacy-target-shorthand.example.com",
+					"legacy-target-shorthand",
+				),
+			).rejects.toThrow("use canonical root-relative targets")
+			await expect(
+				fetchComponentVersion(
+					"https://v2-legacy-target-shorthand.example.com",
+					"legacy-target-shorthand",
+				),
+			).rejects.toThrow("without .opencode/")
+		})
+	}
+
+	it("keeps canonical v2 manifest targets working", async () => {
+		globalThis.fetch = mock((input) => {
+			const requestUrl = new URL(String(input))
+
+			if (requestUrl.pathname === "/index.json") {
+				return Promise.resolve(
+					new Response(
+						JSON.stringify({
+							$schema: REGISTRY_SCHEMA_V2_URL,
+							author: "Canonical",
+							components: [
+								{
+									name: "canonical-target",
+									type: "plugin",
+									description: "Canonical v2 manifest",
+								},
+							],
+						}),
+						{
+							status: 200,
+							headers: { "content-type": "application/json" },
+						},
+					),
+				)
+			}
+
+			return Promise.resolve(
+				new Response(
+					JSON.stringify({
+						name: "canonical-target",
+						"dist-tags": { latest: "1.0.0" },
+						versions: {
+							"1.0.0": {
+								name: "canonical-target",
+								type: "plugin",
+								description: "Canonical manifest",
+								files: [{ path: "index.ts", target: "plugins/canonical-target.ts" }],
+								dependencies: [],
+							},
+						},
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json" },
+					},
+				),
+			)
+		})
+
+		const { manifest } = await fetchComponentVersion(
+			"https://v2-canonical-target.example.com",
+			"canonical-target",
+		)
+		expect(manifest.files[0]).toEqual({ path: "index.ts", target: "plugins/canonical-target.ts" })
 	})
 
 	it("loads legacy fixture manifests for kit/ws and kit/omo", async () => {
@@ -587,8 +983,27 @@ describe("fetchComponentVersion legacy manifest adaptation", () => {
 
 	for (const unsafe of unsafeTargets) {
 		it(`rejects unsafe canonicalization target: ${unsafe.target}`, async () => {
-			globalThis.fetch = mock(() =>
-				Promise.resolve(
+			globalThis.fetch = mock((input) => {
+				const requestUrl = new URL(String(input))
+
+				if (requestUrl.pathname === "/index.json") {
+					return Promise.resolve(
+						new Response(
+							JSON.stringify({
+								author: "Legacy",
+								components: [
+									{ name: "unsafe-plugin", type: "ocx:plugin", description: "Unsafe plugin" },
+								],
+							}),
+							{
+								status: 200,
+								headers: { "content-type": "application/json" },
+							},
+						),
+					)
+				}
+
+				return Promise.resolve(
 					new Response(
 						JSON.stringify({
 							name: "unsafe-plugin",
@@ -608,8 +1023,8 @@ describe("fetchComponentVersion legacy manifest adaptation", () => {
 							headers: { "content-type": "application/json" },
 						},
 					),
-				),
-			)
+				)
+			})
 
 			try {
 				await fetchComponentVersion("https://legacy.example.com", "unsafe-plugin")

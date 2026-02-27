@@ -158,9 +158,6 @@ export const componentTypeSchema = z.enum([
 	"tool",
 	"bundle",
 	"profile",
-	// OCX Kit uses prefixed variants
-	"ocx:bundle",
-	"ocx:profile",
 ])
 
 export type ComponentType = z.infer<typeof componentTypeSchema>
@@ -703,7 +700,7 @@ export function validateFileTarget(target: string, componentType?: ComponentType
 	}
 
 	// Check blocked paths (except for profiles, which install to their own directory)
-	const isProfile = componentType === "profile" || componentType === "ocx:profile"
+	const isProfile = componentType === "profile"
 	if (!isProfile) {
 		// Normalize the target path to evaluate the cleaned/resolved segments
 		// This prevents bypass via paths like "foo/../.git/config"

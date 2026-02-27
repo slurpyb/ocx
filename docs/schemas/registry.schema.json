@@ -59,16 +59,7 @@
 				},
 				"type": {
 					"type": "string",
-					"enum": [
-						"agent",
-						"skill",
-						"plugin",
-						"command",
-						"tool",
-						"bundle",
-						"ocx:bundle",
-						"ocx:profile"
-					],
+					"enum": ["agent", "skill", "plugin", "command", "tool", "bundle", "profile"],
 					"description": "Component type"
 				},
 				"description": {
@@ -85,7 +76,7 @@
 							{
 								"type": "string",
 								"minLength": 1,
-								"description": "Source path (target auto-inferred as root-relative path; OCX V2 resolves to .opencode/<path> based on component type)"
+								"description": "Source path (target auto-inferred to the same root-relative path)"
 							},
 							{
 								"type": "object",
@@ -99,8 +90,8 @@
 									},
 									"target": {
 										"type": "string",
-										"pattern": "^(agent|skill|plugin|command|tool|philosophy)/",
-										"description": "Target path in project (root-relative, no .opencode/ prefix; OCX V2 resolves based on component type)"
+										"pattern": "^(agent|agents|skill|skills|plugin|plugins|command|commands|tool|tools|bundle|bundles|profile|profiles)/",
+										"description": "Root-relative target path (no .opencode/ prefix). Must start with a canonical V2 root segment (singular or plural): agent(s), skill(s), plugin(s), command(s), tool(s), bundle(s), or profile(s)."
 									}
 								}
 							}

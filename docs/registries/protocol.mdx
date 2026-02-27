@@ -17,23 +17,25 @@ This document specifies the HTTP API that OCX-compatible registries must impleme
 GET /.well-known/ocx.json
 ```
 
-Enables automatic registry discovery from a domain. If provided, clients can register using just the domain URL.
+Optional discovery metadata for clients that support a `/.well-known/ocx.json` lookup.
 
 **Response:**
 
 ```json
 {
-  "version": 1,
   "registry": "/index.json"
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `version` | number | Protocol version (currently `1`) |
 | `registry` | string | Path to the registry index endpoint |
 
 If not provided, clients must be configured with the full registry URL.
+
+<Note>
+`ocx registry add` currently validates registries by requesting `<registry-url>/index.json` directly. It does **not** resolve `/.well-known/ocx.json` during add flows.
+</Note>
 
 ## Required Endpoints
 
@@ -51,14 +53,12 @@ Returns registry metadata and a list of available components.
 {
   "$schema": "https://ocx.kdco.dev/schemas/v2/registry.json",
   "name": "My Registry",
-  "namespace": "myregistry",
   "version": "1.0.0",
   "author": "Your Name",
   "components": [
     {
       "name": "my-skill",
       "type": "skill",
-      "version": "1.0.0",
       "description": "A helpful skill"
     }
   ]
@@ -67,19 +67,28 @@ Returns registry metadata and a list of available components.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `$schema` | string | Yes | For OCX CLI-supported manifests, must be `https://ocx.kdco.dev/schemas/v2/registry.json` |
-| `name` | string | Yes | Human-readable registry name |
-| `namespace` | string | Yes | Registry namespace (kebab-case, informational) |
-| `version` | string | Yes | Registry version (semver recommended) |
+| `$schema` | string | Conditional | Recommended for v2 registries; when present for OCX CLI-supported manifests, must be `https://ocx.kdco.dev/schemas/v2/registry.json` |
+| `name` | string | No | Human-readable registry name (emitted by `ocx build`) |
+| `version` | string | No | Registry version metadata (emitted by `ocx build`) |
 | `author` | string | Yes | Registry author or organization |
 | `components` | array | Yes | List of available components |
 
+Component summaries inside `components[]` use this shape:
+
+| Field | Type | Required |
+|-------|------|----------|
+| `name` | string | Yes |
+| `type` | string | Yes |
+| `description` | string | Yes |
+
+`namespace` and per-component `version` are not part of the runtime-required summary contract.
+
 <Note>
-For OCX CLI-supported manifests, `$schema` is required and must be `https://ocx.kdco.dev/schemas/v2/registry.json`. Registries may still serve `https://ocx.kdco.dev/schemas/registry.json` as a compatibility alias/latest pointer, but OCX CLI treats registry manifests with a missing `$schema` or the unversioned URL as legacy v1 and rejects them.
+For v2 registries, publish `$schema: "https://ocx.kdco.dev/schemas/v2/registry.json"`. If `$schema` is missing (or uses the unversioned legacy URL), OCX CLI treats the payload as legacy v1 compatibility mode.
 </Note>
 
 <Note>
-The `index.namespace` field is informational only and not used for component resolution. Users reference components via the registry name configured with `ocx registry add --name <name>`.
+Component resolution uses the configured alias from `ocx registry add --name <alias>` (for `<alias>/<component>` refs), not any registry-declared namespace field.
 </Note>
 
 ### Component Packument
@@ -184,11 +193,14 @@ A registry with a single skill needs three files:
 {
   "$schema": "https://ocx.kdco.dev/schemas/v2/registry.json",
   "name": "Minimal Registry",
-  "namespace": "minimal",
   "version": "1.0.0",
   "author": "Your Name",
   "components": [
-    { "name": "my-skill", "type": "skill", "version": "1.0.0" }
+    {
+      "name": "my-skill",
+      "type": "skill",
+      "description": "A helpful skill"
+    }
   ]
 }
 ```
@@ -204,6 +216,7 @@ A registry with a single skill needs three files:
       "name": "my-skill",
       "type": "skill",
       "version": "1.0.0",
+      "description": "A helpful skill",
       "files": [{ "path": "SKILL.md" }]
     }
   }

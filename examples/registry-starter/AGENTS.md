@@ -50,7 +50,15 @@ import { z } from "zod"
 
 const ComponentSchema = z.object({
   name: z.string(),
-  type: z.enum(["skill", "plugin", "agent", "command", "tool", "bundle", "profile"]),
+  type: z.enum([
+    "skill",
+    "plugin",
+    "agent",
+    "command",
+    "tool",
+    "bundle",
+    "profile"
+  ]),
 })
 
 // Parse once at the boundary
@@ -120,7 +128,10 @@ my-registry/
 │   ├── index.json          # Registry index
 │   ├── .well-known/
 │   │   └── ocx.json        # Discovery endpoint
-│   └── ...                 # Component files
+│   └── components/
+│       ├── my-skill.json
+│       └── my-skill/
+│           └── skills/my-skill/SKILL.md
 └── wrangler.jsonc          # Cloudflare config
 ```
 
@@ -132,7 +143,6 @@ The registry manifest defines your components:
 {
   "$schema": "https://ocx.kdco.dev/schemas/v2/registry.json",
   "name": "My Registry",
-  "namespace": "my-namespace",
   "version": "0.0.1",
   "author": "Your Name",
   "components": [
@@ -145,6 +155,10 @@ The registry manifest defines your components:
   ]
 }
 ```
+
+`name` is display metadata. Runtime component identity comes from the alias configured
+with `ocx registry add <url> --name <alias>`, and users reference components as
+`<alias>/<component>`.
 
 ---
 
@@ -257,15 +271,7 @@ export default {
   // Register tools
   tools: [myTool],
 
-  // Inject configuration
-  config: {
-    mcp: {
-      "my-server": {
-        type: "remote",
-        url: "https://api.example.com/mcp"
-      }
-    }
-  }
+  // Registry-level settings are declared in registry.jsonc under component `opencode`
 } satisfies Plugin
 ```
 
@@ -452,15 +458,15 @@ files/profiles/my-profile/
   "description": "My custom development profile",
   "files": [
     {
-      "source": "profiles/my-profile/ocx.jsonc",
+      "path": "profiles/my-profile/ocx.jsonc",
       "target": "ocx.jsonc"
     },
     {
-      "source": "profiles/my-profile/opencode.jsonc",
+      "path": "profiles/my-profile/opencode.jsonc",
       "target": "opencode.jsonc"
     },
     {
-      "source": "profiles/my-profile/AGENTS.md",
+      "path": "profiles/my-profile/AGENTS.md",
       "target": "AGENTS.md"
     }
   ]
@@ -470,7 +476,7 @@ files/profiles/my-profile/
 **Usage:**
 ```bash
 # Install profile from registry
-ocx profile add my-profile --source namespace/my-profile --global
+ocx profile add my-profile --source my/my-profile --global
 
 # Use the profile
 ocx opencode -p my-profile
@@ -485,7 +491,7 @@ Components can inject configuration into the user's `opencode.jsonc`:
 ### MCP Servers
 
 ```typescript
-config: {
+opencode: {
   mcp: {
     "remote-api": {
       type: "remote",
@@ -506,11 +512,12 @@ config: {
 ### Tool Configuration
 
 ```typescript
-config: {
+opencode: {
   tools: {
-    enabled: ["Read", "Edit", "Bash"],   // Allow these tools
-    disabled: ["Write"],                  // Block these tools
-    "*": { confirmation: true }           // Require confirmation for all
+    "*": false,       // Block all tools by default
+    "Read": true,     // Allow read access
+    "Edit": true,     // Allow editing
+    "Bash": true      // Allow shell commands
   }
 }
 ```
@@ -518,15 +525,20 @@ config: {
 ### Permissions
 
 ```typescript
-config: {
-  permissions: {
+opencode: {
+  permission: {
     bash: {
-      allow: ["npm test", "bun run *"],
-      deny: ["rm -rf *", "sudo *"]
+      "npm test": "allow",
+      "bun run *": "allow",
+      "rm -rf *": "deny",
+      "sudo *": "deny",
+      "*": "ask"
     },
     edit: {
-      allow: ["src/**/*.ts"],
-      deny: ["*.lock", "node_modules/**"]
+      "src/**/*.ts": "allow",
+      "*.lock": "deny",
+      "node_modules/**": "deny",
+      "*": "ask"
     }
   }
 }
@@ -537,7 +549,7 @@ config: {
 Use the `instructions` array to load instruction files from custom paths instead of root AGENTS.md:
 
 ```typescript
-config: {
+opencode: {
   instructions: [
     "instructions/coding-standards.md",
     "instructions/api-guidelines.md"
@@ -582,9 +594,8 @@ For advanced control:
 {
   "files": [
     {
-      "source": "skills/my-skill/SKILL.md",
-      "target": "skills/my-skill.md",
-      "transform": "minify"
+      "path": "skills/my-skill/SKILL.md",
+      "target": "skills/my-skill.md"
     }
   ]
 }
@@ -608,7 +619,7 @@ Use bare name:
 
 ### External Registry
 
-Use qualified name (registry-name/component):
+Use qualified name (alias/component):
 
 ```json
 {
@@ -637,11 +648,13 @@ dist/
 ├── index.json              # Registry manifest
 ├── .well-known/
 │   └── ocx.json            # Discovery endpoint
-├── skills/
-│   └── my-skill/
-│       └── SKILL.md
-└── plugins/
-    └── my-plugin.ts
+└── components/
+    ├── my-skill.json
+    ├── my-skill/
+    │   └── skills/my-skill/SKILL.md
+    ├── my-plugin.json
+    └── my-plugin/
+        └── plugins/my-plugin.ts
 ```
 
 ### Deploy to Cloudflare
@@ -688,9 +701,9 @@ OpenCode supports multiple instruction file types, but follow these guidelines:
 
 **Registry component guidelines:**
 - **DO NOT** install instruction files to root `AGENTS.md` from registry components
-- **DO** use custom paths with the `instructions` config option:
+- **DO** use custom paths with the `opencode.instructions` option:
   ```typescript
-  config: {
+  opencode: {
     instructions: [
       "instructions/my-component-guide.md",
       "instructions/my-plugin-guidelines.md"

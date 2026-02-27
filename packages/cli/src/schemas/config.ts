@@ -53,6 +53,14 @@ export const ocxConfigSchema = z.object({
 
 export type OcxConfig = z.infer<typeof ocxConfigSchema>
 
+export interface ReadOcxConfigOptions {
+	/**
+	 * Emit parse diagnostics directly to stderr.
+	 * Defaults to true to preserve existing human-mode behavior.
+	 */
+	emitParseDiagnostics?: boolean
+}
+
 // =============================================================================
 // RECEIPT SCHEMA (V1: replaces ocx.lock)
 // =============================================================================
@@ -434,7 +442,10 @@ export function findOcxLock(
 /**
  * Read ocx.jsonc config file
  */
-export async function readOcxConfig(cwd: string): Promise<OcxConfig | null> {
+export async function readOcxConfig(
+	cwd: string,
+	options: ReadOcxConfigOptions = {},
+): Promise<OcxConfig | null> {
 	const { path: configPath, exists } = findOcxConfig(cwd)
 
 	if (!exists) {
@@ -447,7 +458,9 @@ export async function readOcxConfig(cwd: string): Promise<OcxConfig | null> {
 		const json = parseJsonc(content, [], { allowTrailingComma: true })
 		return ocxConfigSchema.parse(json)
 	} catch (error) {
-		console.error(`Error parsing ${configPath}:`, error)
+		if (options.emitParseDiagnostics ?? true) {
+			console.error(`Error parsing ${configPath}:`, error)
+		}
 		throw error
 	}
 }

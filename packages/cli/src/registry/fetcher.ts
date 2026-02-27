@@ -25,6 +25,18 @@ import { normalizeRegistryUrl } from "../utils/url"
 
 // In-memory cache for deduplication
 const cache = new Map<string, Promise<unknown>>()
+type RegistrySchemaMode = "legacy-v1" | "v2"
+const registrySchemaModeCache = new Map<string, RegistrySchemaMode>()
+
+const LEGACY_V2_TYPE_ALIAS_MAP = {
+	"ocx:agent": "agent",
+	"ocx:skill": "skill",
+	"ocx:plugin": "plugin",
+	"ocx:command": "command",
+	"ocx:tool": "tool",
+	"ocx:bundle": "bundle",
+	"ocx:profile": "profile",
+} as const
 
 const LEGACY_COMPONENT_TYPE_MAP = {
 	"ocx:agent": "agent",
@@ -96,6 +108,115 @@ function mapLegacyComponentType(type: unknown, context: string): string {
 	}
 
 	return parsedType.data
+}
+
+function isLegacyV2TypeAlias(type: unknown): type is keyof typeof LEGACY_V2_TYPE_ALIAS_MAP {
+	return typeof type === "string" && Object.hasOwn(LEGACY_V2_TYPE_ALIAS_MAP, type)
+}
+
+function hasLegacyManifestTargetPrefix(target: string): boolean {
+	return target.startsWith(".opencode/") || target.startsWith(".opencode\\")
+}
+
+function collectLegacyManifestTargetIssues(
+	manifest: unknown,
+): Array<{ path: string; target: string }> {
+	if (!isPlainObject(manifest) || !Array.isArray(manifest.files)) {
+		return []
+	}
+
+	const issues: Array<{ path: string; target: string }> = []
+
+	for (const [index, file] of manifest.files.entries()) {
+		if (typeof file === "string") {
+			if (!hasLegacyManifestTargetPrefix(file)) {
+				continue
+			}
+
+			issues.push({
+				path: `files[${index}]`,
+				target: file,
+			})
+			continue
+		}
+
+		if (!isPlainObject(file) || typeof file.target !== "string") {
+			continue
+		}
+
+		if (!hasLegacyManifestTargetPrefix(file.target)) {
+			continue
+		}
+
+		issues.push({
+			path: `files[${index}].target`,
+			target: file.target,
+		})
+	}
+
+	return issues
+}
+
+function collectLegacyV2TypeIssues(data: unknown): Array<{
+	path: string
+	type: keyof typeof LEGACY_V2_TYPE_ALIAS_MAP
+}> {
+	if (!isPlainObject(data)) {
+		return []
+	}
+
+	const components = data.components
+	if (!Array.isArray(components)) {
+		return []
+	}
+
+	const issues: Array<{
+		path: string
+		type: keyof typeof LEGACY_V2_TYPE_ALIAS_MAP
+	}> = []
+
+	for (const [index, component] of components.entries()) {
+		if (!isPlainObject(component)) {
+			continue
+		}
+
+		const type = component.type
+		if (!isLegacyV2TypeAlias(type)) {
+			continue
+		}
+
+		issues.push({ path: `components[${index}].type`, type })
+	}
+
+	return issues
+}
+
+function hasLegacySignalsInManifest(manifest: unknown): boolean {
+	if (!isPlainObject(manifest)) {
+		return false
+	}
+
+	if (typeof manifest.type === "string" && manifest.type.startsWith("ocx:")) {
+		return true
+	}
+
+	return collectLegacyManifestTargetIssues(manifest).length > 0
+}
+
+async function resolveRegistrySchemaMode(baseUrl: string): Promise<RegistrySchemaMode | null> {
+	const normalizedBaseUrl = normalizeRegistryUrl(baseUrl)
+	const cachedMode = registrySchemaModeCache.get(normalizedBaseUrl)
+	if (cachedMode) {
+		return cachedMode
+	}
+
+	try {
+		await fetchRegistryIndex(normalizedBaseUrl)
+	} catch {
+		return null
+	}
+
+	return registrySchemaModeCache.get(normalizedBaseUrl) ?? null
 }
 
 function canonicalizeLegacyTargetPath(rawTarget: string, context: string): string {
@@ -183,12 +304,20 @@ function adaptLegacyComponentManifest(manifest: unknown, context: string): unkno
 
 	if (Array.isArray(adaptedManifest.files)) {
 		adaptedManifest.files = adaptedManifest.files.map((file, index) => {
+			if (typeof file === "string") {
+				if (!hasLegacyManifestTargetPrefix(file)) {
+					return file
+				}
+
+				return canonicalizeLegacyTargetPath(file, `${context}.files[${index}]`)
+			}
+
 			if (!isPlainObject(file)) return file
 
 			const target = file.target
 			if (typeof target !== "string") return file
 
-			const isLegacyTarget = target.startsWith(".opencode/") || target.startsWith(".opencode\\")
+			const isLegacyTarget = hasLegacyManifestTargetPrefix(target)
 			if (!isLegacyTarget) return file
 
 			return {
@@ -260,7 +389,10 @@ function adaptLegacyRegistryIndex(data: unknown, url: string): unknown {
 /**
  * Fetch with caching - deduplicates concurrent requests
  */
-async function fetchWithCache<T>(url: string, parse: (data: unknown) => T): Promise<T> {
+async function fetchWithCache<T>(
+	url: string,
+	parse: (data: unknown) => T | Promise<T>,
+): Promise<T> {
 	const cached = cache.get(url)
 	if (cached) {
 		return cached as Promise<T>
@@ -298,7 +430,7 @@ async function fetchWithCache<T>(url: string, parse: (data: unknown) => T): Prom
 			)
 		}
 
-		return parse(data)
+		return await parse(data)
 	})()
 
 	cache.set(url, promise)
@@ -336,7 +468,8 @@ export function classifyRegistryIndexIssue(data: unknown): {
  * Fetch registry index
  */
 export async function fetchRegistryIndex(baseUrl: string): Promise<RegistryIndex> {
-	const url = `${normalizeRegistryUrl(baseUrl)}/index.json`
+	const normalizedBaseUrl = normalizeRegistryUrl(baseUrl)
+	const url = `${normalizedBaseUrl}/index.json`
 
 	return fetchWithCache(url, (data) => {
 		// Pre-schema classification: detect known incompatible formats
@@ -347,7 +480,9 @@ export async function fetchRegistryIndex(baseUrl: string): Promise<RegistryIndex
 		}
 
 		let candidateData = data
+		let schemaMode: RegistrySchemaMode = "v2"
 		if (classification?.issue === "legacy-schema-v1") {
+			schemaMode = "legacy-v1"
 			try {
 				candidateData = adaptLegacyRegistryIndex(data, url)
 			} catch (error) {
@@ -366,6 +501,24 @@ export async function fetchRegistryIndex(baseUrl: string): Promise<RegistryIndex
 					},
 				)
 			}
+		} else {
+			const legacyTypeIssues = collectLegacyV2TypeIssues(candidateData)
+			if (legacyTypeIssues.length > 0) {
+				const firstIssue = legacyTypeIssues[0]
+				if (!firstIssue) {
+					throw new Error("Unexpected missing legacy type issue")
+				}
+
+				const canonicalType = LEGACY_V2_TYPE_ALIAS_MAP[firstIssue.type]
+				throw new RegistryCompatibilityError(
+					`Registry at ${url} uses legacy component type "${firstIssue.type}" in ${firstIssue.path}. Use "${canonicalType}" for v2 registries.`,
+					{
+						url,
+						issue: "invalid-format",
+						remediation: `Replace legacy type "${firstIssue.type}" with canonical "${canonicalType}" in v2 manifests.`,
+					},
+				)
+			}
 		}
 
 		const result = registryIndexSchema.safeParse(candidateData)
@@ -381,6 +534,8 @@ export async function fetchRegistryIndex(baseUrl: string): Promise<RegistryIndex
 				},
 			)
 		}
+
+		registrySchemaModeCache.set(normalizedBaseUrl, schemaMode)
 		return result.data
 	})
 }
@@ -404,7 +559,7 @@ export async function fetchComponentVersion(
 ): Promise<{ manifest: ComponentManifest; version: string }> {
 	const url = `${normalizeRegistryUrl(baseUrl)}/components/${name}.json`
 
-	return fetchWithCache(`${url}#v=${version ?? "latest"}`, (data) => {
+	return fetchWithCache(`${url}#v=${version ?? "latest"}`, async (data) => {
 		// 1. Parse as packument
 		const packumentResult = packumentEnvelopeSchema.safeParse(data)
 		if (!packumentResult.success) {
@@ -431,13 +586,35 @@ export async function fetchComponentVersion(
 			)
 		}
 
-		// 3. Validate manifest
-		const adaptedManifest = adaptLegacyComponentManifest(
-			manifest,
-			`component "${name}@${resolvedVersion}"`,
-		)
+		// 3. Validate manifest (legacy adaptation is version-gated)
+		const context = `component "${name}@${resolvedVersion}"`
+		let candidateManifest: unknown = manifest
 
-		const manifestResult = componentManifestSchema.safeParse(adaptedManifest)
+		if (hasLegacySignalsInManifest(manifest)) {
+			const schemaMode = await resolveRegistrySchemaMode(baseUrl)
+
+			if (schemaMode === "legacy-v1") {
+				candidateManifest = adaptLegacyComponentManifest(manifest, context)
+			} else {
+				const legacyTargetIssues = collectLegacyManifestTargetIssues(manifest)
+				const firstLegacyTargetIssue = legacyTargetIssues[0]
+				if (firstLegacyTargetIssue) {
+					throw new ValidationError(
+						`Invalid component manifest for "${name}@${resolvedVersion}": target "${firstLegacyTargetIssue.target}" at ${firstLegacyTargetIssue.path} uses a legacy .opencode/ prefix. ` +
+							`For v2 registries, use canonical root-relative targets like "plugins/...", "profiles/...", "agents/...", "skills/...", or "commands/..." (without .opencode/).`,
+					)
+				}
+
+				if (isPlainObject(manifest) && isLegacyV2TypeAlias(manifest.type)) {
+					const canonicalType = LEGACY_V2_TYPE_ALIAS_MAP[manifest.type]
+					throw new ValidationError(
+						`Invalid component manifest for "${name}@${resolvedVersion}": type "${manifest.type}" is a legacy v1 alias. Use "${canonicalType}" for v2 registries.`,
+					)
+				}
+			}
+		}
+
+		const manifestResult = componentManifestSchema.safeParse(candidateManifest)
 		if (!manifestResult.success) {
 			throw new ValidationError(
 				`Invalid component manifest for "${name}@${resolvedVersion}": ${manifestResult.error.message}`,
@@ -484,4 +661,5 @@ export type { ComponentManifest, RegistryIndex, McpServer }
 /** @internal Clear cache for testing purposes only */
 export function _clearFetcherCacheForTests(): void {
 	cache.clear()
+	registrySchemaModeCache.clear()
 }

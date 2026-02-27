@@ -711,8 +711,10 @@ describe("ocx self uninstall --json win32 output hygiene", () => {
 
 		const originalPlatform = process.platform
 		const originalXdg = process.env.XDG_CONFIG_HOME
+		const originalNpmUserAgent = process.env.npm_config_user_agent
 		Object.defineProperty(process, "platform", { value: "win32" })
 		process.env.XDG_CONFIG_HOME = testDir
+		process.env.npm_config_user_agent = ""
 
 		const exitSpy = spyOn(process, "exit").mockImplementation(((code?: number) => {
 			throw new Error(`EXIT:${code ?? 0}`)
@@ -728,6 +730,11 @@ describe("ocx self uninstall --json win32 output hygiene", () => {
 				delete process.env.XDG_CONFIG_HOME
 			} else {
 				process.env.XDG_CONFIG_HOME = originalXdg
+			}
+			if (originalNpmUserAgent === undefined) {
+				delete process.env.npm_config_user_agent
+			} else {
+				process.env.npm_config_user_agent = originalNpmUserAgent
 			}
 		}
 

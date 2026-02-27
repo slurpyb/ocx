@@ -31,7 +31,9 @@ The build step runs `ocx build . --out dist` which:
 1. Validates `registry.jsonc` against the schema
 2. Generates `index.json` and component packuments
 3. Copies component files to `dist/components/`
-4. Generates `.well-known/ocx.json` for discovery
+4. Generates `.well-known/ocx.json` (optional discovery metadata)
+
+`ocx init --namespace` is a scaffolding input (naming/template convenience). Runtime component refs still use the registry alias chosen by the user via `ocx registry add --name <alias>`.
 
 ## Registry Philosophy
 
@@ -62,8 +64,8 @@ OCX uses **Cargo-style union types** for a clean developer experience: use strin
 
 ```jsonc
 {
+  "$schema": "https://ocx.kdco.dev/schemas/v2/registry.json",
   "name": "My Extensions",
-  "namespace": "my",
   "version": "1.0.0",
   "author": "Your Name",
   "components": [
@@ -79,8 +81,9 @@ OCX uses **Cargo-style union types** for a clean developer experience: use strin
 ```
 
 **Key fields:**
-- `namespace`: Used during build; informational only in the published registry (not used for component resolution).
-- `name`: Clean component name (no prefix required).
+- `$schema`: Required for OCX v2 manifests. Use `https://ocx.kdco.dev/schemas/v2/registry.json`.
+- `name`: Registry display name (human-readable metadata for the registry itself).
+- **Registry alias**: Component resolution uses the alias configured by the user at install time (`ocx registry add <url> --name <alias>`). Do not add a top-level `namespace` field in v2 manifests.
 - `dependencies`: Use bare names for same-registry deps (`["utils"]`), qualified names for cross-registry (`["other/utils"]`).
 
 ## Component Types
@@ -273,12 +276,13 @@ Add a `/.well-known/ocx.json` endpoint to enable automatic discovery:
 
 ```jsonc
 {
-  "version": 1,
   "registry": "/index.json"
 }
 ```
 
-This allows users to register using just the domain:
+OCX currently validates registries by requesting `<url>/index.json` directly during `ocx registry add`; it does not resolve `/.well-known/ocx.json` automatically in that path.
+
+Use a URL whose `/index.json` is directly available:
 
 ```bash
 ocx registry add https://example.com --name my

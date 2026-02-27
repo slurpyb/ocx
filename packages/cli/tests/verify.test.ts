@@ -5,10 +5,203 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { existsSync } from "node:fs"
-import { readFile, writeFile } from "node:fs/promises"
+import { readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
+import { aliasSchema } from "../src/schemas/registry"
 import { cleanupTempDir, createTempDir, parseJsonc, runCLI } from "./helpers"
 import { type MockRegistry, startMockRegistry } from "./mock-registry"
+
+const COMPONENT_REFERENCE_PATTERN = /^(?:[a-z0-9-]+\/[a-z0-9-]+|<[^\s/>]+\/[^\s/>]+>)$/
+const REGISTRY_ALIAS_PLACEHOLDER_PATTERN = /^<[^\s<>]+>$/
+
+function normalizeCommandText(command: string): string {
+	return command.trim().replace(/\s+/g, " ")
+}
+
+function extractLongFlagsFromHelp(updateHelpOutput: string): Set<string> {
+	const longFlags = new Set<string>()
+	const lines = updateHelpOutput.split(/\r?\n/)
+	let inOptionsSection = false
+
+	for (const line of lines) {
+		if (!inOptionsSection) {
+			if (/^\s*Options:\s*$/i.test(line)) {
+				inOptionsSection = true
+			}
+			continue
+		}
+
+		if (/^\s*$/.test(line)) {
+			continue
+		}
+
+		if (/^\S/.test(line)) {
+			break
+		}
+
+		const optionDefinition = line.match(/^\s*(?:-[a-z0-9],\s*)?(--[a-z0-9][a-z0-9-]*)\b/)
+		if (optionDefinition) {
+			longFlags.add(optionDefinition[1])
+		}
+	}
+
+	return longFlags
+}
+
+function isRegistryNameArgument(token: string | undefined): boolean {
+	if (!token) {
+		return false
+	}
+
+	if (REGISTRY_ALIAS_PLACEHOLDER_PATTERN.test(token)) {
+		return true
+	}
+
+	return aliasSchema.safeParse(token).success
+}
+
+function isSupportedUpdateRemediationCommand(command: string): boolean {
+	const tokens = normalizeCommandText(command).split(/\s+/)
+	if (tokens[0] !== "ocx" || tokens[1] !== "update") {
+		return false
+	}
+
+	const args = tokens.slice(2)
+	if (args.length === 0) {
+		return false
+	}
+
+	if (args.length === 1 && args[0] === "--all") {
+		return true
+	}
+
+	if (args[0] === "--registry") {
+		return args.length === 2 && isRegistryNameArgument(args[1])
+	}
+
+	if (args.some((arg) => arg.startsWith("--"))) {
+		return false
+	}
+
+	return args.every((arg) => COMPONENT_REFERENCE_PATTERN.test(arg))
+}
+
+function extractSuggestedUpdateCommands(output: string): string[] {
+	const singleQuotedCommands = [...output.matchAll(/'((?:ocx\s+update)[^']*)'/g)].map((match) =>
+		normalizeCommandText(match[1]),
+	)
+	const doubleQuotedCommands = [...output.matchAll(/"((?:ocx\s+update)[^"]*)"/g)].map((match) =>
+		normalizeCommandText(match[1]),
+	)
+	const backtickQuotedCommands = [...output.matchAll(/`((?:ocx\s+update)[^`]*)`/g)].map((match) =>
+		normalizeCommandText(match[1]),
+	)
+	const unquotedCommands = [
+		...output.matchAll(/\bocx\s+update(?:\s+[^\s\n'"`.,;:()[\]{}!?]+)+/g),
+	].map((match) => normalizeCommandText(match[0]))
+
+	return [
+		...new Set([
+			...singleQuotedCommands,
+			...doubleQuotedCommands,
+			...backtickQuotedCommands,
+			...unquotedCommands,
+		]),
+	]
+}
+
+function expectValidUpdateRemediation(output: string, updateHelpOutput: string): void {
+	const suggestedCommands = extractSuggestedUpdateCommands(output)
+	const supportedFlags = extractLongFlagsFromHelp(updateHelpOutput)
+
+	expect(suggestedCommands.length).toBeGreaterThan(0)
+	expect(supportedFlags.size).toBeGreaterThan(0)
+
+	for (const command of suggestedCommands) {
+		const tokens = normalizeCommandText(command).split(/\s+/)
+		expect(tokens[0]).toBe("ocx")
+		expect(tokens[1]).toBe("update")
+
+		const args = tokens.slice(2)
+		expect(args.length).toBeGreaterThan(0)
+
+		for (const flag of args.filter((arg) => arg.startsWith("--"))) {
+			expect(supportedFlags.has(flag)).toBe(true)
+		}
+
+		expect(isSupportedUpdateRemediationCommand(command)).toBe(true)
+	}
+}
+
+describe("verify remediation command helpers", () => {
+	it("collects quoted/backtick/unquoted remediation commands and deduplicates", () => {
+		const output =
+			"Use 'ocx update kdco/test-plugin' first. If needed run `ocx update --all`, then " +
+			'rerun "ocx update --all". Avoid a bare ocx update. ' +
+			"Finally rerun ocx update kdco/test-plugin."
+
+		expect(extractSuggestedUpdateCommands(output)).toEqual([
+			"ocx update kdco/test-plugin",
+			"ocx update --all",
+		])
+	})
+
+	it("accepts supported registry and multi-component remediation forms", () => {
+		const updateHelpOutput = `
+Usage: ocx update [components...]
+
+Options:
+  --all
+  --registry <name>
+`
+
+		expect(() =>
+			expectValidUpdateRemediation("Run `ocx update --registry <name>`.", updateHelpOutput),
+		).not.toThrow()
+		expect(() =>
+			expectValidUpdateRemediation(
+				"Run ocx update kdco/test-plugin kdco/test-skill.",
+				updateHelpOutput,
+			),
+		).not.toThrow()
+	})
+
+	it("rejects invalid remediation command combinations", () => {
+		const updateHelpOutput = `
+Usage: ocx update [components...]
+
+Options:
+  --all
+  --registry <name>
+`
+
+		for (const invalidCommand of [
+			"ocx update --all kdco/test-plugin",
+			"ocx update --registry",
+			"ocx update --registry KDCO",
+			"ocx update --registry kdco/test-plugin",
+			"ocx update --registry kdco kdco/test-plugin",
+		]) {
+			expect(() => expectValidUpdateRemediation(invalidCommand, updateHelpOutput)).toThrow()
+		}
+	})
+
+	it("requires exact long-flag membership from help output", () => {
+		const updateHelpOutput = `
+Usage: ocx update [components...]
+
+The deprecated --reg alias is shown in prose and must not be parsed as supported.
+
+Options:
+  --registry <name>  (legacy mentions: --reg)
+`
+
+		expect(() => expectValidUpdateRemediation("ocx update --reg kdco", updateHelpOutput)).toThrow()
+		expect(() =>
+			expectValidUpdateRemediation("ocx update --registry kdco", updateHelpOutput),
+		).not.toThrow()
+	})
+})
 
 describe("ocx verify", () => {
 	let testDir: string
@@ -120,6 +313,18 @@ describe("ocx verify", () => {
 		expect(verifiedEntry.missing).toEqual([])
 	})
 
+	it("should return exit 0 in quiet mode when all components are intact", async () => {
+		testDir = await setupProject("verify-quiet-intact")
+
+		await installComponent(testDir, "kdco/test-plugin")
+
+		const { exitCode, output } = await runCLI(["verify", "--quiet"], testDir)
+
+		expect(exitCode).toBe(0)
+		expect(output).not.toContain("All components verified successfully")
+		expect(output).not.toContain("Verifying components")
+	})
+
 	// =========================================================================
 	// Verify specific canonical ID
 	// =========================================================================
@@ -167,6 +372,43 @@ describe("ocx verify", () => {
 		expect(output).toContain("Modified")
 	})
 
+	it("should fail in quiet mode when file integrity is modified", async () => {
+		testDir = await setupProject("verify-quiet-modified")
+
+		await installComponent(testDir, "kdco/test-plugin")
+
+		const filePath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
+		expect(existsSync(filePath)).toBe(true)
+		await writeFile(filePath, "// Modified by quiet-mode test")
+
+		const { exitCode, output } = await runCLI(["verify", "--quiet"], testDir)
+
+		expect(exitCode).toBe(6)
+		expect(output).toContain("integrity check failed")
+		expect(output).not.toContain("Modified:")
+	})
+
+	it("should provide actionable remediation with supported update command options", async () => {
+		testDir = await setupProject("verify-remediation")
+
+		await installComponent(testDir, "kdco/test-plugin")
+
+		const filePath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
+		await writeFile(filePath, "// Modified content to trigger remediation")
+
+		const verifyResult = await runCLI(["verify"], testDir)
+		expect(verifyResult.exitCode).not.toBe(0)
+		expect(verifyResult.output).toContain("integrity check failed")
+		expect(verifyResult.output).toContain("ocx update")
+		expect(verifyResult.output).not.toContain("ocx update --force")
+
+		const updateHelp = await runCLI(["update", "--help"], testDir)
+		expect(updateHelp.exitCode).toBe(0)
+
+		// Guard assertion: remediation commands must only reference help-supported flags.
+		expectValidUpdateRemediation(verifyResult.output, updateHelp.output)
+	})
+
 	it("should report modified files in JSON output", async () => {
 		testDir = await setupProject("verify-modified-json")
 
@@ -201,13 +443,29 @@ describe("ocx verify", () => {
 		// Delete the installed file
 		const filePath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
 		expect(existsSync(filePath)).toBe(true)
-		await Bun.spawn(["rm", filePath]).exited
+		await rm(filePath, { force: true })
 
 		const { exitCode, output } = await runCLI(["verify"], testDir)
 
 		expect(exitCode).not.toBe(0)
 		expect(output).toContain("integrity check failed")
 		expect(output).toContain("Missing")
+	})
+
+	it("should fail in quiet mode when installed file is missing", async () => {
+		testDir = await setupProject("verify-quiet-missing")
+
+		await installComponent(testDir, "kdco/test-plugin")
+
+		const filePath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
+		expect(existsSync(filePath)).toBe(true)
+		await rm(filePath, { force: true })
+
+		const { exitCode, output } = await runCLI(["verify", "--quiet"], testDir)
+
+		expect(exitCode).toBe(6)
+		expect(output).toContain("integrity check failed")
+		expect(output).not.toContain("Missing:")
 	})
 
 	it("should report missing files in JSON output", async () => {
@@ -217,7 +475,7 @@ describe("ocx verify", () => {
 
 		// Delete the installed file
 		const filePath = join(testDir, ".opencode", "plugins", "test-plugin.ts")
-		await Bun.spawn(["rm", filePath]).exited
+		await rm(filePath, { force: true })
 
 		const { exitCode, output } = await runCLI(["verify", "--json"], testDir)
 
@@ -269,6 +527,44 @@ describe("ocx verify", () => {
 	// =========================================================================
 	// Shorthand component ref resolution
 	// =========================================================================
+
+	it("should resolve shorthand and canonical refs equivalently", async () => {
+		testDir = await setupProject("verify-shorthand-canonical-parity")
+
+		await installComponent(testDir, "kdco/test-plugin")
+
+		const receiptPath = join(testDir, ".ocx/receipt.jsonc")
+		const receipt = parseJsonc(await readFile(receiptPath, "utf-8")) as {
+			installed: Record<string, unknown>
+		}
+		const pluginCanonicalId = Object.keys(receipt.installed).find((key) =>
+			key.includes("kdco/test-plugin@"),
+		)
+		expect(pluginCanonicalId).toBeDefined()
+		if (!pluginCanonicalId) {
+			throw new Error("Expected test-plugin canonical ID in receipt")
+		}
+
+		const canonicalRun = await runCLI(["verify", pluginCanonicalId, "--json"], testDir)
+		const shorthandRun = await runCLI(["verify", "kdco/test-plugin", "--json"], testDir)
+
+		expect(canonicalRun.exitCode).toBe(0)
+		expect(shorthandRun.exitCode).toBe(0)
+
+		const canonicalPayload = JSON.parse(canonicalRun.output) as {
+			verified: Array<{ canonicalId: string }>
+			errors: Array<{ canonicalId: string }>
+		}
+		const shorthandPayload = JSON.parse(shorthandRun.output) as {
+			verified: Array<{ canonicalId: string }>
+			errors: Array<{ canonicalId: string }>
+		}
+
+		expect(canonicalPayload.errors).toHaveLength(0)
+		expect(shorthandPayload.errors).toHaveLength(0)
+		expect(canonicalPayload.verified.map((entry) => entry.canonicalId)).toEqual([pluginCanonicalId])
+		expect(shorthandPayload.verified.map((entry) => entry.canonicalId)).toEqual([pluginCanonicalId])
+	})
 
 	it("should verify a specific component by shorthand ref", async () => {
 		testDir = await setupProject("verify-shorthand")
@@ -328,6 +624,27 @@ describe("ocx verify", () => {
 
 		expect(exitCode).not.toBe(0)
 		expect(output).toContain("not installed")
+	})
+
+	it("should return actionable unknown-ref guidance", async () => {
+		testDir = await setupProject("verify-unknown-actionable")
+
+		await installComponent(testDir, "kdco/test-plugin")
+
+		const result = await runCLI(["verify", "kdco/not-installed", "--json"], testDir)
+
+		expect(result.exitCode).not.toBe(0)
+		const payload = JSON.parse(result.stdout) as {
+			error: {
+				code: string
+				message: string
+			}
+		}
+
+		expect(payload.error.code).toBe("NOT_FOUND")
+		expect(payload.error.message).toBe(
+			"Component 'kdco/not-installed' is not installed.\nRun 'ocx search --installed' to see installed components.",
+		)
 	})
 
 	// =========================================================================
@@ -399,5 +716,59 @@ describe("ocx verify ambiguity", () => {
 		expect(exitCode).not.toBe(0)
 		expect(output).toContain("Ambiguous")
 		expect(output).toContain("canonical ID")
+	})
+
+	it("should provide deterministic canonical suggestions for ambiguous shorthand", async () => {
+		registry = startMockRegistry()
+		testDir = await createTempDir("verify-ambiguity-deterministic")
+		await runCLI(["init"], testDir)
+
+		const configPath = join(testDir, ".opencode", "ocx.jsonc")
+		const config = parseJsonc(await readFile(configPath, "utf-8")) as Record<string, unknown>
+		config.registries = { kdco: { url: registry.url } }
+		await writeFile(configPath, JSON.stringify(config, null, 2))
+
+		const addResult = await runCLI(["add", "kdco/test-plugin"], testDir)
+		expect(addResult.exitCode).toBe(0)
+
+		const receiptPath = join(testDir, ".ocx/receipt.jsonc")
+		const receipt = parseJsonc(await readFile(receiptPath, "utf-8")) as {
+			installed: Record<string, unknown>
+		}
+
+		const originalCanonicalId = Object.keys(receipt.installed).find((key) =>
+			key.includes("kdco/test-plugin@"),
+		)
+		expect(originalCanonicalId).toBeDefined()
+		if (!originalCanonicalId) {
+			throw new Error("Expected test-plugin canonical ID in receipt")
+		}
+
+		const canonicalSuffix = originalCanonicalId.split("::")[1]
+		if (!canonicalSuffix) {
+			throw new Error("Expected canonical suffix after '::'")
+		}
+
+		const secondCanonicalId = `aaa://mirror.registry::${canonicalSuffix}`
+		receipt.installed[secondCanonicalId] = receipt.installed[originalCanonicalId]
+		await writeFile(receiptPath, JSON.stringify(receipt, null, 2))
+
+		const result = await runCLI(["verify", "kdco/test-plugin", "--json"], testDir)
+
+		expect(result.exitCode).not.toBe(0)
+		const payload = JSON.parse(result.stdout) as {
+			error: {
+				code: string
+				message: string
+			}
+		}
+
+		const sortedMatches = [originalCanonicalId, secondCanonicalId].sort()
+		expect(payload.error.code).toBe("VALIDATION_ERROR")
+		expect(payload.error.message).toBe(
+			`Ambiguous component reference 'kdco/test-plugin'. Found 2 installed matches:\n` +
+				sortedMatches.map((id) => `  - ${id}`).join("\n") +
+				"\n\nUse one of the canonical IDs above.",
+		)
 	})
 })

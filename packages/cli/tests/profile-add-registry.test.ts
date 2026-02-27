@@ -553,6 +553,16 @@ describe("ocx profile add --source (type validation)", () => {
 	let registry: MockRegistry
 	const originalXdgConfigHome = process.env.XDG_CONFIG_HOME
 
+	async function setupGlobalConfig(registries: Record<string, { url: string }>): Promise<string> {
+		const globalConfigDir = join(testDir, "opencode")
+		const profilesDir = join(globalConfigDir, "profiles")
+		await mkdir(profilesDir, { recursive: true })
+		await writeFile(join(globalConfigDir, "ocx.jsonc"), JSON.stringify({ registries }, null, 2))
+		await mkdir(join(profilesDir, "default"), { recursive: true })
+		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
+		return profilesDir
+	}
+
 	beforeAll(() => {
 		registry = startMockRegistry()
 	})
@@ -577,19 +587,8 @@ describe("ocx profile add --source (type validation)", () => {
 		}
 	})
 
-	it("fails when component type is not ocx:profile", async () => {
-		// Setup global config with registry
-		const globalConfigDir = join(testDir, "opencode")
-		const profilesDir = join(globalConfigDir, "profiles")
-		await mkdir(profilesDir, { recursive: true })
-		await writeFile(
-			join(globalConfigDir, "ocx.jsonc"),
-			JSON.stringify({ registries: { kdco: { url: registry.url } } }, null, 2),
-		)
-
-		// Create default profile
-		await mkdir(join(profilesDir, "default"), { recursive: true })
-		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
+	it("fails when component type is not profile", async () => {
+		await setupGlobalConfig({ kdco: { url: registry.url } })
 
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
@@ -611,18 +610,7 @@ describe("ocx profile add --source (type validation)", () => {
 	})
 
 	it("fails when trying to install a plugin as a profile", async () => {
-		// Setup global config with registry
-		const globalConfigDir = join(testDir, "opencode")
-		const profilesDir = join(globalConfigDir, "profiles")
-		await mkdir(profilesDir, { recursive: true })
-		await writeFile(
-			join(globalConfigDir, "ocx.jsonc"),
-			JSON.stringify({ registries: { kdco: { url: registry.url } } }, null, 2),
-		)
-
-		// Create default profile
-		await mkdir(join(profilesDir, "default"), { recursive: true })
-		await writeFile(join(profilesDir, "default", "ocx.jsonc"), "{}")
+		await setupGlobalConfig({ kdco: { url: registry.url } })
 
 		const workDir = join(testDir, "workspace")
 		await mkdir(workDir, { recursive: true })
@@ -641,6 +629,180 @@ describe("ocx profile add --source (type validation)", () => {
 		// V2: Error message uses type without ocx: prefix
 		expect(output).toContain("plugin")
 		expect(output).toContain("profile")
+	})
+
+	it("rejects v2 profile manifests that still use ocx:profile", async () => {
+		const prefixedRegistry = Bun.serve({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url)
+
+				if (url.pathname === "/index.json") {
+					return Response.json({
+						$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
+						author: "Legacy-v2",
+						components: [
+							{
+								name: "prefixed-profile",
+								type: "ocx:profile",
+								description: "Legacy-prefixed profile type",
+							},
+						],
+					})
+				}
+
+				if (url.pathname === "/components/prefixed-profile.json") {
+					return Response.json({
+						name: "prefixed-profile",
+						"dist-tags": { latest: "1.0.0" },
+						versions: {
+							"1.0.0": {
+								name: "prefixed-profile",
+								type: "ocx:profile",
+								description: "Legacy-prefixed profile type",
+								files: [
+									{ path: "ocx.jsonc", target: "ocx.jsonc" },
+									{ path: "opencode.jsonc", target: "opencode.jsonc" },
+								],
+								dependencies: [],
+							},
+						},
+					})
+				}
+
+				if (url.pathname === "/components/prefixed-profile/ocx.jsonc") {
+					return new Response(JSON.stringify({ registries: {} }, null, 2))
+				}
+				if (url.pathname === "/components/prefixed-profile/opencode.jsonc") {
+					return new Response(JSON.stringify({}, null, 2))
+				}
+
+				return new Response("Not Found", { status: 404 })
+			},
+		})
+
+		try {
+			await setupGlobalConfig({ v2prefixed: { url: `http://localhost:${prefixedRegistry.port}` } })
+
+			const workDir = join(testDir, "workspace")
+			await mkdir(workDir, { recursive: true })
+
+			const { exitCode, output } = await runCLI(
+				[
+					"profile",
+					"add",
+					"prefixed-profile",
+					"--source",
+					"v2prefixed/prefixed-profile",
+					"--global",
+				],
+				workDir,
+				{
+					env: { XDG_CONFIG_HOME: testDir },
+					isolated: true,
+				},
+			)
+
+			expect(exitCode).not.toBe(0)
+			expect(output).toContain("ocx:profile")
+			expect(output).toContain('Use "profile"')
+		} finally {
+			prefixedRegistry.stop()
+		}
+	})
+
+	it("accepts canonical v2 profile manifests during profile install", async () => {
+		await setupGlobalConfig({ kdco: { url: registry.url } })
+
+		const workDir = join(testDir, "workspace")
+		await mkdir(workDir, { recursive: true })
+
+		const { exitCode } = await runCLI(
+			["profile", "add", "canonical-profile", "--source", "kdco/test-profile", "--global"],
+			workDir,
+			{
+				env: { XDG_CONFIG_HOME: testDir },
+				isolated: true,
+			},
+		)
+
+		expect(exitCode).toBe(0)
+		expect(
+			existsSync(join(testDir, "opencode", "profiles", "canonical-profile", "ocx.jsonc")),
+		).toBe(true)
+	})
+
+	it("adapts legacy v1 prefixed profile manifests during profile install", async () => {
+		const legacyRegistry = Bun.serve({
+			port: 0,
+			fetch(req) {
+				const url = new URL(req.url)
+
+				if (url.pathname === "/index.json") {
+					return Response.json({
+						author: "Legacy-v1",
+						components: [
+							{
+								name: "legacy-profile",
+								type: "ocx:profile",
+								description: "Legacy v1 profile",
+							},
+						],
+					})
+				}
+
+				if (url.pathname === "/components/legacy-profile.json") {
+					return Response.json({
+						name: "legacy-profile",
+						"dist-tags": { latest: "1.0.0" },
+						versions: {
+							"1.0.0": {
+								name: "legacy-profile",
+								type: "ocx:profile",
+								description: "Legacy v1 profile",
+								files: [
+									{ path: "ocx.jsonc", target: ".opencode/ocx.jsonc" },
+									{ path: "opencode.jsonc", target: ".opencode/opencode.jsonc" },
+								],
+								dependencies: [],
+							},
+						},
+					})
+				}
+
+				if (url.pathname === "/components/legacy-profile/ocx.jsonc") {
+					return new Response(JSON.stringify({ registries: {} }, null, 2))
+				}
+				if (url.pathname === "/components/legacy-profile/opencode.jsonc") {
+					return new Response(JSON.stringify({}, null, 2))
+				}
+
+				return new Response("Not Found", { status: 404 })
+			},
+		})
+
+		try {
+			await setupGlobalConfig({ legacy: { url: `http://localhost:${legacyRegistry.port}` } })
+
+			const workDir = join(testDir, "workspace")
+			await mkdir(workDir, { recursive: true })
+
+			const { exitCode } = await runCLI(
+				["profile", "add", "legacy-profile", "--source", "legacy/legacy-profile", "--global"],
+				workDir,
+				{
+					env: { XDG_CONFIG_HOME: testDir },
+					isolated: true,
+				},
+			)
+
+			expect(exitCode).toBe(0)
+			expect(existsSync(join(testDir, "opencode", "profiles", "legacy-profile", "ocx.jsonc"))).toBe(
+				true,
+			)
+		} finally {
+			legacyRegistry.stop()
+		}
 	})
 })
 
@@ -1239,7 +1401,7 @@ describe("ocx profile add --source (registry installation)", () => {
 		)
 
 		expect(exitCode).not.toBe(0)
-		expect(output).toMatch(/Invalid embedded target|Unsafe target/)
+		expect(output).toMatch(/Invalid embedded target|Unsafe target|legacy \.opencode\/ prefix/)
 		expect(existsSync(join(profilesDir, "victim.txt"))).toBe(false)
 		expect(existsSync(join(profilesDir, "malicious-profile"))).toBe(false)
 		expect(await readFile(join(siblingProfileDir, "AGENTS.md"), "utf-8")).toBe("safe-sentinel")

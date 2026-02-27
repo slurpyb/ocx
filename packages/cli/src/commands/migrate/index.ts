@@ -32,6 +32,8 @@ import {
 	buildReceiptFromLock,
 	type ConfigNormalizationAction,
 	detectConfigNormalization,
+	type MigrateBlocker,
+	type MigrateLifecycleStatus,
 	type MigrateResult,
 	type MigrateScope,
 	type TargetResult,
@@ -44,6 +46,8 @@ export interface MigrateOptions {
 	json?: boolean
 	quiet?: boolean
 }
+
+const MIGRATE_SCHEMA_VERSION = 1 as const
 
 export function registerMigrateCommand(program: Command): void {
 	program
@@ -103,35 +107,34 @@ async function runGlobalMigrate(options: MigrateOptions): Promise<void> {
 			}
 
 			try {
-				const result = await analyzeTarget(targetPath, true)
+				const result = await analyzeTarget(targetPath, true, {
+					emitWarnings: !options.json && !options.quiet,
+				})
 				targetResults.push({ ...result, target: label })
 			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : String(error)
-				targetResults.push({
-					target: label,
-					status: "error",
-					count: 0,
-					components: [],
-					configActions: [],
-					error: errorMessage,
-				})
+				const targetErrorResult = createErrorTargetResult(label, error)
+				targetResults.push(targetErrorResult)
 
 				if (!options.json && !options.quiet) {
-					logger.error(`[global:${label}] Preview failed: ${errorMessage}`)
+					logger.error(`[global:${label}] Preview failed: ${targetErrorResult.error}`)
 				}
 			}
 		}
 
 		const aggregated = aggregateResults(targetResults, "global", false)
+		const previewBlocked = hasPreviewBlockers(aggregated)
 
 		if (options.json) {
-			console.log(JSON.stringify(aggregated, null, 2))
+			emitMigrateJson(aggregated, false)
+			if (previewBlocked) process.exit(1)
 			return
 		}
 
 		if (!options.quiet) {
 			logGlobalPreview(targetResults, aggregated, staleLockCleanupPendingTargets)
 		}
+
+		if (previewBlocked) process.exit(1)
 		return
 	}
 
@@ -145,18 +148,11 @@ async function runGlobalMigrate(options: MigrateOptions): Promise<void> {
 			targetResults.push({ ...result, target: label })
 		} catch (error) {
 			hasFailure = true
-			const errorMessage = error instanceof Error ? error.message : String(error)
-			targetResults.push({
-				target: label,
-				status: "error",
-				count: 0,
-				components: [],
-				configActions: [],
-				error: errorMessage,
-			})
+			const targetErrorResult = createErrorTargetResult(label, error)
+			targetResults.push(targetErrorResult)
 
 			if (!options.json && !options.quiet) {
-				logger.error(`[global:${label}] Migration failed: ${errorMessage}`)
+				logger.error(`[global:${label}] Migration failed: ${targetErrorResult.error}`)
 			}
 		}
 	}
@@ -164,7 +160,7 @@ async function runGlobalMigrate(options: MigrateOptions): Promise<void> {
 	const aggregated = aggregateResults(targetResults, "global", true)
 
 	if (options.json) {
-		console.log(JSON.stringify(aggregated, null, 2))
+		emitMigrateJson(aggregated, true)
 		if (hasFailure) process.exit(1)
 		return
 	}
@@ -210,7 +206,9 @@ function discoverGlobalTargets(globalRoot: string): Array<{ label: string; path:
 async function analyzeTarget(
 	root: string,
 	isFlattened: boolean,
+	options?: { emitWarnings?: boolean },
 ): Promise<Omit<TargetResult, "target">> {
+	const shouldEmitWarnings = options?.emitWarnings ?? true
 	const configActions = detectConfigActionsForScope(root)
 	const receipt = findReceipt(root)
 	const lockInfo = findOcxLock(root, { isFlattened })
@@ -231,16 +229,20 @@ async function analyzeTarget(
 	if (lockInfo.exists && !receipt.exists) {
 		try {
 			const lock = await readOcxLock(root, { isFlattened })
-			const config = await readOcxConfig(root)
+			const config = await readOcxConfig(root, {
+				emitParseDiagnostics: shouldEmitWarnings,
+			})
 			if (lock && config) {
 				const built = buildReceiptFromLock(lock, config, root)
 				components = built.components
 			}
 		} catch {
 			// Preview can still proceed with count=0 if parsing fails
-			logger.warn(
-				`[preview] Could not parse lock/config at "${root}"; component count may be incomplete.`,
-			)
+			if (shouldEmitWarnings) {
+				logger.warn(
+					`[preview] Could not parse lock/config at "${root}"; component count may be incomplete.`,
+				)
+			}
 		}
 	}
 
@@ -367,6 +369,118 @@ function aggregateResults(
 	}
 }
 
+function hasPreviewBlockers(result: MigrateResult): boolean {
+	return result.status === "preview_with_errors"
+}
+
+function emitMigrateJson(result: MigrateResult, isApply: boolean): void {
+	const payload = withMigrateContract(result, isApply)
+	console.log(JSON.stringify(payload, null, 2))
+}
+
+function withMigrateContract(result: MigrateResult, isApply: boolean): MigrateResult {
+	const targets = normalizeTargets(result)
+	const blockers = targets.flatMap((target) => target.blockers ?? [])
+
+	return {
+		...result,
+		lifecycle_status: mapLifecycleStatus(result.status, isApply),
+		schema_version: MIGRATE_SCHEMA_VERSION,
+		blockers,
+		targets,
+	}
+}
+
+function normalizeTargets(result: MigrateResult): TargetResult[] {
+	const rawTargets =
+		result.targets && result.targets.length > 0 ? result.targets : [synthesizeTarget(result)]
+	return rawTargets.map((target) => normalizeTargetResult(target))
+}
+
+function synthesizeTarget(result: MigrateResult): TargetResult {
+	return {
+		target: result.scope,
+		status: result.status,
+		count: result.count,
+		components: result.components,
+		configActions: result.configActions,
+		blockers: result.blockers ?? [],
+	}
+}
+
+function normalizeTargetResult(target: TargetResult): TargetResult {
+	const blockers =
+		target.blockers ??
+		(target.status === "error"
+			? [
+					{
+						code: "MIGRATE_BLOCKER",
+						message: target.error ?? "Migration blocked",
+						path: target.target,
+					},
+				]
+			: [])
+
+	return {
+		...target,
+		scope: target.scope ?? target.target,
+		result: target.result ?? target.status,
+		blockers,
+	}
+}
+
+function mapLifecycleStatus(
+	status: MigrateResult["status"],
+	isApply: boolean,
+): MigrateLifecycleStatus {
+	if (isApply) {
+		return status === "partial_failure" ? "apply_failed" : "apply_ok"
+	}
+
+	return status === "preview_with_errors" ? "preview_blocked" : "preview_ok"
+}
+
+function createErrorTargetResult(target: string, error: unknown): TargetResult {
+	const blocker = toBlocker(error, target)
+
+	return {
+		target,
+		status: "error",
+		count: 0,
+		components: [],
+		configActions: [],
+		error: blocker.message,
+		blockers: [blocker],
+	}
+}
+
+function toBlocker(error: unknown, path: string): MigrateBlocker {
+	const message = error instanceof Error ? error.message : String(error)
+	return {
+		code: resolveBlockerCode(error, message),
+		message,
+		path,
+	}
+}
+
+function resolveBlockerCode(error: unknown, message: string): string {
+	if (typeof error === "object" && error !== null && "code" in error) {
+		const code = (error as { code?: unknown }).code
+		if (typeof code === "string" && code.length > 0) return code
+	}
+
+	const lowerMessage = message.toLowerCase()
+	if (lowerMessage.includes("ocx.jsonc") || lowerMessage.includes("registry")) {
+		return "CONFIG_ERROR"
+	}
+
+	if (lowerMessage.includes("parse") || lowerMessage.includes("invalid")) {
+		return "VALIDATION_ERROR"
+	}
+
+	return "MIGRATE_BLOCKER"
+}
+
 // =============================================================================
 // SINGLE TARGET MIGRATION (preserves existing local behavior)
 // =============================================================================
@@ -397,7 +511,7 @@ async function runSingleTargetMigrate(
 		}
 
 		if (options.json) {
-			console.log(JSON.stringify(result, null, 2))
+			emitMigrateJson(result, Boolean(options.apply))
 			return
 		}
 
@@ -419,7 +533,7 @@ async function runSingleTargetMigrate(
 		}
 
 		if (options.json) {
-			console.log(JSON.stringify(result, null, 2))
+			emitMigrateJson(result, Boolean(options.apply))
 			return
 		}
 
@@ -470,7 +584,7 @@ async function runSingleTargetMigrate(
 		}
 
 		if (options.json) {
-			console.log(JSON.stringify(result, null, 2))
+			emitMigrateJson(result, false)
 			return
 		}
 
@@ -567,7 +681,7 @@ async function runSingleTargetMigrate(
 	}
 
 	if (options.json) {
-		console.log(JSON.stringify(result, null, 2))
+		emitMigrateJson(result, true)
 		return
 	}
 

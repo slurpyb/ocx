@@ -107,7 +107,7 @@ export function resolveEmbeddedProfileTarget(rawTarget: string, stagingDir: stri
  * 6. Move staging dir to final profile location
  * 7. Install dependencies via runAddCore (if any)
  *
- * @throws ValidationError if component is not type "ocx:profile"
+ * @throws ValidationError if component is not type "profile"
  * @throws NotFoundError if component doesn't exist
  * @throws ConflictError if profile exists and force is not set
  */
@@ -177,8 +177,8 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 		throw error
 	}
 
-	// Guard: Must be a profile type component (accept both prefixed and unprefixed)
-	if (manifest.type !== "profile" && manifest.type !== "ocx:profile") {
+	// Guard: Must be canonical profile type component
+	if (manifest.type !== "profile") {
 		fetchSpin?.fail(`Invalid component type`)
 		throw new ValidationError(
 			`Component "${qualifiedName}" is type "${manifest.type}", not "profile".\n\n` +

@@ -172,16 +172,16 @@ ocx registry list --json
 ```bash
 $ ocx registry list
 Configured registries:
-  kdco: https://ocx.kdco.dev (latest)
-  acme: https://registry.acme.com (1.0.0)
+  kdco: https://ocx.kdco.dev
+  acme: https://registry.acme.com
 
 $ ocx registry list --json
 {
   "success": true,
   "data": {
     "registries": [
-      { "name": "kdco", "url": "https://ocx.kdco.dev", "version": "latest" },
-      { "name": "acme", "url": "https://registry.acme.com", "version": "1.0.0" }
+      { "name": "kdco", "url": "https://ocx.kdco.dev" },
+      { "name": "acme", "url": "https://registry.acme.com" }
     ],
     "locked": false
   }

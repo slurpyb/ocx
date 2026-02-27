@@ -12,7 +12,7 @@ import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "./fixture"
-import { parseJsonc, runCLI } from "./helpers"
+import { expectStrictJsonFailure, expectStrictJsonSuccess, parseJsonc, runCLI } from "./helpers"
 
 // =============================================================================
 // Helpers
@@ -981,29 +981,76 @@ describe("ocx migrate", () => {
 	// =========================================================================
 
 	describe("preview diagnostics", () => {
-		it("should warn when lock parsing fails in global preview (degraded count=0)", async () => {
+		it("should keep human warning when lock parsing fails in global preview", async () => {
 			await using tmp = await tmpdir({ git: true })
 			await setupGlobalDir(tmp.path, {
 				// Write invalid lock content to trigger parse failure in analyzeTarget
 				lock: "{ this is not valid json !!!",
 			})
 
-			const { exitCode, output, stdout } = await runCLI(
-				["migrate", "--global", "--json", "--cwd", tmp.path],
+			const { exitCode, output } = await runCLI(
+				["migrate", "--global", "--cwd", tmp.path],
 				tmp.path,
 			)
 
 			expect(exitCode).toBe(0)
-			// Warning should appear in stderr (captured in output)
+			// Human mode should keep warning output for degraded preview paths.
 			expect(output).toContain("component count may be incomplete")
+		})
 
-			// JSON output should still succeed with count=0 (degraded)
-			const json = JSON.parse(stdout)
+		it("should keep --global --json output strict and stderr-clean on degraded parse", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path, {
+				// Write invalid lock content to trigger parse failure in analyzeTarget
+				lock: "{ this is not valid json !!!",
+			})
+
+			const result = await runCLI(["migrate", "--global", "--json", "--cwd", tmp.path], tmp.path)
+
+			expect(result.exitCode).toBe(0)
+			expect(result.stderr.trim()).toBe("")
+			expect(result.output).not.toContain("component count may be incomplete")
+
+			// JSON output should remain strictly parseable with degraded count=0.
+			expect(() => JSON.parse(result.stdout)).not.toThrow()
+			const json = expectStrictJsonSuccess(result)
 			expect(json.success).toBe(true)
 			expect(json.status).toBe("preview")
 
 			// Root target should show count=0 due to degraded parse
-			const rootTarget = json.targets.find((t: { target: string }) => t.target === "root")
+			const rootTarget = (
+				json.targets as Array<{ target: string; count: number }> | undefined
+			)?.find((t) => t.target === "root")
+			expect(rootTarget).toBeDefined()
+			if (!rootTarget) throw new Error("root target not found")
+			expect(rootTarget.count).toBe(0)
+		})
+
+		it("should keep --global --json output strict and stderr-clean on malformed config preview", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path)
+
+			// Corrupt config while keeping lock valid to trigger degraded preview.
+			await writeFile(join(tmp.path, ".opencode", "ocx.jsonc"), "{ this is not valid json !!!")
+
+			const result = await runCLI(["migrate", "--global", "--json", "--cwd", tmp.path], tmp.path)
+
+			expect(result.exitCode).toBe(0)
+			expect(result.stderr.trim()).toBe("")
+			expect(result.output).not.toContain("component count may be incomplete")
+
+			// JSON output should remain strictly parseable with degraded count=0.
+			expect(() => JSON.parse(result.stdout)).not.toThrow()
+			const json = expectStrictJsonSuccess(result)
+			expect(json.success).toBe(true)
+			expect(json.status).toBe("preview")
+
+			// Root target should show count=0 due to degraded parse
+			const rootTarget = (
+				json.targets as Array<{ target: string; count: number }> | undefined
+			)?.find((t) => t.target === "root")
+			expect(rootTarget).toBeDefined()
+			if (!rootTarget) throw new Error("root target not found")
 			expect(rootTarget.count).toBe(0)
 		})
 
@@ -1727,7 +1774,7 @@ describe("ocx migrate", () => {
 				tmp.path,
 			)
 
-			expect(exitCode).toBe(0)
+			expect(exitCode).toBe(1)
 			// Should contain the target label and error message in output
 			expect(output).toContain("profile:conflict")
 			expect(output).toContain("Preview failed")
@@ -1768,38 +1815,418 @@ describe("ocx migrate", () => {
 			await writeFile(join(conflictDir, "ocx.lock"), createLegacyLock())
 
 			// Preview mode with --json: should NOT abort
-			const { exitCode, stdout } = await runCLI(
-				["migrate", "--global", "--json", "--cwd", tmp.path],
-				tmp.path,
-			)
+			const result = await runCLI(["migrate", "--global", "--json", "--cwd", tmp.path], tmp.path)
 
-			expect(exitCode).toBe(0)
-			const json = JSON.parse(stdout)
+			expect(result.exitCode).toBe(1)
+			const json = expectStrictJsonFailure(result)
+			expect(Array.isArray(json.targets)).toBe(true)
+			const targets = json.targets as Array<{
+				target: string
+				status: string
+				error?: string
+				count: number
+			}>
 
 			// Top-level status should reflect preview-with-errors
 			expect(json.success).toBe(false)
 			expect(json.status).toBe("preview_with_errors")
 
 			// The conflict target should have status: "error"
-			const conflictTarget = json.targets.find(
-				(t: { target: string }) => t.target === "profile:conflict",
-			)
+			const conflictTarget = targets.find((t) => t.target === "profile:conflict")
 			expect(conflictTarget).toBeDefined()
+			if (!conflictTarget) throw new Error("profile:conflict target not found")
 			expect(conflictTarget.status).toBe("error")
 			expect(conflictTarget.error).toBeDefined()
 			expect(conflictTarget.error).toContain("consolidate")
 			expect(conflictTarget.count).toBe(0)
 
 			// The good profile should still be processed
-			const goodTarget = json.targets.find((t: { target: string }) => t.target === "profile:good")
+			const goodTarget = targets.find((t) => t.target === "profile:good")
 			expect(goodTarget).toBeDefined()
+			if (!goodTarget) throw new Error("profile:good target not found")
 			expect(goodTarget.status).toBe("preview")
 			expect(goodTarget.count).toBe(2)
 
 			// Root should also be processed
-			const rootTarget = json.targets.find((t: { target: string }) => t.target === "root")
+			const rootTarget = targets.find((t) => t.target === "root")
 			expect(rootTarget).toBeDefined()
+			if (!rootTarget) throw new Error("root target not found")
 			expect(rootTarget.status).toBe("preview")
+		})
+	})
+
+	// =========================================================================
+	// RED contract: lifecycle + blockers schema safety
+	// =========================================================================
+
+	describe("contract safety: lifecycle and blockers", () => {
+		function expectNonEmptyString(value: unknown): void {
+			expect(typeof value).toBe("string")
+			expect((value as string).trim().length).toBeGreaterThan(0)
+		}
+
+		function expectBlockerShape(blocker: unknown): void {
+			expect(typeof blocker).toBe("object")
+			expect(blocker).not.toBeNull()
+			const payload = blocker as Record<string, unknown>
+			expectNonEmptyString(payload.code)
+			expectNonEmptyString(payload.message)
+			expectNonEmptyString(payload.path)
+		}
+
+		function expectAllBlockersValid(blockers: unknown[]): void {
+			for (const blocker of blockers) {
+				expectBlockerShape(blocker)
+			}
+		}
+
+		function expectContractKeys(json: Record<string, unknown>): Array<Record<string, unknown>> {
+			for (const key of [
+				"success",
+				"status",
+				"scope",
+				"count",
+				"components",
+				"configActions",
+				"lifecycle_status",
+				"schema_version",
+				"blockers",
+				"targets",
+			]) {
+				expect(json).toHaveProperty(key)
+			}
+
+			expect(json.schema_version).toBe(1)
+			expect(Array.isArray(json.blockers)).toBe(true)
+			expect(Array.isArray(json.targets)).toBe(true)
+
+			const targets = json.targets as Array<Record<string, unknown>>
+			for (const target of targets) {
+				for (const key of [
+					"target",
+					"status",
+					"scope",
+					"result",
+					"blockers",
+					"count",
+					"components",
+					"configActions",
+				]) {
+					expect(target).toHaveProperty(key)
+				}
+				expect(Array.isArray(target.blockers)).toBe(true)
+			}
+
+			return targets
+		}
+
+		async function setupPreviewBlockedGlobalTarget(dir: string): Promise<void> {
+			await setupGlobalDir(dir)
+
+			const profilesDir = join(dir, "profiles")
+			await mkdir(profilesDir, { recursive: true })
+
+			const conflictDir = join(profilesDir, "conflict")
+			await mkdir(conflictDir, { recursive: true })
+
+			// Intentional conflict: both root ocx.jsonc and .opencode/ocx.jsonc exist
+			await writeFile(
+				join(conflictDir, "ocx.jsonc"),
+				JSON.stringify({ registries: { kdco: { url: "https://ocx.kdco.dev" } } }, null, 2),
+			)
+			const conflictDotOpencode = join(conflictDir, ".opencode")
+			await mkdir(conflictDotOpencode, { recursive: true })
+			await writeFile(
+				join(conflictDotOpencode, "ocx.jsonc"),
+				JSON.stringify({ registries: { kdco: { url: "https://ocx.kdco.dev" } } }, null, 2),
+			)
+			await writeFile(join(conflictDir, "ocx.lock"), createLegacyLock())
+		}
+
+		async function setupApplyFailedGlobalTarget(dir: string): Promise<void> {
+			await setupGlobalDir(dir)
+
+			const profilesDir = join(dir, "profiles")
+			await mkdir(profilesDir, { recursive: true })
+
+			const badDir = join(profilesDir, "bad")
+			await mkdir(badDir, { recursive: true })
+			await writeFile(
+				join(badDir, "ocx.jsonc"),
+				JSON.stringify({ registries: { other: { url: "https://other.example.com" } } }, null, 2),
+			)
+			await writeFile(join(badDir, "ocx.lock"), createLegacyLock())
+		}
+
+		async function setupPreviewBlockedSingleTarget(dir: string): Promise<void> {
+			await setupProjectWithConfig(dir)
+			await writeLegacyLock(dir)
+
+			// Intentional conflict: both root ocx.jsonc and .opencode/ocx.jsonc exist
+			await writeFile(
+				join(dir, "ocx.jsonc"),
+				JSON.stringify({ registries: { kdco: { url: "https://ocx.kdco.dev" } } }, null, 2),
+			)
+		}
+
+		async function setupApplyFailedSingleTarget(dir: string): Promise<void> {
+			await setupProjectWithConfig(dir, {
+				other: { url: "https://other.example.com" },
+			})
+			await writeLegacyLock(dir)
+		}
+
+		it("covers preview|human|single|preview_blocked with deterministic non-zero exit", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupPreviewBlockedSingleTarget(tmp.path)
+
+			const { exitCode, output } = await runCLI(["migrate"], tmp.path)
+
+			expect(exitCode).toBe(1)
+			expect(output).toContain("consolidate")
+		})
+
+		it("covers preview|json|single|preview_blocked strict failure semantics", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupPreviewBlockedSingleTarget(tmp.path)
+
+			const result = await runCLI(["migrate", "--json"], tmp.path)
+
+			expect(result.exitCode).toBe(1)
+			const json = expectStrictJsonFailure(result)
+			const errorPayload = json.error as { code?: string; message?: string } | undefined
+			expect(errorPayload).toBeDefined()
+			if (!errorPayload) throw new Error("error payload missing")
+			expect(errorPayload.code).toBe("UNKNOWN_ERROR")
+			expect(errorPayload.message).toContain("consolidate")
+
+			// Single-target failures are surfaced via handleError JSON payload,
+			// so additive migrate lifecycle fields are intentionally absent here.
+			expect(json).not.toHaveProperty("lifecycle_status")
+			expect(json).not.toHaveProperty("schema_version")
+			expect(json).not.toHaveProperty("targets")
+		})
+
+		it("covers apply|human|single|apply_failed with deterministic no-write failure", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupApplyFailedSingleTarget(tmp.path)
+
+			const { exitCode, output } = await runCLI(["migrate", "--apply"], tmp.path)
+
+			// ConfigError uses explicit config exit semantics in single-target mode.
+			expect(exitCode).toBe(78)
+			expect(output).toContain('Registry "kdco"')
+			expect(output).toContain("not configured")
+
+			// Apply failure must not partially migrate local single-target state.
+			expect(existsSync(join(tmp.path, ".ocx", "receipt.jsonc"))).toBe(false)
+			expect(existsSync(join(tmp.path, ".opencode", "ocx.lock"))).toBe(true)
+		})
+
+		it("enforces preview-blocked deterministic exit in human mode", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupPreviewBlockedGlobalTarget(tmp.path)
+
+			const { exitCode, output } = await runCLI(
+				["migrate", "--global", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			// Contract: preview blockers must produce deterministic non-zero exit
+			expect(exitCode).toBe(1)
+			expect(output).toContain("profile:conflict")
+		})
+
+		it("enforces preview-blocked lifecycle mapping + blocker schemas in JSON mode", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupPreviewBlockedGlobalTarget(tmp.path)
+
+			const result = await runCLI(["migrate", "--global", "--json", "--cwd", tmp.path], tmp.path)
+
+			// Contract: preview blockers must produce deterministic non-zero exit
+			expect(result.exitCode).toBe(1)
+			const json = expectStrictJsonFailure(result)
+			const targets = expectContractKeys(json)
+
+			// Compatibility contract: legacy status remains stable
+			expect(json.status).toBe("preview_with_errors")
+			// Additive contract fields
+			expect(json.lifecycle_status).toBe("preview_blocked")
+			expect(json.success).toBe(false)
+
+			// Aggregate blocker reporting
+			const aggregateBlockers = json.blockers as unknown[]
+			expect(aggregateBlockers.length).toBeGreaterThan(0)
+			expectAllBlockersValid(aggregateBlockers)
+
+			// Per-target blocker reporting across all targets
+			for (const target of targets) {
+				const targetBlockers = target.blockers as unknown[]
+				expectAllBlockersValid(targetBlockers)
+			}
+
+			const blockedTarget = targets.find(
+				(t) => t.target === "profile:conflict" || t.scope === "profile:conflict",
+			)
+			expect(blockedTarget).toBeDefined()
+			if (!blockedTarget) throw new Error("profile:conflict target not found")
+			const targetBlockers = blockedTarget.blockers as unknown[]
+			expect(targetBlockers.length).toBeGreaterThan(0)
+			expectAllBlockersValid(targetBlockers)
+		})
+
+		it("enforces preview_ok success payload keys and empty per-target blockers", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path)
+
+			const result = await runCLI(["migrate", "--global", "--json", "--cwd", tmp.path], tmp.path)
+
+			const json = expectStrictJsonSuccess(result)
+			const targets = expectContractKeys(json)
+
+			// Compatibility + normative mapping
+			expect(json.status).toBe("preview")
+			expect(json.lifecycle_status).toBe("preview_ok")
+			expect(json.success).toBe(true)
+			expect(json.blockers).toEqual([])
+
+			for (const target of targets) {
+				expect(target.blockers).toEqual([])
+			}
+		})
+
+		it("enforces apply_ok success payload keys and empty per-target blockers", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path)
+
+			const result = await runCLI(
+				["migrate", "--global", "--apply", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			const json = expectStrictJsonSuccess(result)
+			const targets = expectContractKeys(json)
+
+			// Compatibility + normative mapping
+			expect(json.status).toBe("migrated")
+			expect(json.lifecycle_status).toBe("apply_ok")
+			expect(json.success).toBe(true)
+			expect(json.blockers).toEqual([])
+
+			for (const target of targets) {
+				expect(target.blockers).toEqual([])
+			}
+		})
+
+		it("covers no-op already_v2 with additive fields and preview_ok lifecycle", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path, { lock: false, receipt: true })
+
+			const json = expectStrictJsonSuccess(
+				await runCLI(["migrate", "--global", "--json", "--cwd", tmp.path], tmp.path),
+			)
+			const targets = expectContractKeys(json)
+
+			expect(json.status).toBe("already_v2")
+			expect(json.lifecycle_status).toBe("preview_ok")
+			expect(json.success).toBe(true)
+			expect(json.blockers).toEqual([])
+			for (const target of targets) {
+				expect(target.blockers).toEqual([])
+			}
+		})
+
+		it("covers no-op nothing_to_migrate with additive fields and preview_ok lifecycle", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path, { lock: false })
+
+			const json = expectStrictJsonSuccess(
+				await runCLI(["migrate", "--global", "--json", "--cwd", tmp.path], tmp.path),
+			)
+			const targets = expectContractKeys(json)
+
+			expect(json.status).toBe("nothing_to_migrate")
+			expect(json.lifecycle_status).toBe("preview_ok")
+			expect(json.success).toBe(true)
+			expect(json.blockers).toEqual([])
+			for (const target of targets) {
+				expect(target.blockers).toEqual([])
+			}
+		})
+
+		it("covers no-op already_v2 with additive fields and apply_ok lifecycle", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path, { lock: false, receipt: true })
+
+			const json = expectStrictJsonSuccess(
+				await runCLI(["migrate", "--global", "--apply", "--json", "--cwd", tmp.path], tmp.path),
+			)
+			const targets = expectContractKeys(json)
+
+			expect(json.status).toBe("already_v2")
+			expect(json.lifecycle_status).toBe("apply_ok")
+			expect(json.success).toBe(true)
+			expect(json.blockers).toEqual([])
+			for (const target of targets) {
+				expect(target.blockers).toEqual([])
+			}
+		})
+
+		it("covers no-op nothing_to_migrate with additive fields and apply_ok lifecycle", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupGlobalDir(tmp.path, { lock: false })
+
+			const json = expectStrictJsonSuccess(
+				await runCLI(["migrate", "--global", "--apply", "--json", "--cwd", tmp.path], tmp.path),
+			)
+			const targets = expectContractKeys(json)
+
+			expect(json.status).toBe("nothing_to_migrate")
+			expect(json.lifecycle_status).toBe("apply_ok")
+			expect(json.success).toBe(true)
+			expect(json.blockers).toEqual([])
+			for (const target of targets) {
+				expect(target.blockers).toEqual([])
+			}
+		})
+
+		it("enforces apply_failed lifecycle mapping, deterministic exit, and blocker schemas", async () => {
+			await using tmp = await tmpdir({ git: true })
+			await setupApplyFailedGlobalTarget(tmp.path)
+
+			const result = await runCLI(
+				["migrate", "--global", "--apply", "--json", "--cwd", tmp.path],
+				tmp.path,
+			)
+
+			// Deterministic apply failure exit contract
+			expect(result.exitCode).toBe(1)
+			const json = expectStrictJsonFailure(result)
+			const targets = expectContractKeys(json)
+
+			// Compatibility + normative mapping
+			expect(json.status).toBe("partial_failure")
+			expect(json.lifecycle_status).toBe("apply_failed")
+			expect(json.success).toBe(false)
+
+			// Aggregate blocker schema
+			const aggregateBlockers = json.blockers as unknown[]
+			expect(aggregateBlockers.length).toBeGreaterThan(0)
+			expectAllBlockersValid(aggregateBlockers)
+
+			// Per-target blocker schema across all targets
+			for (const target of targets) {
+				const targetBlockers = target.blockers as unknown[]
+				expectAllBlockersValid(targetBlockers)
+			}
+
+			// Failed target must include at least one blocker
+			const badTarget = targets.find((t) => t.target === "profile:bad" || t.scope === "profile:bad")
+			expect(badTarget).toBeDefined()
+			if (!badTarget) throw new Error("profile:bad target not found")
+			const badBlockers = badTarget.blockers as unknown[]
+			expect(badBlockers.length).toBeGreaterThan(0)
+			expectAllBlockersValid(badBlockers)
 		})
 	})
 })

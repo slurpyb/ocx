@@ -852,6 +852,15 @@ describe("registry commands with --profile", () => {
 
 describe("registry add compatibility diagnostics", () => {
 	let testDir: string
+	const prefixedTypeCases = [
+		{ prefixed: "ocx:agent", canonical: "agent" },
+		{ prefixed: "ocx:skill", canonical: "skill" },
+		{ prefixed: "ocx:plugin", canonical: "plugin" },
+		{ prefixed: "ocx:command", canonical: "command" },
+		{ prefixed: "ocx:tool", canonical: "tool" },
+		{ prefixed: "ocx:profile", canonical: "profile" },
+		{ prefixed: "ocx:bundle", canonical: "bundle" },
+	] as const
 
 	beforeEach(async () => {
 		testDir = await createTempDir("registry-compat-test")
@@ -860,6 +869,68 @@ describe("registry add compatibility diagnostics", () => {
 
 	afterEach(async () => {
 		await cleanupTempDir(testDir)
+	})
+
+	for (const typeCase of prefixedTypeCases) {
+		it(`rejects v2 index using legacy prefixed type ${typeCase.prefixed}`, async () => {
+			const server = Bun.serve({
+				port: 0,
+				fetch() {
+					return Response.json({
+						$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
+						author: "Legacy",
+						components: [
+							{
+								name: "prefixed-component",
+								type: typeCase.prefixed,
+								description: "Legacy prefixed type in a v2 payload",
+							},
+						],
+					})
+				},
+			})
+
+			try {
+				const { exitCode, output } = await runCLI(
+					["registry", "add", `http://localhost:${server.port}`, "--name", "legacy-v2"],
+					testDir,
+				)
+
+				expect(exitCode).not.toBe(0)
+				expect(output).toContain(typeCase.prefixed)
+				expect(output).toContain(`Use "${typeCase.canonical}"`)
+			} finally {
+				server.stop()
+			}
+		})
+	}
+
+	it("accepts v2 indexes that already use canonical profile/bundle types", async () => {
+		const server = Bun.serve({
+			port: 0,
+			fetch() {
+				return Response.json({
+					$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
+					author: "Canonical",
+					components: [
+						{ name: "workspace", type: "bundle", description: "Workspace bundle" },
+						{ name: "work-profile", type: "profile", description: "Work profile" },
+					],
+				})
+			},
+		})
+
+		try {
+			const { exitCode, output } = await runCLI(
+				["registry", "add", `http://localhost:${server.port}`, "--name", "canonical-v2"],
+				testDir,
+			)
+
+			expect(exitCode).toBe(0)
+			expect(output).toContain("Added registry to local config: canonical-v2")
+		} finally {
+			server.stop()
+		}
 	})
 
 	it("should accept legacy v1 object index for kdco/workspace", async () => {

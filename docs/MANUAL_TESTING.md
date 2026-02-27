@@ -946,6 +946,81 @@ All variations from `cli/commands.mdx` (add section).
 
 ---
 
+## 5A. CLI Reference: ocx remove
+
+Coverage for `ocx remove` variations from `cli/commands.mdx` (remove section).
+
+> **Section Setup:** Run cleanup (Section 1.2) before starting this section so
+> remove tests run against deterministic local state.
+
+### 5A.1 Remove Installed Component (Shorthand Reference)
+
+- [x] **Setup:** Local config initialized, `kdco` registry configured, and component installed
+- [x] **Commands:**
+  ```bash
+  cd /tmp/ocx-v2-test-project
+  test -f .opencode/ocx.jsonc || $OCX_BIN init
+  $OCX_BIN registry list | grep -q "kdco" || $OCX_BIN registry add http://localhost:8787 --name kdco
+  $OCX_BIN search --installed | grep -q "kdco/researcher" || $OCX_BIN add kdco/researcher
+  $OCX_BIN remove kdco/researcher
+  ```
+- [x] **Expected:** Shorthand ref resolves to installed canonical entry and component is removed
+- [x] **Verify:**
+  ```bash
+  cat .ocx/receipt.jsonc | grep -q "kdco/researcher" && echo "FAIL: component still present in receipt" || echo "OK: component removed from receipt"
+  test -f .opencode/agents/researcher.md && echo "FAIL: researcher file still present" || echo "OK: researcher file removed"
+  ```
+
+### 5A.2 Remove Unknown Component Returns Actionable Error
+
+- [x] **Setup:** Local config initialized, `kdco` registry configured, and at least one component installed
+- [x] **Commands:**
+  ```bash
+  cd /tmp/ocx-v2-test-project
+  test -f .opencode/ocx.jsonc || $OCX_BIN init
+  $OCX_BIN registry list | grep -q "kdco" || $OCX_BIN registry add http://localhost:8787 --name kdco
+  $OCX_BIN search --installed | grep -q "kdco/researcher" || $OCX_BIN add kdco/researcher
+  $OCX_BIN search --installed | grep -q "kdco/" && echo "OK: installed precondition met" || { echo "FAIL: expected at least one installed component"; exit 1; }
+  set +e
+  $OCX_BIN remove kdco/not-installed > /tmp/ocx-5A.2-remove-unknown.log 2>&1
+  rc=$?
+  set -e
+  cat /tmp/ocx-5A.2-remove-unknown.log
+  echo "rc=$rc"
+  ```
+- [x] **Expected:** Not-found failure explains component is not installed and points to `ocx search --installed`
+- [x] **Verify:**
+  ```bash
+  test "${rc:-0}" -ne 0 && echo "OK: remove unknown exited non-zero" || echo "FAIL: expected non-zero exit code"
+  cat /tmp/ocx-5A.2-remove-unknown.log | grep -q "ocx search --installed" && echo "OK: actionable guidance present" || echo "FAIL: missing actionable guidance"
+  ```
+
+### 5A.3 Remove with `--dry-run` (No Writes)
+
+- [x] **Setup:** Local config initialized, `kdco` registry configured, and `kdco/notify` installed
+- [x] **Commands:**
+  ```bash
+  cd /tmp/ocx-v2-test-project
+  test -f .opencode/ocx.jsonc || $OCX_BIN init
+  $OCX_BIN registry list | grep -q "kdco" || $OCX_BIN registry add http://localhost:8787 --name kdco
+  $OCX_BIN search --installed | grep -q "kdco/notify" || $OCX_BIN add kdco/notify
+  $OCX_BIN remove kdco/notify --dry-run > /tmp/ocx-5A.3-remove-dry-run.log 2>&1
+  cat /tmp/ocx-5A.3-remove-dry-run.log
+  ```
+- [x] **Expected:** Dry-run prints planned deletions but does not remove files or mutate receipt
+- [x] **Verify:**
+  ```bash
+  cat /tmp/ocx-5A.3-remove-dry-run.log | grep -Eq "Would (delete|remove)" && echo "OK: dry-run printed planned deletion text" || echo "FAIL: missing dry-run planning text"
+  cat /tmp/ocx-5A.3-remove-dry-run.log | grep -q ".opencode/plugins/notify.ts" && echo "OK: dry-run listed notify path" || echo "FAIL: dry-run did not list notify path"
+  cat .ocx/receipt.jsonc | grep -q "kdco/notify" && echo "OK: receipt unchanged for dry-run" || echo "FAIL: dry-run should not remove receipt entry"
+  test -f .opencode/plugins/notify.ts && echo "OK: notify file still present" || echo "FAIL: dry-run removed notify file"
+  ```
+
+- [x] **Run result (2026-02-26):** PASS — shorthand remove deleted `kdco/researcher`; unknown remove (with installed-precondition satisfied) exited non-zero and included `ocx search --installed` guidance; dry-run output logged planned removal text/path for `.opencode/plugins/notify.ts` while retaining `kdco/notify` receipt entry and files.
+- [x] **Last tested:** _v2.0.0 on 2026-02-26_
+
+---
+
 ## 6. CLI Reference: ocx update
 
 All variations from `cli/commands.mdx` (update section).
@@ -2301,21 +2376,29 @@ Common errors from `cli/commands.mdx` error tables.
 
 ### 14.10 Error: Integrity Check Failed
 
-- [x] **Setup:** Component installed with mismatched hash
+- [x] **Setup:** Component installed and tracked file is mutated to trigger integrity conflict
 - [x] **Commands:**
   ```bash
-  # Explicitly corrupt receipt hash, then verify
-  perl -0pi -e 's/"hash"\s*:\s*"[^"]+"/"hash":"0000bad"/' .ocx/receipt.jsonc
-  cat .ocx/receipt.jsonc | grep -q '"hash":"0000bad"' && echo "OK: hash corrupted" || echo "FAIL: hash corruption failed"
-  $OCX_BIN verify kdco/researcher
+  cd /tmp/ocx-v2-test-project
+  test -f .opencode/ocx.jsonc || $OCX_BIN init
+  $OCX_BIN registry list | grep -q "kdco" || $OCX_BIN registry add http://localhost:8787 --name kdco
+  $OCX_BIN search --installed | grep -q "kdco/researcher" || $OCX_BIN add kdco/researcher
+  # Deterministic integrity mutation: modify a tracked installed file
+  echo "<!-- integrity-check mutation -->" >> .opencode/agents/researcher.md
+  set +e
+  $OCX_BIN verify kdco/researcher > /tmp/ocx-14.10-integrity.log 2>&1
+  rc=$?
+  set -e
+  cat /tmp/ocx-14.10-integrity.log
+  echo "rc=$rc"
   ```
-- [x] **Expected:** Error: "Integrity check failed"
+- [x] **Expected:** Verify reports modified tracked files and fails integrity check
 - [x] **Verify:**
-  - Command fails with integrity check error
+  - Command output mentions modified/integrity failure for `kdco/researcher`
   - Exit code 6 (CONFLICT)
 - [x] **Note:** `ocx update` behavior is separate from integrity verification; use `verify` to explicitly check component integrity
-- [x] **Run result (2026-02-24):** PASS — after manually corrupting the receipt hash, `ocx verify kdco/researcher` reported integrity failure (`Modified: .opencode/agents/researcher.md`) and exited `6`.
-- [x] **Last tested:** _v2.0.0 on 2026-02-24_
+- [x] **Run result (2026-02-26):** PASS — after mutating tracked file `.opencode/agents/researcher.md`, `ocx verify kdco/researcher` logged modified files and returned `rc=6`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-26_
 
 ---
 
@@ -2396,18 +2479,23 @@ Smoke tests for the v1.4.6 → v2 receipt migration command.
   cat > $XDG_CONFIG_HOME/opencode/profiles/work/ocx.lock << 'EOF'
   {"lockVersion":1,"installed":{"kdco/notify":{"registry":"kdco","version":"0.5.0","hash":"def456","files":[".opencode/skills/notify/SKILL.md"],"installedAt":"2025-07-01T00:00:00.000Z"}}}
   EOF
+  # Required for deterministic preview resolution: registry alias in profile config
+  echo '{"registries":{"kdco":{"url":"http://localhost:8787"}}}' > $XDG_CONFIG_HOME/opencode/profiles/work/ocx.jsonc
   ```
-- [x] **Command:** `$OCX_BIN migrate --global`
-- [x] **Expected:** Prints migration plan for global root AND work profile without modifying any files. Global root is listed first, then profiles in sorted order.
+- [x] **Command:** `$OCX_BIN migrate --global 2>&1 | tee /tmp/ocx-15.4-global-preview.log`
+- [x] **Expected:** Prints migration preview for global root and work profile, with no parse warnings, and does not modify any files.
 - [x] **Verify:**
   ```bash
+  cat /tmp/ocx-15.4-global-preview.log | grep -q " root: " && echo "OK: global root included in preview" || echo "FAIL: global root missing from preview"
+  cat /tmp/ocx-15.4-global-preview.log | grep -q "profile:work" && echo "OK: work profile included in preview" || echo "FAIL: work profile missing from preview"
+  cat /tmp/ocx-15.4-global-preview.log | grep -q "Could not parse lock/config" && echo "FAIL: parse warning present" || echo "OK: no parse warning"
   test -f $XDG_CONFIG_HOME/opencode/ocx.lock && echo "OK: global lock unchanged" || echo "FAIL: lock file missing"
   test ! -f $XDG_CONFIG_HOME/opencode/.ocx/receipt.jsonc && echo "OK: No global receipt created" || echo "FAIL: receipt.jsonc should not exist yet"
   test -f $XDG_CONFIG_HOME/opencode/profiles/work/ocx.lock && echo "OK: profile lock unchanged" || echo "FAIL: profile lock missing"
   test ! -f $XDG_CONFIG_HOME/opencode/profiles/work/.ocx/receipt.jsonc && echo "OK: No profile receipt created" || echo "FAIL: profile receipt should not exist yet"
   ```
-- [x] **Run result (2026-02-24):** FAIL — `$OCX_BIN migrate --global` exited `0` with no writes, but emitted `warn [preview] Could not parse lock/config at "/tmp/ocx-v2-test/opencode/profiles/work"; component count may be incomplete.` and reported `profile:work: nothing to migrate` instead of the expected work-profile migration preview.
-- [x] **Last tested:** _v2.0.0 on 2026-02-24_
+- [x] **Run result (2026-02-26):** PASS — with `work` profile registry mapping present in `profiles/work/ocx.jsonc`, preview included `profile:work` migration output, emitted no parse warning, made no writes, and exited `0`.
+- [x] **Last tested:** _v2.0.0 on 2026-02-26_
 
 ### 15.5 Global Apply Migration (Root + Profile Fan-Out)
 
@@ -2509,6 +2597,7 @@ Master summary for full test sessions.
 
 - [x] ocx init (Section 4): 8 test cases
 - [x] ocx add (Section 5): 11 test cases
+- [x] ocx remove (Section 5A): 3 test cases
 - [x] ocx update (Section 6): 7 test cases
 - [x] ocx search (Section 7): 7 test cases
 - [x] ocx registry (Section 8): 10 test cases
@@ -2517,6 +2606,7 @@ Master summary for full test sessions.
 - [x] ocx config (Section 11): 7 test cases
 - [ ] ocx opencode (Section 12): PARTIAL — 11/12 executed; Section 12.12 is skipped under waiver (custom `OPENCODE_BIN` placeholder path unavailable in this environment)
 - [x] **Run result (2026-02-24):** PARTIAL — Sections 4–11 are complete; Section 12 is partial due to the documented 12.12 skip waiver.
+- [x] **Run result (2026-02-26):** PARTIAL — remove coverage (Section 5A) is now tracked and passing; overall CLI status remains partial only due to the documented Section 12.12 waiver.
 
 ### 16.3 Profile System Verified
 
@@ -2567,6 +2657,7 @@ For maintainability when commands change.
 | Section 3 | [README.md](../README.md) | 79-96 |
 | Section 4 | [CLI Commands](./cli/commands.mdx) | init section |
 | Section 5 | [CLI Commands](./cli/commands.mdx) | add section |
+| Section 5A | [Remove Command](./cli/remove.mdx), [CLI Commands](./cli/commands.mdx) | remove section |
 | Section 6 | [CLI Commands](./cli/commands.mdx) | update section |
 | Section 7 | [CLI Commands](./cli/commands.mdx) | search section |
 | Section 8 | [CLI Commands](./cli/commands.mdx) | registry section |
@@ -2650,5 +2741,5 @@ When adding new test cases:
 
 **End of Manual Testing Guide**
 
-_Last updated: 2026-02-24_
+_Last updated: 2026-02-26_
 _Document version: 1.0_

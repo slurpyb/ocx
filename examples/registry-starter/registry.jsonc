@@ -7,7 +7,8 @@
 
 	"$schema": "https://ocx.kdco.dev/schemas/v2/registry.json",
 	"name": "My Registry",
-	"namespace": "my-registry",
+	// Registry refs use the alias chosen by users via:
+	// ocx registry add <url> --name <alias>
 	"version": "0.0.1",
 	"author": "Your Name",
 

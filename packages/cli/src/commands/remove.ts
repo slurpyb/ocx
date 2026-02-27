@@ -3,19 +3,114 @@
  * Remove installed components
  */
 
-import { existsSync, realpathSync } from "node:fs"
+import { realpathSync } from "node:fs"
 import { rm } from "node:fs/promises"
 import { sep } from "node:path"
 
 import type { Command } from "commander"
 import { LocalConfigProvider } from "../config/provider"
 import { readReceipt, writeReceipt } from "../schemas/config"
+import { resolveInstalledComponentRefs } from "../utils/component-ref-resolver"
 import { type DryRunResult, outputDryRun } from "../utils/dry-run"
 import { NotFoundError, ValidationError } from "../utils/errors"
 import { createSpinner, handleError, logger } from "../utils/index"
 import { PathValidationError, validatePath } from "../utils/path-security"
 import { checkFileIntegrity, parseCanonicalId } from "../utils/receipt"
 import { addCommonOptions, addVerboseOption } from "../utils/shared-options"
+
+interface PreflightRemovalFile {
+	path: string
+	targetReal: string | null
+}
+
+export function resolvePreflightRemovalTarget(
+	projectCwd: string,
+	baseReal: string,
+	relativePath: string,
+): PreflightRemovalFile {
+	const safePath = validatePath(projectCwd, relativePath)
+
+	let targetReal: string
+	try {
+		targetReal = realpathSync(safePath)
+	} catch (error: unknown) {
+		const code = (error as NodeJS.ErrnoException).code
+		if (code === "ENOENT" || code === "ENOTDIR") {
+			return {
+				path: relativePath,
+				targetReal: null,
+			}
+		}
+		if (code === "ELOOP") {
+			throw new ValidationError(`Security violation: symlink loop detected at ${relativePath}`)
+		}
+		if (code === "EACCES" || code === "EPERM") {
+			throw new ValidationError(`Security violation: cannot verify path ${relativePath}`)
+		}
+		throw error
+	}
+
+	if (targetReal === baseReal) {
+		throw new ValidationError(
+			`Security violation: cannot delete project root directory (${relativePath})`,
+		)
+	}
+
+	if (!targetReal.startsWith(baseReal + sep)) {
+		throw new ValidationError("Security violation: path escapes project directory")
+	}
+
+	return {
+		path: relativePath,
+		targetReal,
+	}
+}
+
+export function resolveDeleteTimeRemovalTarget(
+	projectCwd: string,
+	baseReal: string,
+	preflightFile: PreflightRemovalFile,
+): string | null {
+	const currentResolution = resolvePreflightRemovalTarget(projectCwd, baseReal, preflightFile.path)
+
+	if (!preflightFile.targetReal) {
+		if (currentResolution.targetReal) {
+			throw new ValidationError(
+				`Security violation: missing target reappeared during removal (${preflightFile.path})`,
+			)
+		}
+
+		return null
+	}
+
+	if (!currentResolution.targetReal) {
+		return null
+	}
+
+	if (currentResolution.targetReal !== preflightFile.targetReal) {
+		throw new ValidationError(
+			`Security violation: target changed during removal (${preflightFile.path})`,
+		)
+	}
+
+	return currentResolution.targetReal
+}
+
+function deduplicateCanonicalIds(canonicalIds: string[]): string[] {
+	const seen = new Set<string>()
+	const uniqueCanonicalIds: string[] = []
+
+	for (const canonicalId of canonicalIds) {
+		if (seen.has(canonicalId)) {
+			continue
+		}
+
+		seen.add(canonicalId)
+		uniqueCanonicalIds.push(canonicalId)
+	}
+
+	return uniqueCanonicalIds
+}
 
 export interface RemoveOptions {
 	cwd?: string
@@ -30,7 +125,7 @@ export function registerRemoveCommand(program: Command): void {
 	const cmd = program
 		.command("remove")
 		.description("Remove installed components")
-		.argument("<components...>", "Canonical component IDs to remove")
+		.argument("<components...>", "Component refs to remove (canonical ID or alias/component)")
 
 	addCommonOptions(cmd)
 	cmd.option("-f, --force", "Force removal even if files have been modified")
@@ -47,12 +142,12 @@ export function registerRemoveCommand(program: Command): void {
 		})
 }
 
-async function runRemove(canonicalIds: string[], options: RemoveOptions): Promise<void> {
+async function runRemove(componentRefs: string[], options: RemoveOptions): Promise<void> {
 	const cwd = options.cwd ?? process.cwd()
 	const provider = await LocalConfigProvider.requireInitialized(cwd)
 
 	// Guard: No components specified
-	if (canonicalIds.length === 0) {
+	if (componentRefs.length === 0) {
 		throw new ValidationError("No components specified. Specify at least one component ID.")
 	}
 
@@ -62,14 +157,25 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 		throw new NotFoundError("No components installed.")
 	}
 
+	const canonicalIds = deduplicateCanonicalIds(
+		resolveInstalledComponentRefs(componentRefs, receipt),
+	)
+
 	const spin = options.quiet ? null : createSpinner({ text: "Removing components..." })
 	spin?.start()
 
 	const removed: string[] = []
 	const notFound: string[] = []
-	const toRemove: Array<{ canonicalId: string; files: string[] }> = []
+	const toRemove: Array<{ canonicalId: string; files: PreflightRemovalFile[] }> = []
 	const warnings: string[] = []
 	let hasIntegrityIssues = false
+
+	let baseReal: string
+	try {
+		baseReal = realpathSync(provider.cwd)
+	} catch (_error: unknown) {
+		throw new ValidationError("Cannot resolve project directory")
+	}
 
 	try {
 		// First pass: validate all components and check integrity
@@ -77,11 +183,11 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 			// Guard: Component must exist in receipt
 			const entry = receipt.installed[canonicalId]
 			if (!entry) {
-				notFound.push(canonicalId)
-				continue
+				throw new Error(`Resolved component '${canonicalId}' was not found in receipt.`)
 			}
 
 			// Preflight validation: validate all file paths before any deletion
+			const preflightFiles: PreflightRemovalFile[] = []
 			for (const fileEntry of entry.files) {
 				// Guard: Empty or "." paths are rejected (Law 1: Early Exit)
 				if (!fileEntry.path || fileEntry.path === ".") {
@@ -90,9 +196,9 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 					)
 				}
 
-				// Validate path structure (rejects null bytes, absolute paths, traversal)
+				// Validate path structure and containment checks (same checks as deletion phase)
 				try {
-					validatePath(provider.cwd, fileEntry.path)
+					preflightFiles.push(resolvePreflightRemovalTarget(provider.cwd, baseReal, fileEntry.path))
 				} catch (error) {
 					if (error instanceof PathValidationError) {
 						throw new ValidationError(
@@ -121,8 +227,7 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 			}
 
 			// Collect files to remove
-			const filePaths = entry.files.map((f) => f.path)
-			toRemove.push({ canonicalId, files: filePaths })
+			toRemove.push({ canonicalId, files: preflightFiles })
 		}
 
 		// Handle dry-run mode
@@ -133,20 +238,15 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 				dryRun: true,
 				command: "remove",
 				wouldPerform: toRemove.flatMap(({ canonicalId, files }) =>
-					files.map((filePath) => ({
+					files.map((fileEntry) => ({
 						action: "delete" as const,
-						target: filePath,
+						target: fileEntry.path,
 						details: { component: canonicalId },
 					})),
 				),
 				validation: {
 					passed: !hasIntegrityIssues || Boolean(options.force),
-					warnings:
-						warnings.length > 0
-							? warnings
-							: notFound.length > 0
-								? [`Components not found: ${notFound.join(", ")}`]
-								: undefined,
+					warnings: warnings.length > 0 ? warnings : undefined,
 				},
 				summary: `${toRemove.length} component(s), ${toRemove.reduce((sum, item) => sum + item.files.length, 0)} file(s) would be removed`,
 			}
@@ -209,64 +309,20 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 			}
 		}
 
-		// Second pass: actually remove files
-		// Step 2: Compute base real path once per remove operation
-		let baseReal: string
-		try {
-			baseReal = realpathSync(provider.cwd)
-		} catch (_error: unknown) {
-			throw new ValidationError("Cannot resolve project directory")
-		}
-
-		for (const { canonicalId } of toRemove) {
-			const entry = receipt.installed[canonicalId]
-			if (!entry) continue
-
+		// Second pass: actually remove files (preflight already validated all targets)
+		for (const { canonicalId, files } of toRemove) {
 			// Remove files
-			for (const fileEntry of entry.files) {
-				// Step 1: Validate path (rejects null bytes, absolute paths, traversal)
-				const safePath = validatePath(provider.cwd, fileEntry.path)
+			for (const fileEntry of files) {
+				const deleteTarget = resolveDeleteTimeRemovalTarget(provider.cwd, baseReal, fileEntry)
 
-				// Step 3: Check if file exists
-				if (!existsSync(safePath)) {
-					// Skip deletion, log if verbose (already gone)
+				if (!deleteTarget) {
 					if (options.verbose) {
 						logger.info(`  ⊘ Skipped ${fileEntry.path} (not found)`)
 					}
 					continue
 				}
 
-				// Step 4: Compute target real path
-				let targetReal: string
-				try {
-					targetReal = realpathSync(safePath)
-				} catch (error: unknown) {
-					const code = (error as NodeJS.ErrnoException).code
-					if (code === "ELOOP") {
-						throw new ValidationError(
-							`Security violation: symlink loop detected at ${fileEntry.path}`,
-						)
-					}
-					if (code === "EACCES" || code === "EPERM") {
-						throw new ValidationError(`Security violation: cannot verify path ${fileEntry.path}`)
-					}
-					throw error
-				}
-
-				// Step 5: Containment check - reject if targetReal === baseReal
-				if (targetReal === baseReal) {
-					throw new ValidationError(
-						`Security violation: cannot delete project root directory (${fileEntry.path})`,
-					)
-				}
-
-				// Step 6: Containment check using path boundary
-				if (!targetReal.startsWith(baseReal + sep) && targetReal !== baseReal) {
-					throw new ValidationError(`Security violation: path escapes project directory`)
-				}
-
-				// Step 7: Delete via targetReal (canonical path) to avoid TOCTOU
-				await rm(targetReal, { force: true })
+				await rm(deleteTarget, { force: true })
 				if (options.verbose) {
 					logger.info(`  ✓ Removed ${fileEntry.path}`)
 				}
@@ -291,14 +347,6 @@ async function runRemove(canonicalIds: string[], options: RemoveOptions): Promis
 			for (const id of removed) {
 				const parsed = parseCanonicalId(id)
 				logger.success(`✓ Removed ${parsed.registryName}/${parsed.name}@${parsed.revision}`)
-			}
-
-			if (notFound.length > 0) {
-				logger.info("")
-				logger.warn("Not found:")
-				for (const id of notFound) {
-					logger.warn(`  - ${id}`)
-				}
 			}
 
 			logger.info("")
