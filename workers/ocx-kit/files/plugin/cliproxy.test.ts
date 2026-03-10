@@ -141,6 +141,18 @@ async function expectAsyncThrowContains(
 }
 
 describe("cliproxy config contract", () => {
+	it("rejects legacy top-level prefix key", () => {
+		expect(() =>
+			parseCliproxyConfigObject(
+				{
+					url: "http://localhost:8317",
+					prefix: "cliproxy",
+				},
+				{ env: {}, readCredentialFile: () => "" },
+			),
+		).toThrow("[cliproxy] Unsupported key in cliproxy config: prefix")
+	})
+
 	it("rejects unknown top-level keys", () => {
 		expect(() =>
 			parseCliproxyConfigObject(

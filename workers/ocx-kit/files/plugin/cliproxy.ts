@@ -65,7 +65,6 @@ type ParsedCacheModel = {
 		id?: string
 	}
 	displayName: string
-	family?: string
 	limits: Limits
 	reasoning: boolean
 	cost: Cost
@@ -652,11 +651,6 @@ function parseCacheModel(
 		inheritedApi = expectString(providerDefaults.api, `${scope}.provider.api`)
 	}
 
-	let family: string | undefined
-	if (value.family !== undefined) {
-		family = expectString(value.family, `${scope}.family`)
-	}
-
 	return {
 		source: buildSourcePointer(providerNamespace, modelId),
 		api: {
@@ -664,7 +658,6 @@ function parseCacheModel(
 			id: inheritedApi,
 		},
 		displayName,
-		family,
 		limits,
 		reasoning,
 		cost,
@@ -1142,7 +1135,6 @@ function inferDefaultFamilySource(canonicalId: string): SourcePointer | undefine
 type SourceCandidate = {
 	candidate: SourcePointer
 	fromUserSource: boolean
-	candidateType: "user" | "provider-qualified" | "alias" | "family"
 }
 
 function resolveSourceCandidate(
@@ -1153,7 +1145,6 @@ function resolveSourceCandidate(
 		return {
 			candidate: modelOverride.source,
 			fromUserSource: true,
-			candidateType: "user",
 		}
 	}
 
@@ -1163,7 +1154,6 @@ function resolveSourceCandidate(
 			return {
 				candidate: providerQualifiedCandidate,
 				fromUserSource: false,
-				candidateType: "provider-qualified",
 			}
 		}
 	}
@@ -1173,7 +1163,6 @@ function resolveSourceCandidate(
 		return {
 			candidate: parseCanonicalSourceString(aliasTarget, `alias.${discoveryModel.canonicalId}`),
 			fromUserSource: false,
-			candidateType: "alias",
 		}
 	}
 
@@ -1182,7 +1171,6 @@ function resolveSourceCandidate(
 		return {
 			candidate: inferred,
 			fromUserSource: false,
-			candidateType: "family",
 		}
 	}
 
