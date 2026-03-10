@@ -81,12 +81,14 @@ type EndpointItem = {
 	rawId: string
 	canonicalId: string
 	displayName?: string
+	ownerHint?: string
 	ordinal: number
 }
 
 type MergedDiscoveryModel = {
 	canonicalId: string
 	displayName: string
+	ownerHint?: string
 	canonicalConflict: boolean
 }
 
@@ -199,6 +201,15 @@ const DEFAULT_HOST_PRESET: HostPreset = {
 const DISCOVERY_ALIAS_TABLE: Record<string, string> = {
 	"vertex-claude": "google-vertex-anthropic/vertex-claude",
 	"gpt-5-latest": "openai/gpt-5",
+}
+
+const OWNER_PROVIDER_NAMESPACE_ALIASES: Record<string, string> = {
+	openai: "openai",
+	"github-copilot": "github-copilot",
+	anthropic: "anthropic",
+	google: "google",
+	moonshot: "moonshotai",
+	moonshotai: "moonshotai",
 }
 
 // Explicit checked-in custom provider table for providers absent from models.dev cache.
@@ -757,6 +768,10 @@ export function parseV1DiscoveryPayload(payload: unknown): EndpointItem[] {
 				typeof entry.display_name === "string" && entry.display_name.length > 0
 					? entry.display_name
 					: undefined,
+			ownerHint:
+				typeof entry.owned_by === "string" && entry.owned_by.trim().length > 0
+					? entry.owned_by.trim()
+					: undefined,
 			ordinal,
 		})
 	}
@@ -782,6 +797,7 @@ export function parseV1BetaDiscoveryPayload(payload: unknown): EndpointItem[] {
 				typeof entry.displayName === "string" && entry.displayName.length > 0
 					? entry.displayName
 					: undefined,
+			ownerHint: undefined,
 			ordinal,
 		})
 	}
@@ -827,10 +843,12 @@ export function mergeDiscoveryModels(
 			v1Sorted.find((item) => item.displayName)?.displayName ??
 			v1betaSorted.find((item) => item.displayName)?.displayName ??
 			canonicalId
+		const ownerHint = v1Sorted.find((item) => item.ownerHint)?.ownerHint
 
 		records.push({
 			canonicalId,
 			displayName,
+			ownerHint,
 			canonicalConflict: bucket.canonicalConflict,
 		})
 	}
@@ -1132,8 +1150,34 @@ function inferDefaultFamilySource(canonicalId: string): SourcePointer | undefine
 	return undefined
 }
 
+function inferOwnerHintSource(
+	canonicalId: string,
+	ownerHint: string | undefined,
+): SourcePointer | undefined {
+	if (!ownerHint || canonicalId.includes("/")) {
+		return undefined
+	}
+
+	const normalizedOwner = ownerHint.trim().toLowerCase()
+	const providerNamespace = OWNER_PROVIDER_NAMESPACE_ALIASES[normalizedOwner]
+	if (!providerNamespace) {
+		return undefined
+	}
+
+	return buildSourcePointer(providerNamespace, canonicalId)
+}
+
+function dedupeSourceCandidates(candidates: SourcePointer[]): SourcePointer[] {
+	const uniqueByKey = new Map<string, SourcePointer>()
+	for (const candidate of candidates) {
+		if (uniqueByKey.has(candidate.key)) continue
+		uniqueByKey.set(candidate.key, candidate)
+	}
+	return [...uniqueByKey.values()]
+}
+
 type SourceCandidate = {
-	candidate: SourcePointer
+	candidates: SourcePointer[]
 	fromUserSource: boolean
 }
 
@@ -1143,7 +1187,7 @@ function resolveSourceCandidate(
 ): SourceCandidate | undefined {
 	if (modelOverride?.source) {
 		return {
-			candidate: modelOverride.source,
+			candidates: [modelOverride.source],
 			fromUserSource: true,
 		}
 	}
@@ -1152,24 +1196,32 @@ function resolveSourceCandidate(
 		const providerQualifiedCandidate = parseCanonicalSourceCandidate(discoveryModel.canonicalId)
 		if (providerQualifiedCandidate) {
 			return {
-				candidate: providerQualifiedCandidate,
+				candidates: [providerQualifiedCandidate],
 				fromUserSource: false,
 			}
 		}
 	}
 
+	const candidates: SourcePointer[] = []
+
 	const aliasTarget = DISCOVERY_ALIAS_TABLE[discoveryModel.canonicalId]
 	if (aliasTarget !== undefined) {
-		return {
-			candidate: parseCanonicalSourceString(aliasTarget, `alias.${discoveryModel.canonicalId}`),
-			fromUserSource: false,
-		}
+		candidates.push(parseCanonicalSourceString(aliasTarget, `alias.${discoveryModel.canonicalId}`))
+	}
+
+	const ownerHintSource = inferOwnerHintSource(discoveryModel.canonicalId, discoveryModel.ownerHint)
+	if (ownerHintSource) {
+		candidates.push(ownerHintSource)
 	}
 
 	const inferred = inferDefaultFamilySource(discoveryModel.canonicalId)
 	if (inferred) {
+		candidates.push(inferred)
+	}
+
+	if (candidates.length > 0) {
 		return {
-			candidate: inferred,
+			candidates: dedupeSourceCandidates(candidates),
 			fromUserSource: false,
 		}
 	}
@@ -1256,16 +1308,33 @@ export function resolveCliproxyArtifact(input: {
 			continue
 		}
 
-		const sourceTarget = resolveSourceTarget(input.cache, sourceCandidate.candidate)
+		let sourceTarget: ResolvedSourceTarget | MissingSourceTarget | undefined
+		let missingReasonFromFirstCandidate: MissingSourceTarget["missingReason"] | undefined
+		for (let index = 0; index < sourceCandidate.candidates.length; index += 1) {
+			const nextCandidate = sourceCandidate.candidates[index]
+			const nextResolution = resolveSourceTarget(input.cache, nextCandidate)
+			if (!("missingReason" in nextResolution)) {
+				sourceTarget = nextResolution
+				break
+			}
+			if (index === 0) {
+				missingReasonFromFirstCandidate = nextResolution.missingReason
+			}
+		}
+
+		if (!sourceTarget) {
+			sourceTarget = { missingReason: missingReasonFromFirstCandidate ?? "missing-target" }
+		}
+
 		if ("missingReason" in sourceTarget) {
 			if (sourceCandidate.fromUserSource) {
 				if (sourceTarget.missingReason === "unknown-provider") {
 					throw new Error(
-						`[cliproxy] source target for <${discoveredModel.canonicalId}> references unsupported provider namespace: ${sourceCandidate.candidate.providerNamespace}`,
+						`[cliproxy] source target for <${discoveredModel.canonicalId}> references unsupported provider namespace: ${sourceCandidate.candidates[0].providerNamespace}`,
 					)
 				}
 				throw new Error(
-					`[cliproxy] source target for <${discoveredModel.canonicalId}> does not exist: ${sourceCandidate.candidate.key}`,
+					`[cliproxy] source target for <${discoveredModel.canonicalId}> does not exist: ${sourceCandidate.candidates[0].key}`,
 				)
 			}
 			skipWarnings.push(

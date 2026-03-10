@@ -573,6 +573,57 @@ describe("cliproxy deterministic discovery + resolution", () => {
 		expect(resolved.records[0].api.npm).toBe("@ai-sdk/github-copilot")
 	})
 
+	it("uses v1 owned_by hint to resolve unqualified IDs to copilot", () => {
+		const merged = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({
+				data: [
+					{
+						id: "gpt-4.1-mini",
+						display_name: "Copilot GPT",
+						owned_by: "github-copilot",
+					},
+				],
+			}),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const resolved = resolveCliproxyArtifact({
+			cache: cacheFixture(),
+			config: configBase(),
+			discovered: merged,
+		})
+
+		expect(resolved.records).toHaveLength(1)
+		expect(resolved.records[0].source.key).toBe("github-copilot/gpt-4.1-mini")
+		expect(resolved.records[0].output.providerBucketId).toBe("cliproxy-github-copilot")
+		expect(resolved.records[0].output.modelId).toBe("gpt-4.1-mini")
+	})
+
+	it("falls back to family inference when owner-hinted provider misses", () => {
+		const merged = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({
+				data: [
+					{
+						id: "gpt-5",
+						display_name: "GPT 5",
+						owned_by: "github-copilot",
+					},
+				],
+			}),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const resolved = resolveCliproxyArtifact({
+			cache: cacheFixture(),
+			config: configBase(),
+			discovered: merged,
+		})
+
+		expect(resolved.records).toHaveLength(1)
+		expect(resolved.records[0].source.key).toBe("openai/gpt-5")
+		expect(resolved.records[0].output.providerBucketId).toBe("cliproxy-openai")
+	})
+
 	it("resolves custom provider IDs absent from models.dev via explicit table", () => {
 		const merged = mergeDiscoveryModels(
 			parseV1DiscoveryPayload({
