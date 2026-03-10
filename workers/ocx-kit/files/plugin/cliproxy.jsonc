@@ -19,10 +19,7 @@
 	// Optional model-level overrides keyed by discovered model ID.
 	"models": {
 		"claude-sonnet-4-5-20250929": {
-			"source": {
-				"providerNamespace": "anthropic",
-				"modelId": "claude-sonnet-4-5-20250929"
-			},
+			"source": "anthropic/claude-sonnet-4-5-20250929",
 			"displayName": "Claude Sonnet 4.5 (CLIProxy)",
 			"chat": {
 				"params": {

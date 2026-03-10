@@ -1,10 +1,5 @@
 type JsonScalar = string | number | boolean | null
 
-type SourcePointer = {
-	providerNamespace: NativeProviderNamespace
-	modelId: string
-}
-
 type NativeProviderNamespace =
 	| "anthropic"
 	| "openai"
@@ -12,10 +7,21 @@ type NativeProviderNamespace =
 	| "google-vertex-anthropic"
 	| "github-copilot"
 	| "moonshotai"
+	| "google-antigravity"
+
+type SourcePointer = {
+	providerNamespace: NativeProviderNamespace
+	modelId: string
+}
 
 type Limits = {
 	context: number
 	output: number
+}
+
+type SafetyCaps = {
+	context?: number
+	output?: number
 }
 
 type Cost = {
@@ -31,6 +37,8 @@ type ProviderExpectation = {
 	apiId?: string
 	requiredHeaders: Record<string, string>
 	requiredParams: Record<string, JsonScalar>
+	effectiveHost: string
+	defaultSafetyCaps?: SafetyCaps
 }
 
 type ModelExpectation = {
@@ -55,9 +63,10 @@ type ParityFixtureCase = {
 
 type ParityRecord = {
 	source: {
+		key: string
 		providerNamespace: NativeProviderNamespace
 		modelId: string
-		effectiveHost: NativeProviderNamespace
+		effectiveHost: string
 	}
 	output: {
 		providerBucketId: string
@@ -71,6 +80,7 @@ type ParityRecord = {
 	limits: Limits
 	reasoning: boolean
 	cost: Cost
+	safetyCaps?: SafetyCaps
 	chat: {
 		headers: Record<string, string>
 		params: Record<string, JsonScalar>
@@ -85,32 +95,48 @@ const PROVIDER_EXPECTATIONS: Record<NativeProviderNamespace, ProviderExpectation
 				"claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
 		},
 		requiredParams: {},
+		effectiveHost: "anthropic",
 	},
 	openai: {
 		apiNpm: "@ai-sdk/openai",
 		requiredHeaders: {},
 		requiredParams: {},
+		effectiveHost: "openai",
 	},
 	google: {
 		apiNpm: "@ai-sdk/google",
 		requiredHeaders: {},
 		requiredParams: {},
+		effectiveHost: "google",
 	},
 	"google-vertex-anthropic": {
 		apiNpm: "@ai-sdk/google-vertex/anthropic",
 		requiredHeaders: {},
 		requiredParams: {},
+		effectiveHost: "google-vertex-anthropic",
 	},
 	"github-copilot": {
-		apiNpm: "@ai-sdk/openai-compatible",
+		apiNpm: "@ai-sdk/github-copilot",
 		apiId: "https://api.githubcopilot.com",
 		requiredHeaders: {},
 		requiredParams: {},
+		effectiveHost: "github-copilot",
 	},
 	moonshotai: {
 		apiNpm: "@ai-sdk/openai-compatible",
 		requiredHeaders: {},
 		requiredParams: {},
+		effectiveHost: "moonshotai",
+	},
+	"google-antigravity": {
+		apiNpm: "@ai-sdk/google",
+		requiredHeaders: {},
+		requiredParams: {},
+		effectiveHost: "google-antigravity",
+		defaultSafetyCaps: {
+			context: 400000,
+			output: 64000,
+		},
 	},
 }
 
@@ -139,6 +165,10 @@ const MODEL_EXPECTATIONS: Record<string, ModelExpectation> = {
 	},
 	"moonshotai::kimi-k2": {
 		limits: { context: 200000, output: 32000 },
+		reasoning: true,
+	},
+	"google-antigravity::gemini-2.5-pro": {
+		limits: { context: 400000, output: 64000 },
 		reasoning: true,
 	},
 }
@@ -174,9 +204,9 @@ export const CLIPROXY_PARITY_FIXTURE_MATRIX: readonly ParityFixtureCase[] = [
 	},
 	{
 		name: "github-copilot",
-		discovery: [{ id: "gpt-4.1-mini", displayName: "Copilot Fixture" }],
+		discovery: [{ id: "github-copilot/gpt-4.1-mini", displayName: "Copilot Fixture" }],
 		selectedSource: { providerNamespace: "github-copilot", modelId: "gpt-4.1-mini" },
-		outputModelId: "gpt-4.1-mini",
+		outputModelId: "github-copilot/gpt-4.1-mini",
 		outputDisplayName: "Copilot Fixture",
 	},
 	{
@@ -187,15 +217,22 @@ export const CLIPROXY_PARITY_FIXTURE_MATRIX: readonly ParityFixtureCase[] = [
 		outputDisplayName: "Moonshot Fixture",
 	},
 	{
-		name: "ambiguous-source",
+		name: "google-antigravity",
+		discovery: [{ id: "google-antigravity/gemini-2.5-pro", displayName: "Antigravity Fixture" }],
+		selectedSource: { providerNamespace: "google-antigravity", modelId: "gemini-2.5-pro" },
+		outputModelId: "google-antigravity/gemini-2.5-pro",
+		outputDisplayName: "Antigravity Fixture",
+	},
+	{
+		name: "unresolved-model-skip",
 		discovery: [
-			{ id: "shared-model", displayName: "Shared" },
+			{ id: "mistral-large", displayName: "Unresolved" },
 			{ id: "gpt-5", displayName: "OpenAI Fixture" },
 		],
 		selectedSource: { providerNamespace: "openai", modelId: "gpt-5" },
 		outputModelId: "gpt-5",
 		outputDisplayName: "OpenAI Fixture",
-		assertSkipWarningFragment: "<shared-model>",
+		assertSkipWarningFragment: "<mistral-large>",
 	},
 ] as const
 
@@ -229,12 +266,13 @@ function buildExpectedRecord(fixture: ParityFixtureCase): ParityRecord {
 
 	return {
 		source: {
+			key: `${fixture.selectedSource.providerNamespace}/${fixture.selectedSource.modelId}`,
 			providerNamespace: fixture.selectedSource.providerNamespace,
 			modelId: fixture.selectedSource.modelId,
-			effectiveHost: fixture.selectedSource.providerNamespace,
+			effectiveHost: provider.effectiveHost,
 		},
 		output: {
-			providerBucketId: `cliproxy-${fixture.selectedSource.providerNamespace}`,
+			providerBucketId: `cliproxy-${provider.effectiveHost}`,
 			modelId: fixture.outputModelId,
 		},
 		api: {
@@ -245,6 +283,7 @@ function buildExpectedRecord(fixture: ParityFixtureCase): ParityRecord {
 		limits: model.limits,
 		reasoning: model.reasoning,
 		cost: normalizeCost(model.cost),
+		...(provider.defaultSafetyCaps ? { safetyCaps: provider.defaultSafetyCaps } : {}),
 		chat: {
 			headers: provider.requiredHeaders,
 			params: provider.requiredParams,

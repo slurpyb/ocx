@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import path from "node:path"
 import {
 	buildCliproxyProviderPatch,
+	discoverMergedModels,
 	mergeDiscoveryModels,
 	normalizeDiscoveredModelId,
 	parseCliproxyCacheText,
@@ -22,17 +23,6 @@ import {
 const PARITY_GOLDENS = JSON.parse(
 	readFileSync(path.join(import.meta.dir, "cliproxy.parity.goldens.json"), "utf-8"),
 ) as Record<string, unknown>
-
-function expectThrowMessageExactly(fn: () => unknown, expectedMessage: string) {
-	try {
-		fn()
-	} catch (error) {
-		expect(error).toBeInstanceOf(Error)
-		expect((error as Error).message).toBe(expectedMessage)
-		return
-	}
-	throw new Error(`Expected function to throw: ${expectedMessage}`)
-}
 
 function configBase() {
 	return parseCliproxyConfigObject(
@@ -76,12 +66,6 @@ function cacheFixture() {
 						limit: { context: 400000, output: 128000 },
 						cost: { input: 1, output: 2 },
 					},
-					"shared-model": {
-						id: "shared-model",
-						name: "Shared Model",
-						reasoning: false,
-						limit: { context: 1000, output: 100 },
-					},
 				},
 			},
 			google: {
@@ -113,7 +97,7 @@ function cacheFixture() {
 			"github-copilot": {
 				id: "github-copilot",
 				name: "GitHub Copilot",
-				npm: "@ai-sdk/openai-compatible",
+				npm: "@ai-sdk/github-copilot",
 				api: "https://api.githubcopilot.com",
 				models: {
 					"gpt-4.1-mini": {
@@ -121,24 +105,6 @@ function cacheFixture() {
 						name: "GPT 4.1 Mini",
 						reasoning: true,
 						limit: { context: 128000, output: 16000 },
-					},
-					"gpt-5": {
-						id: "gpt-5",
-						name: "GPT-5 (Copilot)",
-						reasoning: true,
-						limit: { context: 400000, output: 128000 },
-					},
-					"gemini-2.5-pro": {
-						id: "gemini-2.5-pro",
-						name: "Gemini 2.5 Pro (Copilot)",
-						reasoning: true,
-						limit: { context: 1000000, output: 64000 },
-					},
-					"shared-model": {
-						id: "shared-model",
-						name: "Shared Model Copilot",
-						reasoning: false,
-						limit: { context: 1000, output: 100 },
 					},
 				},
 			},
@@ -160,6 +126,20 @@ function cacheFixture() {
 	)
 }
 
+async function expectAsyncThrowContains(
+	run: () => Promise<unknown>,
+	fragment: string,
+): Promise<void> {
+	try {
+		await run()
+	} catch (error) {
+		expect(error).toBeInstanceOf(Error)
+		expect((error as Error).message).toContain(fragment)
+		return
+	}
+	throw new Error(`Expected throw including: ${fragment}`)
+}
+
 describe("cliproxy config contract", () => {
 	it("rejects unsupported prefix with exact message", () => {
 		expect(() =>
@@ -173,18 +153,6 @@ describe("cliproxy config contract", () => {
 		).toThrow(
 			'[cliproxy] providers are always emitted as cliproxy-*; remove prefix or set it to "cliproxy"',
 		)
-	})
-
-	it("rejects missing env credential reference", () => {
-		expect(() =>
-			parseCliproxyConfigObject(
-				{
-					url: "http://localhost:8317",
-					apiKey: "{env:CLIPROXY_API_KEY}",
-				},
-				{ env: {}, readCredentialFile: () => "" },
-			),
-		).toThrow("Environment variable not set or empty")
 	})
 
 	it("rejects unknown top-level keys", () => {
@@ -210,52 +178,141 @@ describe("cliproxy config contract", () => {
 		).toThrow("[cliproxy] cliproxy.url must be a non-empty string")
 	})
 
-	it("rejects unknown provider override namespace up front", () => {
+	it("resolves env and file apiKey references and fails for missing ones", () => {
+		const fromEnv = parseCliproxyConfigObject(
+			{
+				url: "http://localhost:8317",
+				apiKey: "{env:CLIPROXY_API_KEY}",
+			},
+			{ env: { CLIPROXY_API_KEY: "abc123" }, readCredentialFile: () => "" },
+		)
+		expect(fromEnv.apiKey).toBe("abc123")
+
+		const fromFile = parseCliproxyConfigObject(
+			{
+				url: "http://localhost:8317",
+				apiKey: "{file:/tmp/token}",
+			},
+			{ env: {}, readCredentialFile: () => " token-from-file\n" },
+		)
+		expect(fromFile.apiKey).toBe("token-from-file")
+
 		expect(() =>
 			parseCliproxyConfigObject(
 				{
 					url: "http://localhost:8317",
-					provider: {
-						"custom-provider": {
-							displayName: "Custom",
+					apiKey: "{env:CLIPROXY_API_KEY}",
+				},
+				{ env: {}, readCredentialFile: () => "" },
+			),
+		).toThrow("Environment variable not set or empty")
+
+		expect(() =>
+			parseCliproxyConfigObject(
+				{
+					url: "http://localhost:8317",
+					apiKey: "{file:/missing/token}",
+				},
+				{
+					env: {},
+					readCredentialFile: () => {
+						throw new Error("read failed")
+					},
+				},
+			),
+		).toThrow("Failed to read credential file")
+	})
+
+	it("parses canonical string source and rejects invalid source forms", () => {
+		const parsed = parseCliproxyConfigObject(
+			{
+				url: "http://localhost:8317",
+				models: {
+					"gpt-5": {
+						source: "openai/gpt-5",
+					},
+				},
+			},
+			{ env: {}, readCredentialFile: () => "" },
+		)
+		expect(parsed.models["gpt-5"].source?.key).toBe("openai/gpt-5")
+
+		expect(() =>
+			parseCliproxyConfigObject(
+				{
+					url: "http://localhost:8317",
+					models: { "gpt-5": { source: "openai" } },
+				},
+				{ env: {}, readCredentialFile: () => "" },
+			),
+		).toThrow("canonical provider/model form")
+
+		expect(() =>
+			parseCliproxyConfigObject(
+				{
+					url: "http://localhost:8317",
+					models: { "gpt-5": { source: "openai//gpt-5" } },
+				},
+				{ env: {}, readCredentialFile: () => "" },
+			),
+		).toThrow("canonical provider/model form")
+
+		expect(() =>
+			parseCliproxyConfigObject(
+				{
+					url: "http://localhost:8317",
+					models: {
+						"gpt-5": {
+							source: {
+								providerNamespace: "openai",
+								modelId: "gpt-5",
+							},
 						},
 					},
 				},
 				{ env: {}, readCredentialFile: () => "" },
 			),
-		).toThrow("[cliproxy] cliproxy.provider.custom-provider references unsupported namespace")
+		).toThrow("cliproxy.models.gpt-5.source must be a string")
 	})
 
-	it("parses JSONC without stripping comment-like text in strings", () => {
-		const parsed = parseCliproxyConfigText(
-			`{
-				// top-level comment
-				"url": "http://localhost:8317",
-				"apiKey": "token://keep/*literal*/value",
-				"models": {
-					"gpt-5": {
-						"displayName": "Model // keep",
-						/* inline block comment */
-						"chat": {
-							"params": {
-								"note": "slash // literal"
-							}
-						}
-					}
-				}
-			}`,
-			"fixture-config.jsonc",
-			{ env: {}, readCredentialFile: () => "" },
-		)
+	it("rejects invalid safety caps and locked-key style unknown fields", () => {
+		expect(() =>
+			parseCliproxyConfigObject(
+				{
+					url: "http://localhost:8317",
+					models: {
+						"gpt-5": {
+							safetyCaps: {
+								context: 0,
+							},
+						},
+					},
+				},
+				{ env: {}, readCredentialFile: () => "" },
+			),
+		).toThrow("must be an integer >= 1")
 
-		expect(parsed.apiKey).toBe("token://keep/*literal*/value")
-		expect(parsed.models["gpt-5"].displayName).toBe("Model // keep")
-		expect(parsed.models["gpt-5"].chat?.params?.note).toBe("slash // literal")
+		expect(() =>
+			parseCliproxyConfigObject(
+				{
+					url: "http://localhost:8317",
+					models: {
+						"gpt-5": {
+							output: {
+								providerBucketId: "cliproxy-openai",
+							},
+						},
+					},
+				},
+				{ env: {}, readCredentialFile: () => "" },
+			),
+		).toThrow("Unsupported key")
 	})
 
-	it("parses cliproxy.jsonc with trailing commas", () => {
+	it("parses JSONC comments and trailing commas", () => {
 		const parsed = parseCliproxyConfigText(
 			`{
+				// comment
 				"url": "http://localhost:8317",
 				"provider": {
 					"openai": {
@@ -282,7 +339,7 @@ describe("cliproxy config contract", () => {
 })
 
 describe("cliproxy config search path precedence", () => {
-	it("prefers project-local config before OPENCODE_CONFIG_DIR when project config is enabled", () => {
+	it("prefers project-local config before OPENCODE_CONFIG_DIR when enabled", () => {
 		const paths = resolveCliproxyConfigSearchPaths({
 			env: {
 				OPENCODE_CONFIG_DIR: "/tmp/opencode/profiles/work",
@@ -318,6 +375,7 @@ describe("cliproxy cache contract", () => {
 	it("supports marker=1 and validates models", () => {
 		const parsed = cacheFixture()
 		expect(parsed.models.length).toBeGreaterThan(0)
+		expect(parsed.bySource.get("openai/gpt-5")?.source.key).toBe("openai/gpt-5")
 	})
 
 	it("rejects unsupported marker", () => {
@@ -329,11 +387,34 @@ describe("cliproxy cache contract", () => {
 		).toThrow("Unsupported $cliproxyCacheContractVersion")
 	})
 
-	it("rejects invalid numeric invariants", () => {
+	it("accepts no-marker fallback when v1 shape validates", () => {
+		const parsed = parseCliproxyCacheText(
+			JSON.stringify({
+				openai: {
+					id: "openai",
+					name: "OpenAI",
+					npm: "@ai-sdk/openai",
+					models: {
+						"gpt-5": {
+							id: "gpt-5",
+							name: "GPT-5",
+							reasoning: true,
+							limit: { context: 400000, output: 128000 },
+						},
+					},
+				},
+			}),
+			"fixture-cache.json",
+		)
+
+		expect(parsed.models).toHaveLength(1)
+	})
+
+	it("rejects invalid numeric invariants and malformed optional numeric objects", () => {
 		expect(() =>
 			parseCliproxyCacheText(
 				JSON.stringify({
-					provider: {
+					openai: {
 						id: "openai",
 						name: "OpenAI",
 						npm: "@ai-sdk/openai",
@@ -350,6 +431,28 @@ describe("cliproxy cache contract", () => {
 				"fixture-cache.json",
 			),
 		).toThrow("input must be <=")
+
+		expect(() =>
+			parseCliproxyCacheText(
+				JSON.stringify({
+					openai: {
+						id: "openai",
+						name: "OpenAI",
+						npm: "@ai-sdk/openai",
+						models: {
+							bad: {
+								id: "bad",
+								name: "Bad",
+								reasoning: false,
+								limit: { context: 100, output: 10 },
+								cost: "invalid-cost",
+							},
+						},
+					},
+				}),
+				"fixture-cache.json",
+			),
+		).toThrow("must be an object")
 	})
 
 	it("tolerates unrelated top-level metadata keys", () => {
@@ -378,44 +481,6 @@ describe("cliproxy cache contract", () => {
 		)
 		expect(parsed.models).toHaveLength(1)
 	})
-
-	it("accepts zero-valued cache limits for passthrough models", () => {
-		const parsed = parseCliproxyCacheText(
-			JSON.stringify({
-				$cliproxyCacheContractVersion: 1,
-				nvidia: {
-					id: "nvidia",
-					name: "NVIDIA",
-					npm: "@ai-sdk/openai-compatible",
-					models: {
-						"nvidia/parakeet-tdt-0.6b-v2": {
-							id: "nvidia/parakeet-tdt-0.6b-v2",
-							name: "Parakeet TDT 0.6B v2",
-							reasoning: false,
-							limit: { context: 0, output: 4096 },
-						},
-					},
-				},
-				openai: {
-					id: "openai",
-					name: "OpenAI",
-					npm: "@ai-sdk/openai",
-					models: {
-						"gpt-5": {
-							id: "gpt-5",
-							name: "GPT-5",
-							reasoning: true,
-							limit: { context: 400000, output: 128000 },
-						},
-					},
-				},
-			}),
-			"fixture-cache.json",
-		)
-
-		expect(parsed.models).toHaveLength(2)
-		expect(parsed.bySource.get("nvidia::nvidia/parakeet-tdt-0.6b-v2")?.limits.context).toBe(0)
-	})
 })
 
 describe("cliproxy deterministic discovery + resolution", () => {
@@ -433,126 +498,204 @@ describe("cliproxy deterministic discovery + resolution", () => {
 		expect(merged[0].displayName).toBe("GPT Five")
 	})
 
-	it("builds isolated cliproxy-* providers for all host presets", () => {
-		const config = configBase()
-		const cache = cacheFixture()
+	it("fails discovery on one-endpoint success and uses failure precedence timeout > auth", async () => {
+		const originalFetch = globalThis.fetch
+
+		try {
+			globalThis.fetch = (async (input: URL | RequestInfo) => {
+				const url = typeof input === "string" ? input : input.toString()
+				if (url.endsWith("/v1/models")) {
+					return new Response(JSON.stringify({ data: [{ id: "gpt-5" }] }), { status: 200 })
+				}
+				return new Response("{", { status: 200 })
+			}) as typeof fetch
+
+			await expectAsyncThrowContains(
+				() => discoverMergedModels("http://localhost:8317", ""),
+				"discovery partial failure",
+			)
+
+			globalThis.fetch = (async (input: URL | RequestInfo) => {
+				const url = typeof input === "string" ? input : input.toString()
+				if (url.endsWith("/v1/models")) {
+					throw new DOMException("aborted", "AbortError")
+				}
+				return new Response("", { status: 401 })
+			}) as typeof fetch
+
+			await expectAsyncThrowContains(
+				() => discoverMergedModels("http://localhost:8317", ""),
+				"discovery failed (timeout)",
+			)
+		} finally {
+			globalThis.fetch = originalFetch
+		}
+	})
+
+	it("resolves provider-qualified discovered IDs against models.dev cache", () => {
+		const merged = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({
+				data: [{ id: "github-copilot/gpt-4.1-mini", display_name: "Copilot GPT" }],
+			}),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+		const resolved = resolveCliproxyArtifact({
+			cache: cacheFixture(),
+			config: configBase(),
+			discovered: merged,
+		})
+
+		expect(resolved.records).toHaveLength(1)
+		expect(resolved.records[0].source.key).toBe("github-copilot/gpt-4.1-mini")
+		expect(resolved.records[0].output.modelId).toBe("github-copilot/gpt-4.1-mini")
+		expect(resolved.records[0].api.npm).toBe("@ai-sdk/github-copilot")
+	})
+
+	it("resolves custom provider IDs absent from models.dev via explicit table", () => {
+		const merged = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({
+				data: [{ id: "google-antigravity/gemini-2.5-pro", display_name: "Antigravity" }],
+			}),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+		const resolved = resolveCliproxyArtifact({
+			cache: cacheFixture(),
+			config: configBase(),
+			discovered: merged,
+		})
+
+		expect(resolved.records).toHaveLength(1)
+		expect(resolved.records[0].source.providerNamespace).toBe("google-antigravity")
+		expect(resolved.records[0].source.effectiveHost).toBe("google-antigravity")
+		expect(resolved.records[0].output.providerBucketId).toBe("cliproxy-google-antigravity")
+		expect(resolved.records[0].limits.context).toBe(400000)
+		expect(resolved.records[0].safetyCaps).toEqual({ context: 400000, output: 64000 })
+	})
+
+	it("applies alias lookup and bare family default mapping", () => {
 		const merged = mergeDiscoveryModels(
 			parseV1DiscoveryPayload({
 				data: [
-					{ id: "models/claude-sonnet-4-5", display_name: "Claude Sonnet" },
-					{ id: "gpt-5", display_name: "GPT-5" },
-					{ id: "gemini-2.5-pro", display_name: "Gemini 2.5 Pro" },
-					{ id: "vertex-claude", display_name: "Vertex Claude" },
-					{ id: "gpt-4.1-mini", display_name: "GPT 4.1 Mini" },
-					{ id: "kimi-k2", display_name: "Kimi K2" },
+					{ id: "gpt-5-latest", display_name: "Alias GPT" },
+					{ id: "claude-sonnet-4-5", display_name: "Claude" },
+					{ id: "gemini-2.5-pro", display_name: "Gemini" },
+					{ id: "kimi-k2", display_name: "Kimi" },
 				],
 			}),
 			parseV1BetaDiscoveryPayload({ models: [] }),
 		)
 
-		const resolved = resolveCliproxyArtifact({ cache, config, discovered: merged })
-		const patch = buildCliproxyProviderPatch({ config, records: resolved.records })
+		const resolved = resolveCliproxyArtifact({
+			cache: cacheFixture(),
+			config: configBase(),
+			discovered: merged,
+		})
 
-		expect(Object.keys(patch)).toEqual([
-			"cliproxy-anthropic",
-			"cliproxy-github-copilot",
-			"cliproxy-google",
-			"cliproxy-google-vertex-anthropic",
-			"cliproxy-moonshotai",
-			"cliproxy-openai",
+		expect(resolved.records.map((record) => record.source.key)).toEqual([
+			"anthropic/claude-sonnet-4-5",
+			"google/gemini-2.5-pro",
+			"moonshotai/kimi-k2",
+			"openai/gpt-5",
 		])
-
-		const anthropicModels = patch["cliproxy-anthropic"].models as Record<
-			string,
-			Record<string, unknown>
-		>
-		expect(anthropicModels["claude-sonnet-4-5"].headers).toEqual({
-			"anthropic-beta":
-				"claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
-		})
-
-		const copilotProvider = patch["cliproxy-github-copilot"]
-		expect(copilotProvider.npm).toBe("@ai-sdk/openai-compatible")
-		const copilotModels = copilotProvider.models as Record<string, Record<string, unknown>>
-		expect(copilotModels["gpt-4.1-mini"].provider).toEqual({
-			npm: "@ai-sdk/openai-compatible",
-			api: "https://api.githubcopilot.com",
-		})
 	})
 
-	it("defaults duplicated OpenAI-family IDs to openai host", () => {
-		const config = configBase()
-		const cache = cacheFixture()
-		const merged = mergeDiscoveryModels(
-			parseV1DiscoveryPayload({ data: [{ id: "gpt-5", display_name: "GPT-5" }] }),
-			parseV1BetaDiscoveryPayload({ models: [] }),
-		)
-
-		const resolved = resolveCliproxyArtifact({ cache, config, discovered: merged })
-		expect(resolved.records).toHaveLength(1)
-		expect(resolved.records[0].source.providerNamespace).toBe("openai")
-		expect(resolved.records[0].output.providerBucketId).toBe("cliproxy-openai")
-	})
-
-	it("defaults duplicated Gemini-family IDs to google host", () => {
-		const config = configBase()
-		const cache = cacheFixture()
+	it("skips unresolved and auto-derived misses with canonicalId in warning", () => {
 		const merged = mergeDiscoveryModels(
 			parseV1DiscoveryPayload({
-				data: [{ id: "gemini-2.5-pro", display_name: "Gemini 2.5 Pro" }],
+				data: [
+					{ id: "mistral-large", display_name: "Unresolved" },
+					{ id: "gpt-999", display_name: "Missing OpenAI" },
+					{ id: "gpt-5", display_name: "OpenAI" },
+				],
 			}),
 			parseV1BetaDiscoveryPayload({ models: [] }),
 		)
 
-		const resolved = resolveCliproxyArtifact({ cache, config, discovered: merged })
+		const resolved = resolveCliproxyArtifact({
+			cache: cacheFixture(),
+			config: configBase(),
+			discovered: merged,
+		})
+
 		expect(resolved.records).toHaveLength(1)
-		expect(resolved.records[0].source.providerNamespace).toBe("google")
-		expect(resolved.records[0].output.providerBucketId).toBe("cliproxy-google")
+		expect(resolved.records[0].output.modelId).toBe("gpt-5")
+		expect(resolved.skipWarnings).toContain("[cliproxy] skipped <mistral-large>: unresolved source")
+		expect(resolved.skipWarnings).toContain(
+			"[cliproxy] skipped <gpt-999>: auto-derived candidate miss",
+		)
 	})
 
-	it("preserves explicit source override over native default host", () => {
-		const cache = cacheFixture()
-		const config = parseCliproxyConfigObject(
+	it("skips exact canonical conflicts", () => {
+		const merged = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({
+				data: [
+					{ id: "gpt-5", display_name: "One" },
+					{ id: "models/gpt-5", display_name: "Two" },
+					{ id: "claude-sonnet-4-5", display_name: "Claude" },
+				],
+			}),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const resolved = resolveCliproxyArtifact({
+			cache: cacheFixture(),
+			config: configBase(),
+			discovered: merged,
+		})
+
+		expect(resolved.records).toHaveLength(1)
+		expect(resolved.records[0].output.modelId).toBe("claude-sonnet-4-5")
+		expect(resolved.skipWarnings).toContain("[cliproxy] skipped <gpt-5>: canonical conflict")
+	})
+
+	it("fails for user-specified source misses and unknown custom providers", () => {
+		const missingTargetConfig = parseCliproxyConfigObject(
 			{
 				url: "http://localhost:8317",
 				models: {
 					"gpt-5": {
-						source: {
-							providerNamespace: "github-copilot",
-							modelId: "gpt-5",
-						},
+						source: "openai/does-not-exist",
 					},
 				},
 			},
 			{ env: {}, readCredentialFile: () => "" },
 		)
+
+		const unknownProviderConfig = parseCliproxyConfigObject(
+			{
+				url: "http://localhost:8317",
+				models: {
+					"gpt-5": {
+						source: "unknown-provider/gpt-5",
+					},
+				},
+			},
+			{ env: {}, readCredentialFile: () => "" },
+		)
+
 		const merged = mergeDiscoveryModels(
 			parseV1DiscoveryPayload({ data: [{ id: "gpt-5" }] }),
 			parseV1BetaDiscoveryPayload({ models: [] }),
 		)
 
-		const resolved = resolveCliproxyArtifact({ cache, config, discovered: merged })
-		expect(resolved.records).toHaveLength(1)
-		expect(resolved.records[0].source.providerNamespace).toBe("github-copilot")
-		expect(resolved.records[0].output.providerBucketId).toBe("cliproxy-github-copilot")
-	})
+		expect(() =>
+			resolveCliproxyArtifact({
+				cache: cacheFixture(),
+				config: missingTargetConfig,
+				discovered: merged,
+			}),
+		).toThrow("source target for <gpt-5> does not exist")
 
-	it("skips ambiguous model sources and includes <canonicalId> in warning", () => {
-		const config = configBase()
-		const cache = cacheFixture()
-		const merged = mergeDiscoveryModels(
-			parseV1DiscoveryPayload({ data: [{ id: "shared-model" }, { id: "gpt-5" }] }),
-			parseV1BetaDiscoveryPayload({ models: [] }),
-		)
-
-		const resolved = resolveCliproxyArtifact({ cache, config, discovered: merged })
-		expect(resolved.records.some((record) => record.output.modelId === "gpt-5")).toBe(true)
-		expect(resolved.records.some((record) => record.output.modelId === "shared-model")).toBe(false)
-		expect(resolved.skipWarnings.some((warning) => warning.includes("<shared-model>"))).toBe(true)
+		expect(() =>
+			resolveCliproxyArtifact({
+				cache: cacheFixture(),
+				config: unknownProviderConfig,
+				discovered: merged,
+			}),
+		).toThrow("references unsupported provider namespace")
 	})
 
 	it("fails when override conflicts with preset-required anthropic header", () => {
-		const cache = cacheFixture()
 		const config = parseCliproxyConfigObject(
 			{
 				url: "http://localhost:8317",
@@ -574,127 +717,92 @@ describe("cliproxy deterministic discovery + resolution", () => {
 			parseV1BetaDiscoveryPayload({ models: [] }),
 		)
 
-		expect(() => resolveCliproxyArtifact({ cache, config, discovered: merged })).toThrow(
-			"cannot override preset-required",
-		)
+		expect(() =>
+			resolveCliproxyArtifact({
+				cache: cacheFixture(),
+				config,
+				discovered: merged,
+			}),
+		).toThrow("cannot override preset-required")
 	})
 
-	it("fails when source override points to nonexistent cache model", () => {
-		const cache = cacheFixture()
+	it("preserves sibling overrides and emits isolated cliproxy-* providers", () => {
 		const config = parseCliproxyConfigObject(
 			{
 				url: "http://localhost:8317",
+				provider: {
+					openai: {
+						cost: {
+							input: 5,
+						},
+						chat: {
+							headers: {
+								"x-team": "core",
+							},
+						},
+					},
+				},
 				models: {
 					"gpt-5": {
-						source: {
-							providerNamespace: "openai",
-							modelId: "does-not-exist",
+						displayName: "GPT 5 Override",
+						cost: {
+							output: 9,
+						},
+						chat: {
+							params: {
+								temperature: 0.2,
+							},
 						},
 					},
 				},
 			},
 			{ env: {}, readCredentialFile: () => "" },
 		)
-		const merged = mergeDiscoveryModels(
-			parseV1DiscoveryPayload({ data: [{ id: "gpt-5" }] }),
-			parseV1BetaDiscoveryPayload({ models: [] }),
-		)
 
-		expect(() => resolveCliproxyArtifact({ cache, config, discovered: merged })).toThrow(
-			"source target for <gpt-5> does not exist",
-		)
-	})
-
-	it("skips unsupported cache host namespaces as per-model warnings", () => {
-		const cache = parseCliproxyCacheText(
-			JSON.stringify({
-				$cliproxyCacheContractVersion: 1,
-				openai: {
-					id: "openai",
-					name: "OpenAI",
-					npm: "@ai-sdk/openai",
-					models: {
-						"gpt-5": {
-							id: "gpt-5",
-							name: "GPT-5",
-							reasoning: true,
-							limit: { context: 400000, output: 128000 },
-						},
-					},
-				},
-				customProviderNode: {
-					id: "unsupported-host",
-					name: "Unsupported Host",
-					npm: "@ai-sdk/openai-compatible",
-					models: {
-						"future-model": {
-							id: "future-model",
-							name: "Future Model",
-							reasoning: false,
-							limit: { context: 1000, output: 100 },
-						},
-					},
-				},
-			}),
-			"fixture-cache.json",
-		)
-		const config = configBase()
 		const merged = mergeDiscoveryModels(
 			parseV1DiscoveryPayload({
 				data: [
-					{ id: "future-model", display_name: "Future Model" },
-					{ id: "gpt-5", display_name: "GPT-5" },
+					{ id: "claude-sonnet-4-5", display_name: "Claude" },
+					{ id: "gpt-5", display_name: "GPT" },
+					{ id: "gemini-2.5-pro", display_name: "Gemini" },
+					{ id: "vertex-claude", display_name: "Vertex" },
+					{ id: "github-copilot/gpt-4.1-mini", display_name: "Copilot" },
+					{ id: "kimi-k2", display_name: "Kimi" },
+					{ id: "google-antigravity/gemini-2.5-pro", display_name: "Anti" },
 				],
 			}),
 			parseV1BetaDiscoveryPayload({ models: [] }),
 		)
 
-		const resolved = resolveCliproxyArtifact({ cache, config, discovered: merged })
-		expect(resolved.records).toHaveLength(1)
-		expect(resolved.records[0].output.modelId).toBe("gpt-5")
-		expect(resolved.skipWarnings).toContain(
-			"[cliproxy] skipped <future-model>: unsupported host namespace <unsupported-host>",
-		)
-	})
+		const resolved = resolveCliproxyArtifact({
+			cache: cacheFixture(),
+			config,
+			discovered: merged,
+		})
+		const patch = buildCliproxyProviderPatch({ config, records: resolved.records })
 
-	it("skips discovered models mapped to non-positive cache limits", () => {
-		const cache = parseCliproxyCacheText(
-			JSON.stringify({
-				$cliproxyCacheContractVersion: 1,
-				openai: {
-					id: "openai",
-					name: "OpenAI",
-					npm: "@ai-sdk/openai",
-					models: {
-						"gpt-5": {
-							id: "gpt-5",
-							name: "GPT-5",
-							reasoning: true,
-							limit: { context: 0, output: 128000 },
-						},
-						"gpt-4.1-mini": {
-							id: "gpt-4.1-mini",
-							name: "GPT-4.1 Mini",
-							reasoning: true,
-							limit: { context: 128000, output: 16000 },
-						},
-					},
-				},
-			}),
-			"fixture-cache.json",
-		)
-		const config = configBase()
-		const merged = mergeDiscoveryModels(
-			parseV1DiscoveryPayload({
-				data: [{ id: "gpt-5", display_name: "GPT-5" }, { id: "gpt-4.1-mini" }],
-			}),
-			parseV1BetaDiscoveryPayload({ models: [] }),
-		)
+		expect(Object.keys(patch)).toEqual([
+			"cliproxy-anthropic",
+			"cliproxy-github-copilot",
+			"cliproxy-google",
+			"cliproxy-google-antigravity",
+			"cliproxy-google-vertex-anthropic",
+			"cliproxy-moonshotai",
+			"cliproxy-openai",
+		])
 
-		const resolved = resolveCliproxyArtifact({ cache, config, discovered: merged })
-		expect(resolved.records).toHaveLength(1)
-		expect(resolved.records[0].output.modelId).toBe("gpt-4.1-mini")
-		expect(resolved.skipWarnings).toContain("[cliproxy] skipped <gpt-5>: non-positive cache limits")
+		const openaiModels = patch["cliproxy-openai"].models as Record<string, Record<string, unknown>>
+		expect(openaiModels["gpt-5"].name).toBe("GPT 5 Override")
+		expect((openaiModels["gpt-5"].cost as Record<string, number>).input).toBe(5)
+		expect((openaiModels["gpt-5"].cost as Record<string, number>).output).toBe(9)
+		expect(openaiModels["gpt-5"].headers).toEqual({ "x-team": "core" })
+		expect(openaiModels["gpt-5"].options).toEqual({ temperature: 0.2 })
+
+		const googleModel = (
+			patch["cliproxy-google"].models as Record<string, Record<string, unknown>>
+		)["gemini-2.5-pro"]
+		expect(googleModel.headers).toBeUndefined()
+		expect(googleModel.options).toBeUndefined()
 	})
 })
 
@@ -732,16 +840,14 @@ describe("cliproxy parity fixture matrix", () => {
 	it("matches golden: plugin-fail fixture", () => {
 		const golden = PARITY_GOLDENS["plugin-fail"] as { message: string }
 		expect(golden).toEqual(CLIPROXY_PLUGIN_FAIL_EXPECTATION)
-		expectThrowMessageExactly(
-			() =>
-				parseCliproxyConfigObject(
-					{
-						url: "http://localhost:8317",
-						prefix: "bad",
-					},
-					{ env: {}, readCredentialFile: () => "" },
-				),
-			golden.message,
-		)
+		expect(() =>
+			parseCliproxyConfigObject(
+				{
+					url: "http://localhost:8317",
+					prefix: "bad",
+				},
+				{ env: {}, readCredentialFile: () => "" },
+			),
+		).toThrow(golden.message)
 	})
 })

@@ -9,6 +9,7 @@ type DiscoveryEndpoint = "v1" | "v1beta"
 type DiscoveryFailureKind = "timeout" | "auth" | "malformed_json" | "generic"
 
 type SourcePointer = {
+	key: string
 	providerNamespace: string
 	modelId: string
 }
@@ -73,8 +74,7 @@ type ParsedCacheModel = {
 type ParsedCache = {
 	models: ParsedCacheModel[]
 	bySource: Map<string, ParsedCacheModel>
-	byModelId: Map<string, ParsedCacheModel[]>
-	byFamily: Map<string, Set<string>>
+	providerNamespaces: Set<string>
 }
 
 type EndpointItem = {
@@ -82,23 +82,21 @@ type EndpointItem = {
 	rawId: string
 	canonicalId: string
 	displayName?: string
-	familyHint?: string
 	ordinal: number
 }
 
 type MergedDiscoveryModel = {
 	canonicalId: string
 	displayName: string
-	familyHint?: string
 	canonicalConflict: boolean
-	aliasTarget?: SourcePointer
 }
 
 type ResolvedArtifactModel = {
 	source: {
+		key: string
 		providerNamespace: string
 		modelId: string
-		effectiveHost: SupportedHost
+		effectiveHost: string
 	}
 	output: {
 		providerBucketId: string
@@ -129,15 +127,35 @@ type DiscoveryOutcome =
 	| { ok: false; kind: DiscoveryFailureKind; message: string }
 
 type HostPreset = {
-	compatibleApiNpm: readonly string[]
 	basePath: "/v1" | "/v1beta"
 	requiredHeaders: Record<string, string>
 	requiredParams: Record<string, JsonScalar>
 }
 
-const HOST_PRESETS = {
+type CustomProviderModelPreset = {
+	displayName: string
+	reasoning: boolean
+	limits: Limits
+	cost?: Partial<Cost>
+	apiId?: string
+}
+
+type CustomProviderPreset = {
+	effectiveHost?: string
+	basePath: "/v1" | "/v1beta"
+	api: {
+		npm: string
+		id?: string
+	}
+	requiredHeaders: Record<string, string>
+	requiredParams: Record<string, JsonScalar>
+	limitsPatch?: Partial<Limits>
+	safetyCapsPatch?: SafetyCaps
+	models: Record<string, CustomProviderModelPreset>
+}
+
+const HOST_PRESET_PATCHES: Record<string, HostPreset> = {
 	anthropic: {
-		compatibleApiNpm: ["@ai-sdk/anthropic"],
 		basePath: "/v1",
 		requiredHeaders: {
 			"anthropic-beta":
@@ -146,42 +164,70 @@ const HOST_PRESETS = {
 		requiredParams: {},
 	},
 	openai: {
-		compatibleApiNpm: ["@ai-sdk/openai"],
 		basePath: "/v1",
 		requiredHeaders: {},
 		requiredParams: {},
 	},
 	google: {
-		compatibleApiNpm: ["@ai-sdk/google"],
 		basePath: "/v1beta",
 		requiredHeaders: {},
 		requiredParams: {},
 	},
 	"google-vertex-anthropic": {
-		compatibleApiNpm: ["@ai-sdk/google-vertex/anthropic"],
 		basePath: "/v1",
 		requiredHeaders: {},
 		requiredParams: {},
 	},
 	"github-copilot": {
-		compatibleApiNpm: ["@ai-sdk/openai-compatible", "@ai-sdk/github-copilot"],
 		basePath: "/v1",
 		requiredHeaders: {},
 		requiredParams: {},
 	},
 	moonshotai: {
-		compatibleApiNpm: ["@ai-sdk/openai-compatible"],
 		basePath: "/v1",
 		requiredHeaders: {},
 		requiredParams: {},
 	},
-} satisfies Record<string, HostPreset>
+}
 
-type SupportedHost = keyof typeof HOST_PRESETS
-const SUPPORTED_HOST_NAMESPACES = Object.keys(HOST_PRESETS) as SupportedHost[]
+const DEFAULT_HOST_PRESET: HostPreset = {
+	basePath: "/v1",
+	requiredHeaders: {},
+	requiredParams: {},
+}
 
-// Explicit checked-in alias table (v1 can remain empty).
-const DISCOVERY_ALIAS_TABLE: Record<string, SourcePointer> = {}
+// Explicit checked-in alias table: exact discovered IDs -> exact canonical source keys.
+const DISCOVERY_ALIAS_TABLE: Record<string, string> = {
+	"vertex-claude": "google-vertex-anthropic/vertex-claude",
+	"gpt-5-latest": "openai/gpt-5",
+}
+
+// Explicit checked-in custom provider table for providers absent from models.dev cache.
+// google-antigravity has a documented larger context patch + safety caps.
+const CUSTOM_PROVIDER_TABLE: Record<string, CustomProviderPreset> = {
+	"google-antigravity": {
+		basePath: "/v1beta",
+		api: {
+			npm: "@ai-sdk/google",
+		},
+		requiredHeaders: {},
+		requiredParams: {},
+		limitsPatch: {
+			context: 400000,
+		},
+		safetyCapsPatch: {
+			context: 400000,
+			output: 64000,
+		},
+		models: {
+			"gemini-2.5-pro": {
+				displayName: "Gemini 2.5 Pro (Antigravity)",
+				reasoning: true,
+				limits: { context: 200000, output: 64000 },
+			},
+		},
+	},
+}
 
 const JSON_SCALAR_TYPES = new Set(["string", "number", "boolean"])
 
@@ -233,13 +279,6 @@ function expectPositiveInteger(value: unknown, scope: string): number {
 	return Number(value)
 }
 
-function expectNonNegativeInteger(value: unknown, scope: string): number {
-	if (!Number.isInteger(value) || Number(value) < 0) {
-		throw new Error(`[cliproxy] ${scope} must be an integer >= 0`)
-	}
-	return Number(value)
-}
-
 function expectFiniteNonNegative(value: unknown, scope: string): number {
 	if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
 		throw new Error(`[cliproxy] ${scope} must be a finite number >= 0`)
@@ -252,12 +291,38 @@ export function normalizeDiscoveredModelId(id: string): string {
 	return id
 }
 
-function sourceKey(pointer: SourcePointer): string {
-	return `${pointer.providerNamespace}::${pointer.modelId}`
+function buildSourcePointer(providerNamespace: string, modelId: string): SourcePointer {
+	return {
+		key: `${providerNamespace}/${modelId}`,
+		providerNamespace,
+		modelId,
+	}
 }
 
-function isSupportedHostNamespace(namespace: string): namespace is SupportedHost {
-	return namespace in HOST_PRESETS
+function parseCanonicalSourceString(value: string, scope: string): SourcePointer {
+	if (value.length === 0) {
+		throw new Error(`[cliproxy] ${scope} must be a non-empty canonical source string`)
+	}
+	const slashIndex = value.indexOf("/")
+	if (slashIndex <= 0 || slashIndex >= value.length - 1) {
+		throw new Error(`[cliproxy] ${scope} must use canonical provider/model form`)
+	}
+	const providerNamespace = value.slice(0, slashIndex)
+	const modelId = value.slice(slashIndex + 1)
+	if (modelId.startsWith("/")) {
+		throw new Error(`[cliproxy] ${scope} must use canonical provider/model form`)
+	}
+	return buildSourcePointer(providerNamespace, modelId)
+}
+
+function parseCanonicalSourceCandidate(value: string): SourcePointer | undefined {
+	if (value.length === 0) return undefined
+	const slashIndex = value.indexOf("/")
+	if (slashIndex <= 0 || slashIndex >= value.length - 1) return undefined
+	const providerNamespace = value.slice(0, slashIndex)
+	const modelId = value.slice(slashIndex + 1)
+	if (modelId.startsWith("/")) return undefined
+	return buildSourcePointer(providerNamespace, modelId)
 }
 
 function parseLimitsOverride(value: unknown, scope: string): Partial<Limits> {
@@ -351,16 +416,10 @@ function parseChatOverride(value: unknown, scope: string): ChatOverride {
 }
 
 function parseSourceOverride(value: unknown, scope: string): SourcePointer {
-	if (!isRecord(value)) {
-		throw new Error(`[cliproxy] ${scope} must be an object`)
+	if (typeof value !== "string") {
+		throw new Error(`[cliproxy] ${scope} must be a string`)
 	}
-	expectAllowedKeys(value, ["providerNamespace", "modelId"], scope)
-	const providerNamespace = expectString(value.providerNamespace, `${scope}.providerNamespace`)
-	const modelId = expectString(value.modelId, `${scope}.modelId`)
-	if (providerNamespace.length === 0 || modelId.length === 0) {
-		throw new Error(`[cliproxy] ${scope} requires non-empty providerNamespace and modelId`)
-	}
-	return { providerNamespace, modelId }
+	return parseCanonicalSourceString(value, scope)
 }
 
 function parseProviderOverride(value: unknown, scope: string): ProviderOverride {
@@ -470,11 +529,6 @@ export function parseCliproxyConfigObject(
 			throw new Error("[cliproxy] cliproxy.provider must be an object")
 		}
 		for (const [namespace, overrideValue] of Object.entries(raw.provider)) {
-			if (!isSupportedHostNamespace(namespace)) {
-				throw new Error(
-					`[cliproxy] cliproxy.provider.${namespace} references unsupported namespace; expected one of: ${SUPPORTED_HOST_NAMESPACES.join(", ")}`,
-				)
-			}
 			provider[namespace] = parseProviderOverride(overrideValue, `cliproxy.provider.${namespace}`)
 		}
 	}
@@ -519,7 +573,7 @@ function parseCacheCost(value: unknown, scope: string): Cost {
 		}
 	}
 	if (!isRecord(value)) {
-		throw new Error(`[cliproxy] ${scope} must be an object`) // malformed optional numeric object
+		throw new Error(`[cliproxy] ${scope} must be an object`)
 	}
 
 	const input =
@@ -554,10 +608,10 @@ function parseCacheLimits(value: unknown, scope: string): Limits {
 	if (!isRecord(value)) {
 		throw new Error(`[cliproxy] ${scope} must be an object`)
 	}
-	const context = expectNonNegativeInteger(value.context, `${scope}.context`)
-	const output = expectNonNegativeInteger(value.output, `${scope}.output`)
+	const context = expectPositiveInteger(value.context, `${scope}.context`)
+	const output = expectPositiveInteger(value.output, `${scope}.output`)
 	const input =
-		value.input === undefined ? undefined : expectNonNegativeInteger(value.input, `${scope}.input`)
+		value.input === undefined ? undefined : expectPositiveInteger(value.input, `${scope}.input`)
 	if (input !== undefined && input > context) {
 		throw new Error(`[cliproxy] ${scope}.input must be <= ${scope}.context`)
 	}
@@ -604,7 +658,7 @@ function parseCacheModel(
 	if (modelApi !== undefined) {
 		inheritedApi = expectString(modelApi, `${scope}.provider.api`)
 	} else if (providerDefaults.api !== undefined) {
-		inheritedApi = expectString(providerDefaults.api, `${scope}.provider.api`) // inherited
+		inheritedApi = expectString(providerDefaults.api, `${scope}.provider.api`)
 	}
 
 	let family: string | undefined
@@ -613,10 +667,7 @@ function parseCacheModel(
 	}
 
 	return {
-		source: {
-			providerNamespace,
-			modelId,
-		},
+		source: buildSourcePointer(providerNamespace, modelId),
 		api: {
 			npm: inheritedNpmRaw,
 			id: inheritedApi,
@@ -655,17 +706,12 @@ export function parseCliproxyCacheText(text: string, cachePath: string): ParsedC
 
 	for (const [providerNamespace, providerValue] of Object.entries(raw)) {
 		if (providerNamespace === "$cliproxyCacheContractVersion") continue
+		if (!isRecord(providerValue)) continue
+		if (!looksLikeCacheProviderNode(providerValue)) continue
+
 		const providerScope = `cache provider ${providerNamespace}`
-		if (!isRecord(providerValue)) {
-			continue
-		}
-
-		if (!looksLikeCacheProviderNode(providerValue)) {
-			continue
-		}
-
 		const providerId = expectString(providerValue.id, `${providerScope}.id`)
-		const _providerName = expectString(providerValue.name, `${providerScope}.name`)
+		expectString(providerValue.name, `${providerScope}.name`)
 		if (!isRecord(providerValue.models)) {
 			throw new Error(`[cliproxy] ${providerScope}.models must be an object`)
 		}
@@ -691,28 +737,20 @@ export function parseCliproxyCacheText(text: string, cachePath: string): ParsedC
 	}
 
 	const bySource = new Map<string, ParsedCacheModel>()
-	const byModelId = new Map<string, ParsedCacheModel[]>()
-	const byFamily = new Map<string, Set<string>>()
+	const providerNamespaces = new Set<string>()
 
 	for (const model of parsedModels) {
-		bySource.set(sourceKey(model.source), model)
-
-		const bucket = byModelId.get(model.source.modelId) ?? []
-		bucket.push(model)
-		byModelId.set(model.source.modelId, bucket)
-
-		if (model.family) {
-			const namespaces = byFamily.get(model.family) ?? new Set<string>()
-			namespaces.add(model.source.providerNamespace)
-			byFamily.set(model.family, namespaces)
+		if (bySource.has(model.source.key)) {
+			throw new Error(`[cliproxy] duplicate cache source key: ${model.source.key}`)
 		}
+		bySource.set(model.source.key, model)
+		providerNamespaces.add(model.source.providerNamespace)
 	}
 
 	return {
 		models: parsedModels,
 		bySource,
-		byModelId,
-		byFamily,
+		providerNamespaces,
 	}
 }
 
@@ -735,8 +773,6 @@ export function parseV1DiscoveryPayload(payload: unknown): EndpointItem[] {
 				typeof entry.display_name === "string" && entry.display_name.length > 0
 					? entry.display_name
 					: undefined,
-			familyHint:
-				typeof entry.family === "string" && entry.family.length > 0 ? entry.family : undefined,
 			ordinal,
 		})
 	}
@@ -762,8 +798,6 @@ export function parseV1BetaDiscoveryPayload(payload: unknown): EndpointItem[] {
 				typeof entry.displayName === "string" && entry.displayName.length > 0
 					? entry.displayName
 					: undefined,
-			familyHint:
-				typeof entry.family === "string" && entry.family.length > 0 ? entry.family : undefined,
 			ordinal,
 		})
 	}
@@ -810,17 +844,10 @@ export function mergeDiscoveryModels(
 			v1betaSorted.find((item) => item.displayName)?.displayName ??
 			canonicalId
 
-		const familyHint =
-			v1Sorted.find((item) => item.familyHint)?.familyHint ??
-			v1betaSorted.find((item) => item.familyHint)?.familyHint
-		const aliasTarget = DISCOVERY_ALIAS_TABLE[canonicalId]
-
 		records.push({
 			canonicalId,
 			displayName,
-			familyHint,
 			canonicalConflict: bucket.canonicalConflict,
-			aliasTarget,
 		})
 	}
 
@@ -919,7 +946,10 @@ function selectDominantDiscoveryFailure(
 	return failures[0]
 }
 
-async function discoverMergedModels(url: string, apiKey: string): Promise<MergedDiscoveryModel[]> {
+export async function discoverMergedModels(
+	url: string,
+	apiKey: string,
+): Promise<MergedDiscoveryModel[]> {
 	const [v1, v1beta] = await Promise.all([
 		fetchDiscoveryEndpoint("v1", url, apiKey),
 		fetchDiscoveryEndpoint("v1beta", url, apiKey),
@@ -948,11 +978,20 @@ async function discoverMergedModels(url: string, apiKey: string): Promise<Merged
 	)
 }
 
-function getHostPreset(host: string): HostPreset {
-	if (!(host in HOST_PRESETS)) {
-		throw new Error(`[cliproxy] unknown host preset: ${host}`)
+function resolveHostPreset(sourceProviderNamespace: string, effectiveHost: string): HostPreset {
+	const customProvider = CUSTOM_PROVIDER_TABLE[sourceProviderNamespace]
+	if (customProvider) {
+		const customEffectiveHost = customProvider.effectiveHost ?? sourceProviderNamespace
+		if (customEffectiveHost === effectiveHost) {
+			return {
+				basePath: customProvider.basePath,
+				requiredHeaders: customProvider.requiredHeaders,
+				requiredParams: customProvider.requiredParams,
+			}
+		}
 	}
-	return HOST_PRESETS[host as SupportedHost]
+
+	return HOST_PRESET_PATCHES[effectiveHost] ?? DEFAULT_HOST_PRESET
 }
 
 function ensurePresetConflictFree(
@@ -1041,6 +1080,36 @@ function applyModelOverride(
 	}
 }
 
+function applyCustomProviderPatch(
+	base: ResolvedArtifactModel,
+	customProvider: CustomProviderPreset | undefined,
+): ResolvedArtifactModel {
+	if (!customProvider) return base
+
+	const withLimitPatch =
+		customProvider.limitsPatch === undefined
+			? base
+			: {
+					...base,
+					limits: {
+						...base.limits,
+						...customProvider.limitsPatch,
+					},
+				}
+
+	if (!customProvider.safetyCapsPatch) {
+		return withLimitPatch
+	}
+
+	return {
+		...withLimitPatch,
+		safetyCaps: {
+			...(withLimitPatch.safetyCaps ?? {}),
+			...customProvider.safetyCapsPatch,
+		},
+	}
+}
+
 function isValidSafetyCaps(model: ResolvedArtifactModel): boolean {
 	if (!model.safetyCaps) return true
 	if (model.safetyCaps.context !== undefined && model.safetyCaps.context > model.limits.context)
@@ -1050,107 +1119,141 @@ function isValidSafetyCaps(model: ResolvedArtifactModel): boolean {
 	return true
 }
 
-function resolveSourceCandidate(
-	cache: ParsedCache,
-	discoveryModel: MergedDiscoveryModel,
-	modelOverride: ModelOverride | undefined,
-): { ok: true; selected: ParsedCacheModel } | { ok: false; reason: string } {
-	if (modelOverride?.source) {
-		const selected = cache.bySource.get(sourceKey(modelOverride.source))
-		if (!selected) {
-			throw new Error(
-				`[cliproxy] source target for <${discoveryModel.canonicalId}> does not exist: ${modelOverride.source.providerNamespace}/${modelOverride.source.modelId}`,
-			)
-		}
-		return { ok: true, selected }
+function inferDefaultFamilySource(canonicalId: string): SourcePointer | undefined {
+	if (canonicalId.includes("/")) {
+		return undefined
 	}
 
-	if (discoveryModel.aliasTarget) {
-		const aliased = cache.bySource.get(sourceKey(discoveryModel.aliasTarget))
-		if (!aliased) {
-			throw new Error(
-				`[cliproxy] alias target for <${discoveryModel.canonicalId}> does not exist: ${discoveryModel.aliasTarget.providerNamespace}/${discoveryModel.aliasTarget.modelId}`,
-			)
-		}
-		return { ok: true, selected: aliased }
-	}
-
-	const exactModelMatches = cache.byModelId.get(discoveryModel.canonicalId) ?? []
-	if (exactModelMatches.length === 0) {
-		return { ok: false, reason: "unresolved source" }
-	}
-	if (exactModelMatches.length === 1) {
-		return { ok: true, selected: exactModelMatches[0] }
-	}
-
-	let narrowed = [...exactModelMatches]
-	if (discoveryModel.familyHint) {
-		const hintedNamespaces = cache.byFamily.get(discoveryModel.familyHint)
-		if (hintedNamespaces && hintedNamespaces.size > 0) {
-			const hintedMatches = narrowed.filter((candidate) =>
-				hintedNamespaces.has(candidate.source.providerNamespace),
-			)
-			if (hintedMatches.length === 1) {
-				return { ok: true, selected: hintedMatches[0] }
-			}
-			if (hintedMatches.length > 0) {
-				narrowed = hintedMatches
-			}
-		}
-	}
-
-	const exactIdMatches = narrowed.filter(
-		(candidate) => candidate.source.modelId === discoveryModel.canonicalId,
-	)
-	if (exactIdMatches.length === 1) {
-		return { ok: true, selected: exactIdMatches[0] }
-	}
-
-	const preferredNativeHost = inferNativeDefaultHost(discoveryModel)
-	if (preferredNativeHost) {
-		const hostMatches = narrowed.filter(
-			(candidate) => candidate.source.providerNamespace === preferredNativeHost,
-		)
-		if (hostMatches.length === 1) {
-			return { ok: true, selected: hostMatches[0] }
-		}
-	}
-
-	return { ok: false, reason: "alias collision/ambiguity" }
-}
-
-function inferNativeDefaultHost(discoveryModel: MergedDiscoveryModel): SupportedHost | undefined {
-	const normalizedId = discoveryModel.canonicalId.toLowerCase()
-	const normalizedFamily = discoveryModel.familyHint?.toLowerCase() ?? ""
-
-	const inFamily = (...tokens: string[]): boolean =>
-		tokens.some((token) => normalizedFamily.includes(token))
-
-	if (normalizedId.startsWith("claude") || inFamily("claude", "anthropic")) {
-		return "anthropic"
-	}
-
-	if (normalizedId.startsWith("gemini") || inFamily("gemini", "google")) {
-		return "google"
-	}
-
-	if (normalizedId.startsWith("kimi") || inFamily("kimi", "moonshot")) {
-		return "moonshotai"
+	if (canonicalId.startsWith("claude")) {
+		return buildSourcePointer("anthropic", canonicalId)
 	}
 
 	if (
-		normalizedId.startsWith("gpt") ||
-		normalizedId.startsWith("chatgpt") ||
-		normalizedId.startsWith("codex") ||
-		normalizedId.startsWith("text-embedding") ||
-		normalizedId.startsWith("whisper") ||
-		/^o\d([.-]|$)/.test(normalizedId) ||
-		inFamily("openai", "gpt", "chatgpt")
+		canonicalId.startsWith("gpt") ||
+		canonicalId.startsWith("o") ||
+		canonicalId.startsWith("text-embedding") ||
+		canonicalId.startsWith("whisper")
 	) {
-		return "openai"
+		return buildSourcePointer("openai", canonicalId)
+	}
+
+	if (canonicalId.startsWith("gemini")) {
+		return buildSourcePointer("google", canonicalId)
+	}
+
+	if (canonicalId.startsWith("kimi")) {
+		return buildSourcePointer("moonshotai", canonicalId)
 	}
 
 	return undefined
+}
+
+type SourceCandidate = {
+	candidate: SourcePointer
+	fromUserSource: boolean
+	candidateType: "user" | "provider-qualified" | "alias" | "family"
+}
+
+function resolveSourceCandidate(
+	discoveryModel: MergedDiscoveryModel,
+	modelOverride: ModelOverride | undefined,
+): SourceCandidate | undefined {
+	if (modelOverride?.source) {
+		return {
+			candidate: modelOverride.source,
+			fromUserSource: true,
+			candidateType: "user",
+		}
+	}
+
+	if (discoveryModel.canonicalId.includes("/")) {
+		const providerQualifiedCandidate = parseCanonicalSourceCandidate(discoveryModel.canonicalId)
+		if (providerQualifiedCandidate) {
+			return {
+				candidate: providerQualifiedCandidate,
+				fromUserSource: false,
+				candidateType: "provider-qualified",
+			}
+		}
+	}
+
+	const aliasTarget = DISCOVERY_ALIAS_TABLE[discoveryModel.canonicalId]
+	if (aliasTarget !== undefined) {
+		return {
+			candidate: parseCanonicalSourceString(aliasTarget, `alias.${discoveryModel.canonicalId}`),
+			fromUserSource: false,
+			candidateType: "alias",
+		}
+	}
+
+	const inferred = inferDefaultFamilySource(discoveryModel.canonicalId)
+	if (inferred) {
+		return {
+			candidate: inferred,
+			fromUserSource: false,
+			candidateType: "family",
+		}
+	}
+
+	return undefined
+}
+
+type ResolvedSourceTarget = {
+	selected: ParsedCacheModel
+	customProvider?: CustomProviderPreset
+}
+
+type MissingSourceTarget = {
+	missingReason: "unknown-provider" | "missing-target"
+}
+
+function normalizeCost(input: Partial<Cost> | undefined): Cost {
+	return {
+		input: input?.input ?? 0,
+		output: input?.output ?? 0,
+		...(input?.reasoning !== undefined ? { reasoning: input.reasoning } : {}),
+		cacheRead: input?.cacheRead ?? 0,
+		cacheWrite: input?.cacheWrite ?? 0,
+	}
+}
+
+function resolveSourceTarget(
+	cache: ParsedCache,
+	candidate: SourcePointer,
+): ResolvedSourceTarget | MissingSourceTarget {
+	const selectedFromCache = cache.bySource.get(candidate.key)
+	if (selectedFromCache) {
+		return { selected: selectedFromCache }
+	}
+
+	if (!cache.providerNamespaces.has(candidate.providerNamespace)) {
+		const customProvider = CUSTOM_PROVIDER_TABLE[candidate.providerNamespace]
+		if (!customProvider) {
+			return { missingReason: "unknown-provider" }
+		}
+
+		const customModel = customProvider.models[candidate.modelId]
+		if (!customModel) {
+			return { missingReason: "missing-target" }
+		}
+
+		return {
+			selected: {
+				source: candidate,
+				api: {
+					npm: customProvider.api.npm,
+					id: customModel.apiId ?? customProvider.api.id,
+				},
+				displayName: customModel.displayName,
+				limits: customModel.limits,
+				reasoning: customModel.reasoning,
+				cost: normalizeCost(customModel.cost),
+			},
+			customProvider,
+		}
+	}
+
+	return { missingReason: "missing-target" }
 }
 
 export function resolveCliproxyArtifact(input: {
@@ -1168,38 +1271,41 @@ export function resolveCliproxyArtifact(input: {
 		}
 
 		const modelOverride = input.config.models[discoveredModel.canonicalId]
-		const sourceResult = resolveSourceCandidate(input.cache, discoveredModel, modelOverride)
-		if (!sourceResult.ok) {
+		const sourceCandidate = resolveSourceCandidate(discoveredModel, modelOverride)
+		if (!sourceCandidate) {
+			skipWarnings.push(`[cliproxy] skipped <${discoveredModel.canonicalId}>: unresolved source`)
+			continue
+		}
+
+		const sourceTarget = resolveSourceTarget(input.cache, sourceCandidate.candidate)
+		if ("missingReason" in sourceTarget) {
+			if (sourceCandidate.fromUserSource) {
+				if (sourceTarget.missingReason === "unknown-provider") {
+					throw new Error(
+						`[cliproxy] source target for <${discoveredModel.canonicalId}> references unsupported provider namespace: ${sourceCandidate.candidate.providerNamespace}`,
+					)
+				}
+				throw new Error(
+					`[cliproxy] source target for <${discoveredModel.canonicalId}> does not exist: ${sourceCandidate.candidate.key}`,
+				)
+			}
 			skipWarnings.push(
-				`[cliproxy] skipped <${discoveredModel.canonicalId}>: ${sourceResult.reason}`,
+				`[cliproxy] skipped <${discoveredModel.canonicalId}>: auto-derived candidate miss`,
 			)
 			continue
 		}
 
-		const selected = sourceResult.selected
-		if (selected.limits.context < 1 || selected.limits.output < 1) {
-			skipWarnings.push(
-				`[cliproxy] skipped <${discoveredModel.canonicalId}>: non-positive cache limits`,
-			)
-			continue
-		}
+		const selected = sourceTarget.selected
+		const customProvider = sourceTarget.customProvider
+		const effectiveHost = customProvider?.effectiveHost ?? selected.source.providerNamespace
+		const preset = resolveHostPreset(selected.source.providerNamespace, effectiveHost)
 
-		const effectiveHost = selected.source.providerNamespace
-		if (!isSupportedHostNamespace(effectiveHost)) {
-			skipWarnings.push(
-				`[cliproxy] skipped <${discoveredModel.canonicalId}>: unsupported host namespace <${effectiveHost}>`,
-			)
-			continue
-		}
-		const preset = getHostPreset(effectiveHost)
-
-		if (!preset.compatibleApiNpm.includes(selected.api.npm)) {
-			skipWarnings.push(`[cliproxy] skipped <${discoveredModel.canonicalId}>: unsafe preset output`)
-			continue
-		}
-
-		const providerOverride = input.config.provider[effectiveHost]
-		ensurePresetConflictFree(providerOverride?.chat, preset, `cliproxy.provider.${effectiveHost}`)
+		const providerOverride = input.config.provider[selected.source.providerNamespace]
+		ensurePresetConflictFree(
+			providerOverride?.chat,
+			preset,
+			`cliproxy.provider.${selected.source.providerNamespace}`,
+		)
 		ensurePresetConflictFree(
 			modelOverride?.chat,
 			preset,
@@ -1208,9 +1314,10 @@ export function resolveCliproxyArtifact(input: {
 
 		const baseRecord: ResolvedArtifactModel = {
 			source: {
+				key: selected.source.key,
 				providerNamespace: selected.source.providerNamespace,
 				modelId: selected.source.modelId,
-				effectiveHost: effectiveHost as SupportedHost,
+				effectiveHost,
 			},
 			output: {
 				providerBucketId: `cliproxy-${effectiveHost}`,
@@ -1230,7 +1337,8 @@ export function resolveCliproxyArtifact(input: {
 			},
 		}
 
-		const withProviderOverride = applyOverride(baseRecord, providerOverride)
+		const withCustomPatch = applyCustomProviderPatch(baseRecord, customProvider)
+		const withProviderOverride = applyOverride(withCustomPatch, providerOverride)
 		const withModelOverride = applyModelOverride(withProviderOverride, modelOverride)
 
 		if (
@@ -1273,7 +1381,10 @@ export function buildCliproxyProviderPatch(input: {
 	const patch: Record<string, Record<string, unknown>> = {}
 
 	for (const record of input.records) {
-		const hostPreset = getHostPreset(record.source.effectiveHost)
+		const hostPreset = resolveHostPreset(
+			record.source.providerNamespace,
+			record.source.effectiveHost,
+		)
 		const providerId = record.output.providerBucketId
 
 		if (!patch[providerId]) {
