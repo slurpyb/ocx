@@ -877,6 +877,63 @@ describe("cliproxy deterministic discovery + resolution", () => {
 		expect(googleModel.headers).toBeUndefined()
 		expect(googleModel.options).toBeUndefined()
 	})
+
+	it("disambiguates duplicate display names within a provider bucket", () => {
+		const cache = parseCliproxyCacheText(
+			JSON.stringify({
+				$cliproxyCacheContractVersion: 1,
+				openai: {
+					id: "openai",
+					name: "OpenAI",
+					npm: "@ai-sdk/openai",
+					models: {
+						"gpt-5": {
+							id: "gpt-5",
+							name: "GPT 5",
+							reasoning: true,
+							limit: { context: 400000, output: 128000 },
+						},
+						"gpt-5.1": {
+							id: "gpt-5.1",
+							name: "GPT 5.1",
+							reasoning: true,
+							limit: { context: 400000, output: 128000 },
+						},
+						"gpt-4.1": {
+							id: "gpt-4.1",
+							name: "GPT 4.1",
+							reasoning: true,
+							limit: { context: 400000, output: 128000 },
+						},
+					},
+				},
+			}),
+			"fixture-duplicate-display-names-cache.json",
+		)
+
+		const merged = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({
+				data: [
+					{ id: "gpt-5", display_name: "GPT 5" },
+					{ id: "gpt-5.1", display_name: "GPT 5" },
+					{ id: "gpt-4.1", display_name: "GPT 4.1" },
+				],
+			}),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const resolved = resolveCliproxyArtifact({
+			cache,
+			config: configBase(),
+			discovered: merged,
+		})
+		const patch = buildCliproxyProviderPatch({ config: configBase(), records: resolved.records })
+		const openaiModels = patch["cliproxy-openai"].models as Record<string, Record<string, unknown>>
+
+		expect(openaiModels["gpt-5"].name).toBe("GPT 5 [gpt-5]")
+		expect(openaiModels["gpt-5.1"].name).toBe("GPT 5 [gpt-5.1]")
+		expect(openaiModels["gpt-4.1"].name).toBe("GPT 4.1")
+	})
 })
 
 describe("cliproxy parity fixture matrix", () => {

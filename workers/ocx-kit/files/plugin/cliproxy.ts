@@ -1427,6 +1427,24 @@ export function buildCliproxyProviderPatch(input: {
 	records: ResolvedArtifactModel[]
 }): Record<string, Record<string, unknown>> {
 	const patch: Record<string, Record<string, unknown>> = {}
+	const duplicateDisplayNamesByProvider = new Map<string, Set<string>>()
+	const displayNameCountsByProvider = new Map<string, Map<string, number>>()
+
+	for (const record of input.records) {
+		const providerId = record.output.providerBucketId
+		const providerCounts = displayNameCountsByProvider.get(providerId) ?? new Map<string, number>()
+		providerCounts.set(record.displayName, (providerCounts.get(record.displayName) ?? 0) + 1)
+		displayNameCountsByProvider.set(providerId, providerCounts)
+	}
+
+	for (const [providerId, nameCounts] of displayNameCountsByProvider.entries()) {
+		const duplicateNames = new Set<string>()
+		for (const [displayName, count] of nameCounts.entries()) {
+			if (count <= 1) continue
+			duplicateNames.add(displayName)
+		}
+		duplicateDisplayNamesByProvider.set(providerId, duplicateNames)
+	}
 
 	for (const record of input.records) {
 		const hostPreset = resolveHostPreset(
@@ -1457,10 +1475,14 @@ export function buildCliproxyProviderPatch(input: {
 
 		const provider = patch[providerId]
 		const models = provider.models as Record<string, Record<string, unknown>>
+		const duplicateNames = duplicateDisplayNamesByProvider.get(providerId)
+		const modelName = duplicateNames?.has(record.displayName)
+			? `${record.displayName} [${record.output.modelId}]`
+			: record.displayName
 
 		const modelPayload: Record<string, unknown> = {
 			id: record.source.modelId,
-			name: record.displayName,
+			name: modelName,
 			reasoning: record.reasoning,
 			limit: {
 				context: record.limits.context,
