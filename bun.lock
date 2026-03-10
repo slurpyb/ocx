@@ -67,6 +67,9 @@
     },
     "workers/ocx-kit": {
       "name": "kit",
+      "dependencies": {
+        "jsonc-parser": "3.3.1",
+      },
       "devDependencies": {
         "ocx": "workspace:*",
         "wrangler": "^4.54.0",

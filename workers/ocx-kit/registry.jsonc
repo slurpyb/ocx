@@ -24,6 +24,20 @@
 				{ "path": "profiles/ws/opencode.jsonc", "target": "opencode.jsonc" }
 			],
 			"dependencies": ["kdco/workspace"]
+		},
+		{
+			"name": "cliproxy",
+			"type": "plugin",
+			"description": "Bridge CLIProxy-discovered models into OpenCode providers",
+			"files": [
+				{ "path": "plugin/cliproxy.ts", "target": "plugins/cliproxy.ts" },
+				{ "path": "plugin/cliproxy.jsonc", "target": "cliproxy.jsonc" }
+			],
+			"opencode": {
+				"plugin": ["plugins/cliproxy.ts"]
+			},
+			"npmDevDependencies": ["jsonc-parser@3.3.1"],
+			"dependencies": []
 		}
 	]
 }

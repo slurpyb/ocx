@@ -1,0 +1,232 @@
+{
+	"anthropic": [
+		{
+			"source": {
+				"providerNamespace": "anthropic",
+				"modelId": "claude-sonnet-4-5",
+				"effectiveHost": "anthropic"
+			},
+			"output": {
+				"providerBucketId": "cliproxy-anthropic",
+				"modelId": "claude-sonnet-4-5"
+			},
+			"api": {
+				"npm": "@ai-sdk/anthropic"
+			},
+			"displayName": "Anthropic Fixture",
+			"limits": {
+				"context": 200000,
+				"output": 64000
+			},
+			"reasoning": true,
+			"cost": {
+				"input": 1,
+				"output": 2,
+				"cacheRead": 0.1,
+				"cacheWrite": 0.2
+			},
+			"chat": {
+				"headers": {
+					"anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14"
+				},
+				"params": {}
+			}
+		}
+	],
+	"openai": [
+		{
+			"source": {
+				"providerNamespace": "openai",
+				"modelId": "gpt-5",
+				"effectiveHost": "openai"
+			},
+			"output": {
+				"providerBucketId": "cliproxy-openai",
+				"modelId": "gpt-5"
+			},
+			"api": {
+				"npm": "@ai-sdk/openai"
+			},
+			"displayName": "OpenAI Fixture",
+			"limits": {
+				"context": 400000,
+				"output": 128000
+			},
+			"reasoning": true,
+			"cost": {
+				"input": 1,
+				"output": 2,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"chat": {
+				"headers": {},
+				"params": {}
+			}
+		}
+	],
+	"google": [
+		{
+			"source": {
+				"providerNamespace": "google",
+				"modelId": "gemini-2.5-pro",
+				"effectiveHost": "google"
+			},
+			"output": {
+				"providerBucketId": "cliproxy-google",
+				"modelId": "gemini-2.5-pro"
+			},
+			"api": {
+				"npm": "@ai-sdk/google"
+			},
+			"displayName": "Google Fixture",
+			"limits": {
+				"context": 1000000,
+				"output": 64000
+			},
+			"reasoning": true,
+			"cost": {
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"chat": {
+				"headers": {},
+				"params": {}
+			}
+		}
+	],
+	"google-vertex-anthropic": [
+		{
+			"source": {
+				"providerNamespace": "google-vertex-anthropic",
+				"modelId": "vertex-claude",
+				"effectiveHost": "google-vertex-anthropic"
+			},
+			"output": {
+				"providerBucketId": "cliproxy-google-vertex-anthropic",
+				"modelId": "vertex-claude"
+			},
+			"api": {
+				"npm": "@ai-sdk/google-vertex/anthropic"
+			},
+			"displayName": "Vertex Fixture",
+			"limits": {
+				"context": 200000,
+				"output": 64000
+			},
+			"reasoning": true,
+			"cost": {
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"chat": {
+				"headers": {},
+				"params": {}
+			}
+		}
+	],
+	"github-copilot": [
+		{
+			"source": {
+				"providerNamespace": "github-copilot",
+				"modelId": "gpt-4.1-mini",
+				"effectiveHost": "github-copilot"
+			},
+			"output": {
+				"providerBucketId": "cliproxy-github-copilot",
+				"modelId": "gpt-4.1-mini"
+			},
+			"api": {
+				"npm": "@ai-sdk/openai-compatible",
+				"id": "https://api.githubcopilot.com"
+			},
+			"displayName": "Copilot Fixture",
+			"limits": {
+				"context": 128000,
+				"output": 16000
+			},
+			"reasoning": true,
+			"cost": {
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"chat": {
+				"headers": {},
+				"params": {}
+			}
+		}
+	],
+	"moonshotai": [
+		{
+			"source": {
+				"providerNamespace": "moonshotai",
+				"modelId": "kimi-k2",
+				"effectiveHost": "moonshotai"
+			},
+			"output": {
+				"providerBucketId": "cliproxy-moonshotai",
+				"modelId": "kimi-k2"
+			},
+			"api": {
+				"npm": "@ai-sdk/openai-compatible"
+			},
+			"displayName": "Moonshot Fixture",
+			"limits": {
+				"context": 200000,
+				"output": 32000
+			},
+			"reasoning": true,
+			"cost": {
+				"input": 0,
+				"output": 0,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"chat": {
+				"headers": {},
+				"params": {}
+			}
+		}
+	],
+	"ambiguous-source": [
+		{
+			"source": {
+				"providerNamespace": "openai",
+				"modelId": "gpt-5",
+				"effectiveHost": "openai"
+			},
+			"output": {
+				"providerBucketId": "cliproxy-openai",
+				"modelId": "gpt-5"
+			},
+			"api": {
+				"npm": "@ai-sdk/openai"
+			},
+			"displayName": "OpenAI Fixture",
+			"limits": {
+				"context": 400000,
+				"output": 128000
+			},
+			"reasoning": true,
+			"cost": {
+				"input": 1,
+				"output": 2,
+				"cacheRead": 0,
+				"cacheWrite": 0
+			},
+			"chat": {
+				"headers": {},
+				"params": {}
+			}
+		}
+	],
+	"plugin-fail": {
+		"message": "[cliproxy] providers are always emitted as cliproxy-*; remove prefix or set it to \"cliproxy\""
+	}
+}
