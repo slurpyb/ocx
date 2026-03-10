@@ -237,8 +237,7 @@ export const CLIPROXY_PARITY_FIXTURE_MATRIX: readonly ParityFixtureCase[] = [
 ] as const
 
 export const CLIPROXY_PLUGIN_FAIL_EXPECTATION = {
-	message:
-		'[cliproxy] providers are always emitted as cliproxy-*; remove prefix or set it to "cliproxy"',
+	message: "[cliproxy] cliproxy.url must be a non-empty string",
 } as const
 
 function sourceKey(pointer: SourcePointer): string {

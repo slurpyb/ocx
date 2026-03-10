@@ -271,6 +271,6 @@
 		}
 	],
 	"plugin-fail": {
-		"message": "[cliproxy] providers are always emitted as cliproxy-*; remove prefix or set it to \"cliproxy\""
+		"message": "[cliproxy] cliproxy.url must be a non-empty string"
 	}
 }

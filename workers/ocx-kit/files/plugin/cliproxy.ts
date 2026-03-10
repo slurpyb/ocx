@@ -504,20 +504,11 @@ export function parseCliproxyConfigObject(
 		readCredentialFile: (filePath: string) => string
 	},
 ): ParsedCliproxyConfig {
-	expectAllowedKeys(raw, ["url", "apiKey", "provider", "models", "prefix"], "cliproxy config")
+	expectAllowedKeys(raw, ["url", "apiKey", "provider", "models"], "cliproxy config")
 
 	const url = expectString(raw.url, "cliproxy.url").trim()
 	if (url.length === 0) {
 		throw new Error("[cliproxy] cliproxy.url must be a non-empty string")
-	}
-
-	if (raw.prefix !== undefined) {
-		const prefix = expectString(raw.prefix, "cliproxy.prefix")
-		if (prefix !== "cliproxy") {
-			throw new Error(
-				'[cliproxy] providers are always emitted as cliproxy-*; remove prefix or set it to "cliproxy"',
-			)
-		}
 	}
 
 	const apiKeyRaw = raw.apiKey === undefined ? "" : expectString(raw.apiKey, "cliproxy.apiKey")
@@ -575,6 +566,7 @@ function parseCacheCost(value: unknown, scope: string): Cost {
 	if (!isRecord(value)) {
 		throw new Error(`[cliproxy] ${scope} must be an object`)
 	}
+	expectAllowedKeys(value, ["input", "output", "reasoning", "cache_read", "cache_write"], scope)
 
 	const input =
 		value.input === undefined ? 0 : expectFiniteNonNegative(value.input, `${scope}.input`)
@@ -585,15 +577,14 @@ function parseCacheCost(value: unknown, scope: string): Cost {
 			? undefined
 			: expectFiniteNonNegative(value.reasoning, `${scope}.reasoning`)
 
-	const cacheReadInput = value.cacheRead === undefined ? value.cache_read : value.cacheRead
-	const cacheWriteInput = value.cacheWrite === undefined ? value.cache_write : value.cacheWrite
-
 	const cacheRead =
-		cacheReadInput === undefined ? 0 : expectFiniteNonNegative(cacheReadInput, `${scope}.cacheRead`)
-	const cacheWrite =
-		cacheWriteInput === undefined
+		value.cache_read === undefined
 			? 0
-			: expectFiniteNonNegative(cacheWriteInput, `${scope}.cacheWrite`)
+			: expectFiniteNonNegative(value.cache_read, `${scope}.cache_read`)
+	const cacheWrite =
+		value.cache_write === undefined
+			? 0
+			: expectFiniteNonNegative(value.cache_write, `${scope}.cache_write`)
 
 	return {
 		input,

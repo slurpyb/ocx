@@ -5,6 +5,9 @@
 	// Optional: API key credential (literal | {env:VAR} | {file:PATH})
 	"apiKey": "{env:CLIPROXY_API_KEY}",
 
+	// Provider bucket IDs are fixed as cliproxy-<effective-host>.
+	// No configurable prefix is supported.
+
 	// Optional provider-level defaults keyed by provider namespace.
 	"provider": {
 		"anthropic": {

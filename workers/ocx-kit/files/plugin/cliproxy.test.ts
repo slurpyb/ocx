@@ -141,20 +141,6 @@ async function expectAsyncThrowContains(
 }
 
 describe("cliproxy config contract", () => {
-	it("rejects unsupported prefix with exact message", () => {
-		expect(() =>
-			parseCliproxyConfigObject(
-				{
-					url: "http://localhost:8317",
-					prefix: "my-prefix",
-				},
-				{ env: {}, readCredentialFile: () => "" },
-			),
-		).toThrow(
-			'[cliproxy] providers are always emitted as cliproxy-*; remove prefix or set it to "cliproxy"',
-		)
-	})
-
 	it("rejects unknown top-level keys", () => {
 		expect(() =>
 			parseCliproxyConfigObject(
@@ -453,6 +439,30 @@ describe("cliproxy cache contract", () => {
 				"fixture-cache.json",
 			),
 		).toThrow("must be an object")
+
+		expect(() =>
+			parseCliproxyCacheText(
+				JSON.stringify({
+					openai: {
+						id: "openai",
+						name: "OpenAI",
+						npm: "@ai-sdk/openai",
+						models: {
+							bad: {
+								id: "bad",
+								name: "Bad",
+								reasoning: false,
+								limit: { context: 100, output: 10 },
+								cost: {
+									cacheRead: 0.1,
+								},
+							},
+						},
+					},
+				}),
+				"fixture-cache.json",
+			),
+		).toThrow("Unsupported key")
 	})
 
 	it("tolerates unrelated top-level metadata keys", () => {
@@ -843,8 +853,7 @@ describe("cliproxy parity fixture matrix", () => {
 		expect(() =>
 			parseCliproxyConfigObject(
 				{
-					url: "http://localhost:8317",
-					prefix: "bad",
+					url: "   ",
 				},
 				{ env: {}, readCredentialFile: () => "" },
 			),
