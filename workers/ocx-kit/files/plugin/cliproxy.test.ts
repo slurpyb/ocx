@@ -11,6 +11,7 @@ import {
 	parseV1BetaDiscoveryPayload,
 	parseV1DiscoveryPayload,
 	resolveCliproxyArtifact,
+	resolveCliproxyConfigSearchPaths,
 } from "./cliproxy"
 import {
 	buildCliproxyParityOracle,
@@ -277,6 +278,39 @@ describe("cliproxy config contract", () => {
 
 		expect(parsed.provider.openai.displayName).toBe("OpenAI via cliproxy")
 		expect(parsed.models["gpt-5"].chat?.params?.reasoning_effort).toBe("high")
+	})
+})
+
+describe("cliproxy config search path precedence", () => {
+	it("prefers project-local config before OPENCODE_CONFIG_DIR when project config is enabled", () => {
+		const paths = resolveCliproxyConfigSearchPaths({
+			env: {
+				OPENCODE_CONFIG_DIR: "/tmp/opencode/profiles/work",
+			},
+			homedir: "/home/tester",
+		})
+
+		expect(paths).toEqual([
+			".opencode/cliproxy.jsonc",
+			".opencode/cliproxy.json",
+			"/tmp/opencode/profiles/work/cliproxy.jsonc",
+			"/tmp/opencode/profiles/work/cliproxy.json",
+		])
+	})
+
+	it("ignores project-local config when OPENCODE_DISABLE_PROJECT_CONFIG is set", () => {
+		const paths = resolveCliproxyConfigSearchPaths({
+			env: {
+				OPENCODE_CONFIG_DIR: "/tmp/opencode/profiles/work",
+				OPENCODE_DISABLE_PROJECT_CONFIG: "true",
+			},
+			homedir: "/home/tester",
+		})
+
+		expect(paths).toEqual([
+			"/tmp/opencode/profiles/work/cliproxy.jsonc",
+			"/tmp/opencode/profiles/work/cliproxy.json",
+		])
 	})
 })
 

@@ -5,6 +5,7 @@
 		"build": "bun scripts/build.ts",
 		"deploy": "bun run build && wrangler deploy",
 		"dev": "bun run build && wrangler dev",
+		"test": "bun test",
 		"cliproxy-parity-generate": "bun files/plugin/cliproxy-parity-generate.ts"
 	},
 	"devDependencies": {

@@ -1339,19 +1339,10 @@ export function buildCliproxyProviderPatch(input: {
 }
 
 async function loadConfigFromDisk(): Promise<ParsedCliproxyConfig | undefined> {
-	const homedir = os.homedir()
-	const projectConfigDir = process.env.OPENCODE_CONFIG_DIR || ".opencode"
-	const globalConfigBase = process.env.XDG_CONFIG_HOME || `${homedir}/.config`
-	const globalConfigDir = `${globalConfigBase}/opencode`
-
-	const paths = [
-		`${projectConfigDir}/cliproxy.jsonc`,
-		`${projectConfigDir}/cliproxy.json`,
-		".opencode/cliproxy.jsonc",
-		".opencode/cliproxy.json",
-		`${globalConfigDir}/cliproxy.jsonc`,
-		`${globalConfigDir}/cliproxy.json`,
-	]
+	const paths = resolveCliproxyConfigSearchPaths({
+		env: process.env,
+		homedir: os.homedir(),
+	})
 
 	for (const configPath of paths) {
 		const file = Bun.file(configPath)
@@ -1364,6 +1355,33 @@ async function loadConfigFromDisk(): Promise<ParsedCliproxyConfig | undefined> {
 	}
 
 	return undefined
+}
+
+export function resolveCliproxyConfigSearchPaths(input: {
+	env: Record<string, string | undefined>
+	homedir: string
+}): string[] {
+	const configBase = input.env.XDG_CONFIG_HOME || `${input.homedir}/.config`
+	const globalOrProfileConfigDir = input.env.OPENCODE_CONFIG_DIR || `${configBase}/opencode`
+	const shouldReadProjectConfig = input.env.OPENCODE_DISABLE_PROJECT_CONFIG === undefined
+
+	const candidateDirs = [
+		...(shouldReadProjectConfig ? [".opencode"] : []),
+		globalOrProfileConfigDir,
+	]
+
+	const paths: string[] = []
+	const seen = new Set<string>()
+	for (const dir of candidateDirs) {
+		for (const extension of ["jsonc", "json"]) {
+			const path = `${dir}/cliproxy.${extension}`
+			if (seen.has(path)) continue
+			seen.add(path)
+			paths.push(path)
+		}
+	}
+
+	return paths
 }
 
 function resolveCachePath(): string {
