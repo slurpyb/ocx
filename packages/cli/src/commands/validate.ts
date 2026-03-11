@@ -22,6 +22,7 @@ interface ValidateOptions {
 	json: boolean
 	quiet: boolean
 	strict: boolean
+	duplicateTargets: boolean
 }
 
 export function registerValidateCommand(program: Command): void {
@@ -33,6 +34,7 @@ export function registerValidateCommand(program: Command): void {
 		.option("--json", "Output as JSON", false)
 		.option("-q, --quiet", "Suppress output", false)
 		.option("--strict", "Exit with code 1 on validation failure (for CI/CD)", false)
+		.option("--no-duplicate-targets", "Skip duplicate target validation")
 		.action(async (path: string, options: ValidateOptions) => {
 			try {
 				const sourcePath = resolve(options.cwd, path)
@@ -100,16 +102,19 @@ export function registerValidateCommand(program: Command): void {
 					process.exit(1)
 				}
 
-				// Validate no duplicate targets
-				const duplicateTargetsResult = validateDuplicateTargets(registryData as any)
-				if (!duplicateTargetsResult.valid) {
-					if (!options.json) {
-						logger.error("Duplicate target validation failed")
-						for (const error of duplicateTargetsResult.errors) {
-							console.log(kleur.red(`  ${error}`))
+				// Validate no duplicate targets (unless skipped with --no-duplicate-targets)
+				// Commander sets duplicateTargets to false when --no-duplicate-targets is used
+				if (options.duplicateTargets !== false) {
+					const duplicateTargetsResult = validateDuplicateTargets(registryData as any)
+					if (!duplicateTargetsResult.valid) {
+						if (!options.json) {
+							logger.error("Duplicate target validation failed")
+							for (const error of duplicateTargetsResult.errors) {
+								console.log(kleur.red(`  ${error}`))
+							}
 						}
+						process.exit(1)
 					}
-					process.exit(1)
 				}
 
 				// All validations passed
