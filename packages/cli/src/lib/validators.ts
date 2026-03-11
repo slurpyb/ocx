@@ -75,40 +75,73 @@ export async function validateSourceFiles(
 /**
  * Validate that there are no circular dependencies in the registry.
  *
+ * Uses depth-first search to detect cycles in the component dependency graph.
+ * Only validates same-registry dependencies (bare names without "/").
+ *
  * @param registry - The validated registry object
  * @returns Validation result with circular dependency errors
  */
 export function validateCircularDependencies(registry: Registry): ValidationResult {
 	const errors: string[] = []
+	const componentMap = new Map(registry.components.map((c) => [c.name, c]))
 
-	function detectCycle(componentName: string, visited: Set<string>, path: string[]): string | null {
-		if (visited.has(componentName)) {
+	function detectCycle(
+		componentName: string,
+		visiting: Set<string>,
+		visited: Set<string>,
+		path: string[],
+	): string | null {
+		// If we're currently visiting this node, we found a cycle
+		if (visiting.has(componentName)) {
 			return [...path, componentName].join(" -> ")
 		}
 
-		visited.add(componentName)
-		path.push(componentName)
+		// If already fully visited, no cycle from this path
+		if (visited.has(componentName)) {
+			return null
+		}
 
-		const component = registry.components.find((c) => c.name === componentName)
+		const component = componentMap.get(componentName)
 		if (!component) {
 			return null
 		}
 
+		// Mark as currently visiting
+		visiting.add(componentName)
+		path.push(componentName)
+
+		// Check all dependencies
 		for (const dep of component.dependencies) {
-			const depName = dep.includes("/") ? dep.split("/")[1] : dep
-			const cycle = detectCycle(depName, new Set(visited), [...path])
+			// Only check same-registry deps (bare names without "/")
+			if (dep.includes("/")) {
+				continue
+			}
+
+			const cycle = detectCycle(dep, visiting, visited, path)
 			if (cycle) {
 				return cycle
 			}
 		}
 
+		// Done visiting this node
+		visiting.delete(componentName)
+		visited.add(componentName)
+		path.pop()
+
 		return null
 	}
 
+	const globalVisited = new Set<string>()
+
 	for (const component of registry.components) {
-		const cycle = detectCycle(component.name, new Set(), [])
+		if (globalVisited.has(component.name)) {
+			continue
+		}
+
+		const cycle = detectCycle(component.name, new Set(), globalVisited, [])
 		if (cycle) {
 			errors.push(`Circular dependency detected: ${cycle}`)
+			// Only report the first cycle found
 			break
 		}
 	}
