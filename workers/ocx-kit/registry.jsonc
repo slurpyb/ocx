@@ -31,6 +31,7 @@
 			"description": "Bridge CLIProxy-discovered models into OpenCode providers",
 			"files": [
 				{ "path": "plugin/cliproxy.ts", "target": "plugins/cliproxy.ts" },
+				{ "path": "plugin/cliproxy/core.ts", "target": "plugins/cliproxy/core.ts" },
 				{ "path": "plugin/cliproxy.jsonc", "target": "cliproxy.jsonc" }
 			],
 			"opencode": {

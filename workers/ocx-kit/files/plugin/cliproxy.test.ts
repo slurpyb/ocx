@@ -13,7 +13,8 @@ import {
 	parseV1DiscoveryPayload,
 	resolveCliproxyArtifact,
 	resolveCliproxyConfigSearchPaths,
-} from "./cliproxy"
+} from "./cliproxy/core"
+
 import {
 	buildCliproxyParityOracle,
 	CLIPROXY_PARITY_FIXTURE_MATRIX,
