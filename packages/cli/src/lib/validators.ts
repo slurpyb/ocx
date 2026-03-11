@@ -184,3 +184,44 @@ export function validateDuplicateTargets(registry: Registry): ValidationResult {
 		errors,
 	}
 }
+
+export interface ValidateRegistryOptions {
+	skipDuplicateTargets?: boolean
+}
+
+/**
+ * Validate a registry's structure using a generator that yields errors.
+ *
+ * This generator runs all validators in order and yields each error as it's found.
+ * This eliminates duplication of calling all validators in the correct order.
+ *
+ * @param registry - The validated registry object
+ * @param sourcePath - Path to the registry source directory
+ * @param options - Validation options
+ * @yields Individual validation error messages
+ */
+export async function* validateRegistryWithOptions(
+	registry: Registry,
+	sourcePath: string,
+	options: ValidateRegistryOptions = {},
+): AsyncGenerator<string, void, undefined> {
+	// Validate source files exist
+	const filesResult = await validateSourceFiles(registry, sourcePath)
+	for (const error of filesResult.errors) {
+		yield error
+	}
+
+	// Validate no circular dependencies
+	const circularResult = validateCircularDependencies(registry)
+	for (const error of circularResult.errors) {
+		yield error
+	}
+
+	// Validate no duplicate targets (unless skipped)
+	if (!options.skipDuplicateTargets) {
+		const duplicateTargetsResult = validateDuplicateTargets(registry)
+		for (const error of duplicateTargetsResult.errors) {
+			yield error
+		}
+	}
+}
