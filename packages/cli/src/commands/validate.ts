@@ -21,6 +21,7 @@ interface ValidateOptions {
 	cwd: string
 	json: boolean
 	quiet: boolean
+	strict: boolean
 }
 
 export function registerValidateCommand(program: Command): void {
@@ -31,6 +32,7 @@ export function registerValidateCommand(program: Command): void {
 		.option("--cwd <path>", "Working directory", process.cwd())
 		.option("--json", "Output as JSON", false)
 		.option("-q, --quiet", "Suppress output", false)
+		.option("--strict", "Exit with code 1 on validation failure (for CI/CD)", false)
 		.action(async (path: string, options: ValidateOptions) => {
 			try {
 				const sourcePath = resolve(options.cwd, path)

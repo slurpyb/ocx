@@ -188,4 +188,67 @@ describe("ocx validate", () => {
 		expect(exitCode).toBe(1)
 		expect(output.toLowerCase()).toContain("duplicate")
 	})
+
+	it("should exit with code 1 in strict mode when validation fails", async () => {
+		const sourceDir = join(testDir, "registry")
+		await mkdir(sourceDir, { recursive: true })
+
+		const registryJson = {
+			$schema: REGISTRY_SCHEMA_V2_URL,
+			name: "Test Registry",
+			namespace: "test",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [
+				{
+					name: "test-component",
+					type: "plugin",
+					description: "Test component",
+					files: [{ path: "missing.ts", target: "plugins/missing.ts" }],
+					dependencies: [],
+				},
+			],
+		}
+
+		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(registryJson, null, 2))
+
+		const filesDir = join(sourceDir, "files")
+		await mkdir(filesDir, { recursive: true })
+
+		const { exitCode } = await runCLI(["validate", "registry", "--strict"], testDir)
+
+		expect(exitCode).toBe(1)
+	})
+
+	it("should exit with code 0 in strict mode when validation passes", async () => {
+		const sourceDir = join(testDir, "registry")
+		await mkdir(sourceDir, { recursive: true })
+
+		const registryJson = {
+			$schema: REGISTRY_SCHEMA_V2_URL,
+			name: "Test Registry",
+			namespace: "test",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [
+				{
+					name: "test-component",
+					type: "plugin",
+					description: "Test component",
+					files: [{ path: "test.ts", target: "plugins/test.ts" }],
+					dependencies: [],
+				},
+			],
+		}
+
+		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(registryJson, null, 2))
+
+		const filesDir = join(sourceDir, "files")
+		await mkdir(filesDir, { recursive: true })
+		await writeFile(join(filesDir, "test.ts"), "// test file")
+
+		const { exitCode } = await runCLI(["validate", "registry", "--strict"], testDir)
+
+		expect(exitCode).toBe(0)
+	})
 })
