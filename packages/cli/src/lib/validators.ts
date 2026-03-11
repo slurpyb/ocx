@@ -5,7 +5,9 @@
  * Shared by both validate command and build command.
  */
 
-import { registrySchema } from "../schemas/registry"
+import { join } from "node:path"
+import type { Registry } from "../schemas/registry"
+import { normalizeFile, registrySchema } from "../schemas/registry"
 
 export interface ValidationResult {
 	valid: boolean
@@ -37,5 +39,35 @@ export function validateRegistrySource(
 	return {
 		valid: true,
 		errors: [],
+	}
+}
+
+/**
+ * Validate that all source files referenced in the registry exist.
+ *
+ * @param registry - The validated registry object
+ * @param sourcePath - Path to the registry source directory
+ * @returns Validation result with file existence errors
+ */
+export async function validateSourceFiles(
+	registry: Registry,
+	sourcePath: string,
+): Promise<ValidationResult> {
+	const errors: string[] = []
+
+	for (const component of registry.components) {
+		for (const rawFile of component.files) {
+			const file = normalizeFile(rawFile, component.type)
+			const sourceFilePath = join(sourcePath, "files", file.path)
+
+			if (!(await Bun.file(sourceFilePath).exists())) {
+				errors.push(`${component.name}: Source file not found at ${file.path}`)
+			}
+		}
+	}
+
+	return {
+		valid: errors.length === 0,
+		errors,
 	}
 }
