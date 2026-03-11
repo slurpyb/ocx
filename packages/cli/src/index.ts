@@ -19,6 +19,7 @@ import { registerRemoveCommand } from "./commands/remove"
 import { registerSearchCommand } from "./commands/search"
 import { registerSelfCommand } from "./commands/self/index"
 import { registerUpdateCommand } from "./commands/update"
+import { registerValidateCommand } from "./commands/validate"
 import { registerVerifyCommand } from "./commands/verify"
 import { registerUpdateCheckHook } from "./self-update/index"
 import { handleError } from "./utils/index"
@@ -40,6 +41,7 @@ async function main() {
 	registerSearchCommand(program)
 	registerRegistryCommand(program)
 	registerBuildCommand(program)
+	registerValidateCommand(program)
 	registerSelfCommand(program)
 
 	// V2: Receipt-based component management
