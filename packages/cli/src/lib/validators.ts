@@ -71,3 +71,50 @@ export async function validateSourceFiles(
 		errors,
 	}
 }
+
+/**
+ * Validate that there are no circular dependencies in the registry.
+ *
+ * @param registry - The validated registry object
+ * @returns Validation result with circular dependency errors
+ */
+export function validateCircularDependencies(registry: Registry): ValidationResult {
+	const errors: string[] = []
+
+	function detectCycle(componentName: string, visited: Set<string>, path: string[]): string | null {
+		if (visited.has(componentName)) {
+			return [...path, componentName].join(" -> ")
+		}
+
+		visited.add(componentName)
+		path.push(componentName)
+
+		const component = registry.components.find((c) => c.name === componentName)
+		if (!component) {
+			return null
+		}
+
+		for (const dep of component.dependencies) {
+			const depName = dep.includes("/") ? dep.split("/")[1] : dep
+			const cycle = detectCycle(depName, new Set(visited), [...path])
+			if (cycle) {
+				return cycle
+			}
+		}
+
+		return null
+	}
+
+	for (const component of registry.components) {
+		const cycle = detectCycle(component.name, new Set(), [])
+		if (cycle) {
+			errors.push(`Circular dependency detected: ${cycle}`)
+			break
+		}
+	}
+
+	return {
+		valid: errors.length === 0,
+		errors,
+	}
+}

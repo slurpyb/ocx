@@ -8,7 +8,11 @@ import { resolve } from "node:path"
 import type { Command } from "commander"
 import { parse as parseJsonc } from "jsonc-parser"
 import kleur from "kleur"
-import { validateRegistrySource, validateSourceFiles } from "../lib/validators"
+import {
+	validateCircularDependencies,
+	validateRegistrySource,
+	validateSourceFiles,
+} from "../lib/validators"
 import { classifyRegistrySchemaIssue } from "../schemas/registry"
 import { handleError, logger } from "../utils/index"
 
@@ -75,6 +79,18 @@ export function registerValidateCommand(program: Command): void {
 					if (!options.json) {
 						logger.error("Source file validation failed")
 						for (const error of filesResult.errors) {
+							console.log(kleur.red(`  ${error}`))
+						}
+					}
+					process.exit(1)
+				}
+
+				// Validate no circular dependencies
+				const circularResult = validateCircularDependencies(registryData as any)
+				if (!circularResult.valid) {
+					if (!options.json) {
+						logger.error("Circular dependency validation failed")
+						for (const error of circularResult.errors) {
 							console.log(kleur.red(`  ${error}`))
 						}
 					}

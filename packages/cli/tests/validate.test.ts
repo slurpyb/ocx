@@ -101,4 +101,50 @@ describe("ocx validate", () => {
 		expect(exitCode).toBe(1)
 		expect(output).toContain("validation")
 	})
+
+	it("should detect circular dependencies", async () => {
+		const sourceDir = join(testDir, "registry")
+		await mkdir(sourceDir, { recursive: true })
+
+		const registryJson = {
+			$schema: REGISTRY_SCHEMA_V2_URL,
+			name: "Test Registry",
+			namespace: "test",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [
+				{
+					name: "component-a",
+					type: "plugin",
+					description: "Component A",
+					files: [],
+					dependencies: ["component-b"],
+				},
+				{
+					name: "component-b",
+					type: "plugin",
+					description: "Component B",
+					files: [],
+					dependencies: ["component-c"],
+				},
+				{
+					name: "component-c",
+					type: "plugin",
+					description: "Component C",
+					files: [],
+					dependencies: ["component-a"], // Creates circular dependency
+				},
+			],
+		}
+
+		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(registryJson, null, 2))
+
+		const filesDir = join(sourceDir, "files")
+		await mkdir(filesDir, { recursive: true })
+
+		const { exitCode, output } = await runCLI(["validate", "registry"], testDir)
+
+		expect(exitCode).toBe(1)
+		expect(output.toLowerCase()).toContain("circular")
+	})
 })
