@@ -147,4 +147,45 @@ describe("ocx validate", () => {
 		expect(exitCode).toBe(1)
 		expect(output.toLowerCase()).toContain("circular")
 	})
+
+	it("should detect duplicate file targets across components", async () => {
+		const sourceDir = join(testDir, "registry")
+		await mkdir(sourceDir, { recursive: true })
+
+		const registryJson = {
+			$schema: REGISTRY_SCHEMA_V2_URL,
+			name: "Test Registry",
+			namespace: "test",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [
+				{
+					name: "component-a",
+					type: "plugin",
+					description: "Component A",
+					files: [{ path: "file-a.ts", target: "plugins/shared.ts" }],
+					dependencies: [],
+				},
+				{
+					name: "component-b",
+					type: "plugin",
+					description: "Component B",
+					files: [{ path: "file-b.ts", target: "plugins/shared.ts" }], // Duplicate target
+					dependencies: [],
+				},
+			],
+		}
+
+		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(registryJson, null, 2))
+
+		const filesDir = join(sourceDir, "files")
+		await mkdir(filesDir, { recursive: true })
+		await writeFile(join(filesDir, "file-a.ts"), "// file a")
+		await writeFile(join(filesDir, "file-b.ts"), "// file b")
+
+		const { exitCode, output } = await runCLI(["validate", "registry"], testDir)
+
+		expect(exitCode).toBe(1)
+		expect(output.toLowerCase()).toContain("duplicate")
+	})
 })

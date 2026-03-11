@@ -151,3 +151,34 @@ export function validateCircularDependencies(registry: Registry): ValidationResu
 		errors,
 	}
 }
+
+/**
+ * Validate that there are no duplicate target paths across components.
+ *
+ * @param registry - The validated registry object
+ * @returns Validation result with duplicate target errors
+ */
+export function validateDuplicateTargets(registry: Registry): ValidationResult {
+	const errors: string[] = []
+	const targetMap = new Map<string, string>()
+
+	for (const component of registry.components) {
+		for (const rawFile of component.files) {
+			const file = normalizeFile(rawFile, component.type)
+			const existingComponent = targetMap.get(file.target)
+
+			if (existingComponent) {
+				errors.push(
+					`Duplicate target "${file.target}" in components "${existingComponent}" and "${component.name}"`,
+				)
+			} else {
+				targetMap.set(file.target, component.name)
+			}
+		}
+	}
+
+	return {
+		valid: errors.length === 0,
+		errors,
+	}
+}

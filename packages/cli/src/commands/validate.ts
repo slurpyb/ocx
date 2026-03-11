@@ -10,6 +10,7 @@ import { parse as parseJsonc } from "jsonc-parser"
 import kleur from "kleur"
 import {
 	validateCircularDependencies,
+	validateDuplicateTargets,
 	validateRegistrySource,
 	validateSourceFiles,
 } from "../lib/validators"
@@ -91,6 +92,18 @@ export function registerValidateCommand(program: Command): void {
 					if (!options.json) {
 						logger.error("Circular dependency validation failed")
 						for (const error of circularResult.errors) {
+							console.log(kleur.red(`  ${error}`))
+						}
+					}
+					process.exit(1)
+				}
+
+				// Validate no duplicate targets
+				const duplicateTargetsResult = validateDuplicateTargets(registryData as any)
+				if (!duplicateTargetsResult.valid) {
+					if (!options.json) {
+						logger.error("Duplicate target validation failed")
+						for (const error of duplicateTargetsResult.errors) {
 							console.log(kleur.red(`  ${error}`))
 						}
 					}
