@@ -8,12 +8,7 @@ import { resolve } from "node:path"
 import type { Command } from "commander"
 import { parse as parseJsonc } from "jsonc-parser"
 import kleur from "kleur"
-import {
-	validateCircularDependencies,
-	validateDuplicateTargets,
-	validateRegistrySource,
-	validateSourceFiles,
-} from "../lib/validators"
+import { validateRegistrySource, validateRegistryWithOptions } from "../lib/validators"
 import { classifyRegistrySchemaIssue } from "../schemas/registry"
 import { handleError, logger } from "../utils/index"
 
@@ -81,43 +76,23 @@ export function registerValidateCommand(program: Command): void {
 				// Use the parsed and validated registry data
 				const registry = schemaResult.data!
 
-				// Validate source files exist
-				const filesResult = await validateSourceFiles(registry, sourcePath)
-				if (!filesResult.valid) {
+				// Run all validators using the generator
+				const validationErrors: string[] = []
+				for await (const error of validateRegistryWithOptions(registry, sourcePath, {
+					skipDuplicateTargets: options.duplicateTargets === false,
+				})) {
+					validationErrors.push(error)
+				}
+
+				// Report any validation errors
+				if (validationErrors.length > 0) {
 					if (!options.json) {
-						logger.error("Source file validation failed")
-						for (const error of filesResult.errors) {
+						logger.error("Registry validation failed")
+						for (const error of validationErrors) {
 							console.log(kleur.red(`  ${error}`))
 						}
 					}
 					process.exit(1)
-				}
-
-				// Validate no circular dependencies
-				const circularResult = validateCircularDependencies(registry)
-				if (!circularResult.valid) {
-					if (!options.json) {
-						logger.error("Circular dependency validation failed")
-						for (const error of circularResult.errors) {
-							console.log(kleur.red(`  ${error}`))
-						}
-					}
-					process.exit(1)
-				}
-
-				// Validate no duplicate targets (unless skipped with --no-duplicate-targets)
-				// Commander sets duplicateTargets to false when --no-duplicate-targets is used
-				if (options.duplicateTargets !== false) {
-					const duplicateTargetsResult = validateDuplicateTargets(registry)
-					if (!duplicateTargetsResult.valid) {
-						if (!options.json) {
-							logger.error("Duplicate target validation failed")
-							for (const error of duplicateTargetsResult.errors) {
-								console.log(kleur.red(`  ${error}`))
-							}
-						}
-						process.exit(1)
-					}
 				}
 
 				// All validations passed
