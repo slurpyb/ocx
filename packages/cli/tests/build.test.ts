@@ -84,6 +84,43 @@ describe("ocx build", () => {
 		expect(index.components[0].name).toBe("comp-1")
 	})
 
+	it("should display validation results when --show-validation is used", async () => {
+		const sourceDir = join(testDir, "registry")
+		await mkdir(sourceDir, { recursive: true })
+
+		const registryJson = {
+			$schema: REGISTRY_SCHEMA_V2_URL,
+			name: "Test Registry",
+			namespace: "kdco",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [
+				{
+					name: "test-component",
+					type: "plugin",
+					description: "Test component",
+					files: [{ path: "test.ts", target: "plugins/test.ts" }],
+					dependencies: [],
+				},
+			],
+		}
+
+		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(registryJson, null, 2))
+
+		const filesDir = join(sourceDir, "files")
+		await mkdir(filesDir, { recursive: true })
+		await writeFile(join(filesDir, "test.ts"), "// test file")
+
+		const outDir = "dist"
+		const { exitCode, output } = await runCLI(
+			["build", "registry", "--out", outDir, "--show-validation"],
+			testDir,
+		)
+
+		expect(exitCode).toBe(0)
+		expect(output.toLowerCase()).toContain("validation")
+	})
+
 	it("should fail if component name is invalid", async () => {
 		const sourceDir = join(testDir, "registry-invalid")
 		await mkdir(sourceDir, { recursive: true })

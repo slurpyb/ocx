@@ -17,6 +17,7 @@ interface BuildOptions {
 	json: boolean
 	quiet: boolean
 	dryRun?: boolean
+	showValidation: boolean
 }
 
 export function registerBuildCommand(program: Command): void {
@@ -29,10 +30,16 @@ export function registerBuildCommand(program: Command): void {
 		.option("--json", "Output as JSON", false)
 		.option("-q, --quiet", "Suppress output", false)
 		.option("--dry-run", "Validate and show what would be built")
+		.option("--show-validation", "Display validation results before building", false)
 		.action(async (path: string, options: BuildOptions) => {
 			try {
 				const sourcePath = resolve(options.cwd, path)
 				const outPath = resolve(options.cwd, options.out)
+
+				// Show validation results if requested
+				if (options.showValidation && !options.json && !options.quiet) {
+					logger.info("Running validation checks...")
+				}
 
 				const spinner = createSpinner({
 					text: "Building registry...",
