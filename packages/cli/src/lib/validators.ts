@@ -9,10 +9,11 @@ import { join } from "node:path"
 import type { Registry } from "../schemas/registry"
 import { normalizeFile, registrySchema } from "../schemas/registry"
 
-export interface ValidationResult {
+export interface ValidationResult<T = unknown> {
 	valid: boolean
 	errors: string[]
 	warnings?: string[]
+	data?: T
 }
 
 /**
@@ -20,12 +21,12 @@ export interface ValidationResult {
  *
  * @param registryData - The parsed registry object
  * @param sourcePath - Path to the registry source (for error messages)
- * @returns Validation result
+ * @returns Validation result with parsed data
  */
 export function validateRegistrySource(
 	registryData: unknown,
 	sourcePath: string,
-): ValidationResult {
+): ValidationResult<Registry> {
 	const parseResult = registrySchema.safeParse(registryData)
 
 	if (!parseResult.success) {
@@ -39,6 +40,7 @@ export function validateRegistrySource(
 	return {
 		valid: true,
 		errors: [],
+		data: parseResult.data,
 	}
 }
 

@@ -6,8 +6,16 @@
 
 import { relative, resolve } from "node:path"
 import type { Command } from "commander"
+import { parse as parseJsonc } from "jsonc-parser"
 import kleur from "kleur"
 import { BuildRegistryError, type BuildRegistryResult, buildRegistry } from "../lib/build-registry"
+import {
+	validateCircularDependencies,
+	validateDuplicateTargets,
+	validateRegistrySource,
+	validateSourceFiles,
+} from "../lib/validators"
+import { classifyRegistrySchemaIssue } from "../schemas/registry"
 import { outputDryRun } from "../utils/dry-run"
 import { createSpinner, handleError, logger, outputJson } from "../utils/index"
 
@@ -39,6 +47,84 @@ export function registerBuildCommand(program: Command): void {
 				// Show validation results if requested
 				if (options.showValidation && !options.json && !options.quiet) {
 					logger.info("Running validation checks...")
+
+					// Read registry file
+					const jsoncFile = Bun.file(`${sourcePath}/registry.jsonc`)
+					const jsonFile = Bun.file(`${sourcePath}/registry.json`)
+					const jsoncExists = await jsoncFile.exists()
+					const jsonExists = await jsonFile.exists()
+
+					if (!jsoncExists && !jsonExists) {
+						logger.error("No registry.jsonc or registry.json found in source directory")
+						process.exit(1)
+					}
+
+					const registryFile = jsoncExists ? jsoncFile : jsonFile
+					const content = await registryFile.text()
+					const registryData = parseJsonc(content, [], { allowTrailingComma: true })
+
+					// Check schema compatibility
+					const schemaIssue = classifyRegistrySchemaIssue(registryData)
+					if (schemaIssue) {
+						logger.error(`✗ Schema compatibility: ${schemaIssue.issue}`)
+						console.log(kleur.red(`  ${schemaIssue.remediation}`))
+						process.exit(1)
+					} else {
+						logger.success("✓ Schema compatibility")
+					}
+
+					// Validate schema
+					const schemaResult = validateRegistrySource(registryData, sourcePath)
+					if (!schemaResult.valid) {
+						logger.error("✗ Registry schema")
+						for (const error of schemaResult.errors) {
+							console.log(kleur.red(`  ${error}`))
+						}
+						process.exit(1)
+					} else {
+						logger.success("✓ Registry schema")
+					}
+
+					// Use the parsed and validated registry data
+					const registry = schemaResult.data!
+
+					// Validate source files exist
+					const filesResult = await validateSourceFiles(registry, sourcePath)
+					if (!filesResult.valid) {
+						logger.error("✗ Source files")
+						for (const error of filesResult.errors) {
+							console.log(kleur.red(`  ${error}`))
+						}
+						process.exit(1)
+					} else {
+						logger.success("✓ Source files")
+					}
+
+					// Validate no circular dependencies
+					const circularResult = validateCircularDependencies(registry)
+					if (!circularResult.valid) {
+						logger.error("✗ Circular dependencies")
+						for (const error of circularResult.errors) {
+							console.log(kleur.red(`  ${error}`))
+						}
+						process.exit(1)
+					} else {
+						logger.success("✓ No circular dependencies")
+					}
+
+					// Validate no duplicate targets
+					const duplicateTargetsResult = validateDuplicateTargets(registry)
+					if (!duplicateTargetsResult.valid) {
+						logger.error("✗ Duplicate targets")
+						for (const error of duplicateTargetsResult.errors) {
+							console.log(kleur.red(`  ${error}`))
+						}
+						process.exit(1)
+					} else {
+						logger.success("✓ No duplicate targets")
+					}
+
+					console.log("") // Empty line before build starts
 				}
 
 				const spinner = createSpinner({

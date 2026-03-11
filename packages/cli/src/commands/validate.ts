@@ -78,8 +78,11 @@ export function registerValidateCommand(program: Command): void {
 					process.exit(1)
 				}
 
+				// Use the parsed and validated registry data
+				const registry = schemaResult.data!
+
 				// Validate source files exist
-				const filesResult = await validateSourceFiles(registryData as any, sourcePath)
+				const filesResult = await validateSourceFiles(registry, sourcePath)
 				if (!filesResult.valid) {
 					if (!options.json) {
 						logger.error("Source file validation failed")
@@ -91,7 +94,7 @@ export function registerValidateCommand(program: Command): void {
 				}
 
 				// Validate no circular dependencies
-				const circularResult = validateCircularDependencies(registryData as any)
+				const circularResult = validateCircularDependencies(registry)
 				if (!circularResult.valid) {
 					if (!options.json) {
 						logger.error("Circular dependency validation failed")
@@ -105,7 +108,7 @@ export function registerValidateCommand(program: Command): void {
 				// Validate no duplicate targets (unless skipped with --no-duplicate-targets)
 				// Commander sets duplicateTargets to false when --no-duplicate-targets is used
 				if (options.duplicateTargets !== false) {
-					const duplicateTargetsResult = validateDuplicateTargets(registryData as any)
+					const duplicateTargetsResult = validateDuplicateTargets(registry)
 					if (!duplicateTargetsResult.valid) {
 						if (!options.json) {
 							logger.error("Duplicate target validation failed")
