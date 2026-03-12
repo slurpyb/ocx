@@ -14,7 +14,14 @@ import {
 	validateRegistryWithOptions,
 } from "../lib/validators"
 import { outputDryRun } from "../utils/dry-run"
-import { createSpinner, handleError, logger, outputJson } from "../utils/index"
+import {
+	categorizeValidationErrors,
+	createSpinner,
+	displayCategorizedErrors,
+	handleError,
+	logger,
+	outputJson,
+} from "../utils/index"
 
 interface BuildOptions {
 	cwd: string

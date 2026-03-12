@@ -12,7 +12,12 @@ import {
 	validateRegistrySchema,
 	validateRegistryWithOptions,
 } from "../lib/validators"
-import { handleError, logger } from "../utils/index"
+import {
+	categorizeValidationErrors,
+	displayCategorizedErrors,
+	handleError,
+	logger,
+} from "../utils/index"
 
 interface ValidateOptions {
 	cwd: string
@@ -72,9 +77,12 @@ export function registerValidateCommand(program: Command): void {
 				if (validationErrors.length > 0) {
 					if (!options.json) {
 						logger.error("Registry validation failed")
-						for (const error of validationErrors) {
-							console.log(kleur.red(`  ${error}`))
-						}
+						const categorized = categorizeValidationErrors(validationErrors)
+						displayCategorizedErrors(categorized, (msg) => {
+							if (!msg.startsWith("✗")) {
+								console.log(kleur.red(msg))
+							}
+						})
 					}
 					process.exit(1)
 				}
