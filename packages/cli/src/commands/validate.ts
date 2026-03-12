@@ -6,10 +6,12 @@
 
 import { resolve } from "node:path"
 import type { Command } from "commander"
-import { parse as parseJsonc } from "jsonc-parser"
 import kleur from "kleur"
-import { validateRegistrySource, validateRegistryWithOptions } from "../lib/validators"
-import { classifyRegistrySchemaIssue } from "../schemas/registry"
+import {
+	loadRegistrySource,
+	validateRegistrySchema,
+	validateRegistryWithOptions,
+} from "../lib/validators"
 import { handleError, logger } from "../utils/index"
 
 interface ValidateOptions {
@@ -34,35 +36,17 @@ export function registerValidateCommand(program: Command): void {
 			try {
 				const sourcePath = resolve(options.cwd, path)
 
-				// Read registry file
-				const jsoncFile = Bun.file(`${sourcePath}/registry.jsonc`)
-				const jsonFile = Bun.file(`${sourcePath}/registry.json`)
-				const jsoncExists = await jsoncFile.exists()
-				const jsonExists = await jsonFile.exists()
-
-				if (!jsoncExists && !jsonExists) {
+				// Load registry file
+				const loadResult = await loadRegistrySource(sourcePath)
+				if (!loadResult.success) {
 					if (!options.json) {
-						logger.error("No registry.jsonc or registry.json found in source directory")
+						logger.error(loadResult.error || "Failed to load registry")
 					}
 					process.exit(1)
 				}
 
-				const registryFile = jsoncExists ? jsoncFile : jsonFile
-				const content = await registryFile.text()
-				const registryData = parseJsonc(content, [], { allowTrailingComma: true })
-
-				// Check schema compatibility
-				const schemaIssue = classifyRegistrySchemaIssue(registryData)
-				if (schemaIssue) {
-					if (!options.json) {
-						logger.error(`Registry schema compatibility failed (${schemaIssue.issue})`)
-						console.log(kleur.red(`  ${schemaIssue.remediation}`))
-					}
-					process.exit(1)
-				}
-
-				// Validate schema
-				const schemaResult = validateRegistrySource(registryData, sourcePath)
+				// Validate schema (compatibility + structure)
+				const schemaResult = validateRegistrySchema(loadResult.data, sourcePath)
 				if (!schemaResult.valid) {
 					if (!options.json) {
 						logger.error("Registry validation failed")
