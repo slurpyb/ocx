@@ -118,7 +118,66 @@ describe("ocx build", () => {
 		)
 
 		expect(exitCode).toBe(0)
-		expect(output.toLowerCase()).toContain("validation")
+
+		// Verify validation output structure and content
+		expect(output).toContain("Running validation checks...")
+		expect(output).toContain("Schema compatibility and structure")
+		expect(output).toContain("Source files")
+		expect(output).toContain("No circular dependencies")
+		expect(output).toContain("No duplicate targets")
+
+		// Verify validation appears before build success message
+		const validationIndex = output.indexOf("Running validation checks...")
+		const buildIndex = output.indexOf("Built")
+		expect(validationIndex).toBeGreaterThan(-1)
+		expect(buildIndex).toBeGreaterThan(-1)
+		expect(validationIndex).toBeLessThan(buildIndex)
+	})
+
+	it("should NOT display validation results when --show-validation is not used", async () => {
+		const sourceDir = join(testDir, "registry-no-validation")
+		await mkdir(sourceDir, { recursive: true })
+
+		const registryJson = {
+			$schema: REGISTRY_SCHEMA_V2_URL,
+			name: "Test Registry No Validation",
+			namespace: "kdco",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [
+				{
+					name: "test-component",
+					type: "plugin",
+					description: "Test component",
+					files: [{ path: "test.ts", target: "plugins/test.ts" }],
+					dependencies: [],
+				},
+			],
+		}
+
+		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(registryJson, null, 2))
+
+		const filesDir = join(sourceDir, "files")
+		await mkdir(filesDir, { recursive: true })
+		await writeFile(join(filesDir, "test.ts"), "// test file")
+
+		const outDir = "dist"
+		const { exitCode, output } = await runCLI(
+			["build", "registry-no-validation", "--out", outDir],
+			testDir,
+		)
+
+		expect(exitCode).toBe(0)
+
+		// Verify validation output is NOT present
+		expect(output).not.toContain("Running validation checks...")
+		expect(output).not.toContain("Schema compatibility and structure")
+		expect(output).not.toContain("Source files")
+		expect(output).not.toContain("No circular dependencies")
+		expect(output).not.toContain("No duplicate targets")
+
+		// Verify build output is still present
+		expect(output).toContain("Built 1 component")
 	})
 
 	it("should fail if component name is invalid", async () => {
