@@ -1,0 +1,130 @@
+---
+title: "ocx validate"
+description: "Reference for the ocx validate command — validate a registry source without building"
+---
+
+## Usage
+
+```bash
+ocx validate [path] [options]
+```
+
+## Description
+
+Validate a registry source without building it. This command performs comprehensive validation checks on the `registry.jsonc` manifest including schema validation, file existence checks, circular dependency detection, and duplicate target detection. Intended for registry authors who want to verify their registry before building or deploying.
+
+Unlike `ocx build --dry-run`, this command focuses exclusively on validation and provides detailed error reporting without attempting to generate output files.
+
+## Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `path` | No | Registry source directory (default: current directory) |
+
+## Flags
+
+| Flag | Shorthand | Default | Description |
+|------|-----------|---------|-------------|
+| `--cwd <path>` | | Current directory | Working directory |
+| `--json` | | `false` | Output as JSON |
+| `--quiet` | `-q` | `false` | Suppress output |
+| `--strict` | | `false` | Exit with code 1 on validation failure (for CI/CD) |
+| `--no-duplicate-targets` | | | Skip duplicate target validation |
+
+## Examples
+
+### Validate Registry in Current Directory
+
+```bash
+ocx validate
+```
+
+### Validate from a Specific Directory
+
+```bash
+ocx validate ./my-registry
+```
+
+### Strict Mode for CI/CD
+
+```bash
+ocx validate --strict
+```
+
+This ensures the command exits with code 1 if any validation errors are found, making it suitable for continuous integration pipelines.
+
+### Skip Duplicate Target Validation
+
+```bash
+ocx validate --no-duplicate-targets
+```
+
+### JSON Output for Scripting
+
+```bash
+ocx validate --json
+```
+
+## Output
+
+```bash
+$ ocx validate
+✓ Registry source is valid
+
+$ ocx validate --json
+{
+  "valid": true
+}
+```
+
+### Validation Failure
+
+```bash
+$ ocx validate
+Registry validation failed
+  Schema validation error: Missing required field 'name'
+  File not found: files/agents/missing-agent.md
+  Circular dependency detected: component-a -> component-b -> component-a
+```
+
+## Validation Checks
+
+The validate command performs the following checks:
+
+1. **Schema Validation** — Validates the `registry.jsonc` structure and required fields
+2. **File Existence** — Ensures all referenced files exist in the source directory
+3. **Circular Dependencies** — Detects circular dependencies between components
+4. **Duplicate Targets** — Identifies components that write to the same target paths
+
+## Source Structure
+
+The validate command expects a `registry.jsonc` file in the source directory:
+
+```
+my-registry/
+  registry.jsonc        # Registry manifest
+  files/
+    agents/
+      my-agent.md       # Agent definition
+    plugins/
+      my-plugin.ts      # Plugin file
+    skills/
+      my-skill/
+        SKILL.md        # Skill definition
+```
+
+## Errors
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| Schema validation failed | Invalid `registry.jsonc` structure | Check error messages for specific schema violations |
+| File not found | Referenced file missing from source | Ensure all files in manifest exist in `files/` directory |
+| Circular dependency detected | Components depend on each other | Review component dependencies and remove cycles |
+| Duplicate target paths | Multiple components write to same path | Update target paths to be unique |
+
+## See Also
+
+- [ocx build](/cli/build) — Build a registry from source (includes validation).
+- [Creating Registries](/registries/create) — Full guide for registry authors.
+- [Registry Protocol](/registries/protocol) — Technical specification for registry HTTP APIs.
+- [CLI Reference](/cli/commands) — All commands.
