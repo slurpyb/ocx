@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test"
-import { categorizeValidationErrors } from "../src/utils/validation-errors"
+import {
+	categorizeValidationErrors,
+	displayCategorizedErrors,
+} from "../src/utils/validation-errors"
 
 describe("categorizeValidationErrors", () => {
 	it("should categorize file errors", () => {
@@ -61,5 +64,91 @@ describe("categorizeValidationErrors", () => {
 		expect(result.file).toEqual([])
 		expect(result.circular).toEqual([])
 		expect(result.duplicate).toEqual([])
+	})
+})
+
+describe("displayCategorizedErrors", () => {
+	it("should display file errors with heading", () => {
+		const categorized = {
+			file: ["comp-a: Source file not found at file.ts"],
+			circular: [],
+			duplicate: [],
+		}
+
+		const output: string[] = []
+		const mockLog = (msg: string) => output.push(msg)
+
+		displayCategorizedErrors(categorized, mockLog)
+
+		expect(output).toContain("✗ Source files")
+		expect(output).toContain("  comp-a: Source file not found at file.ts")
+	})
+
+	it("should display circular dependency errors with heading", () => {
+		const categorized = {
+			file: [],
+			circular: ["Circular dependency detected: comp-a -> comp-b -> comp-a"],
+			duplicate: [],
+		}
+
+		const output: string[] = []
+		const mockLog = (msg: string) => output.push(msg)
+
+		displayCategorizedErrors(categorized, mockLog)
+
+		expect(output).toContain("✗ Circular dependencies")
+		expect(output).toContain("  Circular dependency detected: comp-a -> comp-b -> comp-a")
+	})
+
+	it("should display duplicate target errors with heading", () => {
+		const categorized = {
+			file: [],
+			circular: [],
+			duplicate: ['Duplicate target "plugins/test.ts" in components "comp-a" and "comp-b"'],
+		}
+
+		const output: string[] = []
+		const mockLog = (msg: string) => output.push(msg)
+
+		displayCategorizedErrors(categorized, mockLog)
+
+		expect(output).toContain("✗ Duplicate targets")
+		expect(output).toContain(
+			'  Duplicate target "plugins/test.ts" in components "comp-a" and "comp-b"',
+		)
+	})
+
+	it("should display multiple error categories", () => {
+		const categorized = {
+			file: ["comp-a: Source file not found at file.ts"],
+			circular: ["Circular dependency detected: comp-a -> comp-b -> comp-a"],
+			duplicate: ['Duplicate target "plugins/test.ts" in components "comp-a" and "comp-b"'],
+		}
+
+		const output: string[] = []
+		const mockLog = (msg: string) => output.push(msg)
+
+		displayCategorizedErrors(categorized, mockLog)
+
+		expect(output).toContain("✗ Source files")
+		expect(output).toContain("✗ Circular dependencies")
+		expect(output).toContain("✗ Duplicate targets")
+	})
+
+	it("should not display categories with no errors", () => {
+		const categorized = {
+			file: ["comp-a: Source file not found at file.ts"],
+			circular: [],
+			duplicate: [],
+		}
+
+		const output: string[] = []
+		const mockLog = (msg: string) => output.push(msg)
+
+		displayCategorizedErrors(categorized, mockLog)
+
+		expect(output).toContain("✗ Source files")
+		expect(output).not.toContain("✗ Circular dependencies")
+		expect(output).not.toContain("✗ Duplicate targets")
 	})
 })

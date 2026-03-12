@@ -23,3 +23,35 @@ export function categorizeValidationErrors(errors: string[]): CategorizedErrors 
 		duplicate: errors.filter((e) => e.includes("Duplicate target")),
 	}
 }
+
+/**
+ * Display categorized validation errors with headings.
+ *
+ * @param categorized - Categorized errors object
+ * @param logFn - Function to output messages (defaults to console.log)
+ */
+export function displayCategorizedErrors(
+	categorized: CategorizedErrors,
+	logFn: (msg: string) => void = console.log,
+): void {
+	if (categorized.file.length > 0) {
+		logFn("✗ Source files")
+		for (const error of categorized.file) {
+			logFn(`  ${error}`)
+		}
+	}
+
+	if (categorized.circular.length > 0) {
+		logFn("✗ Circular dependencies")
+		for (const error of categorized.circular) {
+			logFn(`  ${error}`)
+		}
+	}
+
+	if (categorized.duplicate.length > 0) {
+		logFn("✗ Duplicate targets")
+		for (const error of categorized.duplicate) {
+			logFn(`  ${error}`)
+		}
+	}
+}
