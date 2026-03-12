@@ -6,7 +6,7 @@
  */
 
 import { join } from "node:path"
-import { parse as parseJsonc } from "jsonc-parser"
+import { type ParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser"
 import type { Registry } from "../schemas/registry"
 import { classifyRegistrySchemaIssue, normalizeFile, registrySchema } from "../schemas/registry"
 
@@ -21,6 +21,22 @@ export interface LoadRegistryResult {
 	success: boolean
 	data?: unknown
 	error?: string
+}
+
+/**
+ * Format JSONC parse errors into a readable error message.
+ */
+function formatJsoncParseError(parseErrors: ParseError[]): string {
+	if (parseErrors.length === 0) {
+		return "Unknown parse error"
+	}
+
+	const firstError = parseErrors[0]
+	if (!firstError) {
+		return "Unknown parse error"
+	}
+
+	return `${printParseErrorCode(firstError.error)} at offset ${firstError.offset}`
 }
 
 /**
@@ -46,8 +62,19 @@ export async function loadRegistrySource(sourcePath: string): Promise<LoadRegist
 	}
 
 	const registryFile = jsoncExists ? jsoncFile : jsonFile
+	const fileName = jsoncExists ? "registry.jsonc" : "registry.json"
 	const content = await registryFile.text()
-	const data = parseJsonc(content, [], { allowTrailingComma: true })
+
+	const parseErrors: ParseError[] = []
+	const data = parseJsonc(content, parseErrors, { allowTrailingComma: true })
+
+	if (parseErrors.length > 0) {
+		const errorDetail = formatJsoncParseError(parseErrors)
+		return {
+			success: false,
+			error: `Invalid JSONC in ${fileName}: ${errorDetail}`,
+		}
+	}
 
 	return {
 		success: true,

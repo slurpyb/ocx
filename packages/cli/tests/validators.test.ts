@@ -288,6 +288,65 @@ describe("loadRegistrySource", () => {
 		expect(result.success).toBe(false)
 		expect(result.error).toContain("No registry.jsonc or registry.json found")
 	})
+
+	it("should return error when registry.jsonc contains malformed JSON", async () => {
+		// Write malformed JSONC with syntax error
+		await writeFile(
+			join(testDir, "registry.jsonc"),
+			`{
+  "$schema": "https://ocx.kdco.dev/schemas/v2/registry.json",
+  "name": "Test Registry",
+  "namespace": "test",
+  "version": "1.0.0",
+  "author": "Test Author",
+  "components": [
+  // Missing closing bracket
+}`,
+		)
+
+		const result = await loadRegistrySource(testDir)
+
+		expect(result.success).toBe(false)
+		expect(result.error).toBeDefined()
+		expect(result.error).toContain("Invalid JSONC")
+	})
+
+	it("should return error when registry.json contains malformed JSON", async () => {
+		// Write malformed JSON with syntax error
+		await writeFile(
+			join(testDir, "registry.json"),
+			`{
+  "$schema": "https://ocx.kdco.dev/schemas/v2/registry.json",
+  "name": "Test Registry"
+  "namespace": "test"
+}`,
+		)
+
+		const result = await loadRegistrySource(testDir)
+
+		expect(result.success).toBe(false)
+		expect(result.error).toBeDefined()
+		expect(result.error).toContain("Invalid JSONC")
+	})
+
+	it("should include parse error details in error message", async () => {
+		// Write JSONC with unexpected token
+		await writeFile(
+			join(testDir, "registry.jsonc"),
+			`{
+  "$schema": "https://ocx.kdco.dev/schemas/v2/registry.json",
+  "name": "Test Registry",
+  ]
+}`,
+		)
+
+		const result = await loadRegistrySource(testDir)
+
+		expect(result.success).toBe(false)
+		expect(result.error).toBeDefined()
+		// Error should contain both the error type and location info
+		expect(result.error).toMatch(/Invalid JSONC.*offset/)
+	})
 })
 
 describe("validateRegistrySchema", () => {
