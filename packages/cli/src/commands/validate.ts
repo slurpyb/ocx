@@ -7,11 +7,7 @@
 import { resolve } from "node:path"
 import type { Command } from "commander"
 import kleur from "kleur"
-import {
-	loadRegistrySource,
-	validateRegistrySchema,
-	validateRegistryWithOptions,
-} from "../lib/validators"
+import { runCompleteValidation } from "../lib/validation-runner"
 import {
 	categorizeValidationErrors,
 	displayCategorizedErrors,
@@ -41,43 +37,15 @@ export function registerValidateCommand(program: Command): void {
 			try {
 				const sourcePath = resolve(options.cwd, path)
 
-				// Load registry file
-				const loadResult = await loadRegistrySource(sourcePath)
-				if (!loadResult.success) {
-					if (!options.json) {
-						logger.error(loadResult.error || "Failed to load registry")
-					}
-					process.exit(1)
-				}
-
-				// Validate schema (compatibility + structure)
-				const schemaResult = validateRegistrySchema(loadResult.data, sourcePath)
-				if (!schemaResult.valid) {
-					if (!options.json) {
-						logger.error("Registry validation failed")
-						for (const error of schemaResult.errors) {
-							console.log(kleur.red(`  ${error}`))
-						}
-					}
-					process.exit(1)
-				}
-
-				// Use the parsed and validated registry data
-				const registry = schemaResult.data!
-
-				// Run all validators using the generator
-				const validationErrors: string[] = []
-				for await (const error of validateRegistryWithOptions(registry, sourcePath, {
+				const validationResult = await runCompleteValidation(sourcePath, {
 					skipDuplicateTargets: options.duplicateTargets === false,
-				})) {
-					validationErrors.push(error)
-				}
+				})
 
 				// Report any validation errors
-				if (validationErrors.length > 0) {
+				if (!validationResult.success) {
 					if (!options.json) {
 						logger.error("Registry validation failed")
-						const categorized = categorizeValidationErrors(validationErrors)
+						const categorized = categorizeValidationErrors(validationResult.errors)
 						displayCategorizedErrors(categorized, (msg) => {
 							if (!msg.startsWith("✗")) {
 								console.log(kleur.red(msg))
