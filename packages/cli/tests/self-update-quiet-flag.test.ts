@@ -21,7 +21,25 @@ describe("registerUpdateCheckHook - quiet flag handling", () => {
 	let checkForUpdateSpy: ReturnType<typeof spyOn>
 	let notifyUpdateSpy: ReturnType<typeof spyOn>
 
+	// Store original state for restoration
+	let originalIsTTYDescriptor: PropertyDescriptor | undefined
+	let originalEnv: {
+		OCX_SELF_UPDATE?: string
+		OCX_NO_UPDATE_CHECK?: string
+		CI?: string
+	}
+
 	beforeEach(async () => {
+		// Capture original isTTY descriptor
+		originalIsTTYDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY")
+
+		// Capture original environment variables
+		originalEnv = {
+			OCX_SELF_UPDATE: process.env.OCX_SELF_UPDATE,
+			OCX_NO_UPDATE_CHECK: process.env.OCX_NO_UPDATE_CHECK,
+			CI: process.env.CI,
+		}
+
 		// Mock the check and notify modules
 		const checkModule = await import("../src/self-update/check")
 		const notifyModule = await import("../src/self-update/notify")
@@ -57,8 +75,35 @@ describe("registerUpdateCheckHook - quiet flag handling", () => {
 	})
 
 	afterEach(() => {
+		// Restore spies
 		checkForUpdateSpy.mockRestore()
 		notifyUpdateSpy.mockRestore()
+
+		// Restore isTTY descriptor
+		if (originalIsTTYDescriptor !== undefined) {
+			Object.defineProperty(process.stdout, "isTTY", originalIsTTYDescriptor)
+		} else {
+			delete (process.stdout as any).isTTY
+		}
+
+		// Restore environment variables
+		if (originalEnv.OCX_SELF_UPDATE !== undefined) {
+			process.env.OCX_SELF_UPDATE = originalEnv.OCX_SELF_UPDATE
+		} else {
+			delete process.env.OCX_SELF_UPDATE
+		}
+
+		if (originalEnv.OCX_NO_UPDATE_CHECK !== undefined) {
+			process.env.OCX_NO_UPDATE_CHECK = originalEnv.OCX_NO_UPDATE_CHECK
+		} else {
+			delete process.env.OCX_NO_UPDATE_CHECK
+		}
+
+		if (originalEnv.CI !== undefined) {
+			process.env.CI = originalEnv.CI
+		} else {
+			delete process.env.CI
+		}
 	})
 
 	it("should run update notifier normally (baseline)", async () => {
