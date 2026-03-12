@@ -9,12 +9,7 @@ import type { Command } from "commander"
 import { parse as parseJsonc } from "jsonc-parser"
 import kleur from "kleur"
 import { BuildRegistryError, type BuildRegistryResult, buildRegistry } from "../lib/build-registry"
-import {
-	validateCircularDependencies,
-	validateDuplicateTargets,
-	validateRegistrySource,
-	validateSourceFiles,
-} from "../lib/validators"
+import { validateRegistrySource, validateRegistryWithOptions } from "../lib/validators"
 import { classifyRegistrySchemaIssue } from "../schemas/registry"
 import { outputDryRun } from "../utils/dry-run"
 import { createSpinner, handleError, logger, outputJson } from "../utils/index"
@@ -88,41 +83,49 @@ export function registerBuildCommand(program: Command): void {
 					// Use the parsed and validated registry data
 					const registry = schemaResult.data!
 
-					// Validate source files exist
-					const filesResult = await validateSourceFiles(registry, sourcePath)
-					if (!filesResult.valid) {
-						logger.error("✗ Source files")
-						for (const error of filesResult.errors) {
-							console.log(kleur.red(`  ${error}`))
-						}
-						process.exit(1)
-					} else {
-						logger.success("✓ Source files")
+					// Collect all validation errors first
+					const validationErrors: string[] = []
+					for await (const error of validateRegistryWithOptions(registry, sourcePath, {
+						skipDuplicateTargets: false,
+					})) {
+						validationErrors.push(error)
 					}
 
-					// Validate no circular dependencies
-					const circularResult = validateCircularDependencies(registry)
-					if (!circularResult.valid) {
-						logger.error("✗ Circular dependencies")
-						for (const error of circularResult.errors) {
-							console.log(kleur.red(`  ${error}`))
+					// If there are errors, report them and exit
+					if (validationErrors.length > 0) {
+						// Categorize errors for better reporting
+						const fileErrors = validationErrors.filter((e) => e.includes("Source file not found"))
+						const circularErrors = validationErrors.filter((e) => e.includes("Circular dependency"))
+						const duplicateErrors = validationErrors.filter((e) => e.includes("Duplicate target"))
+
+						if (fileErrors.length > 0) {
+							logger.error("✗ Source files")
+							for (const error of fileErrors) {
+								console.log(kleur.red(`  ${error}`))
+							}
 						}
+
+						if (circularErrors.length > 0) {
+							logger.error("✗ Circular dependencies")
+							for (const error of circularErrors) {
+								console.log(kleur.red(`  ${error}`))
+							}
+						}
+
+						if (duplicateErrors.length > 0) {
+							logger.error("✗ Duplicate targets")
+							for (const error of duplicateErrors) {
+								console.log(kleur.red(`  ${error}`))
+							}
+						}
+
 						process.exit(1)
-					} else {
-						logger.success("✓ No circular dependencies")
 					}
 
-					// Validate no duplicate targets
-					const duplicateTargetsResult = validateDuplicateTargets(registry)
-					if (!duplicateTargetsResult.valid) {
-						logger.error("✗ Duplicate targets")
-						for (const error of duplicateTargetsResult.errors) {
-							console.log(kleur.red(`  ${error}`))
-						}
-						process.exit(1)
-					} else {
-						logger.success("✓ No duplicate targets")
-					}
+					// All validations passed - show success messages
+					logger.success("✓ Source files")
+					logger.success("✓ No circular dependencies")
+					logger.success("✓ No duplicate targets")
 
 					console.log("") // Empty line before build starts
 				}
