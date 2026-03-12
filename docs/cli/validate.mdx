@@ -26,9 +26,8 @@ Unlike `ocx build --dry-run`, this command focuses exclusively on validation and
 | Flag | Shorthand | Default | Description |
 |------|-----------|---------|-------------|
 | `--cwd <path>` | | Current directory | Working directory |
-| `--json` | | `false` | Output as JSON |
-| `--quiet` | `-q` | `false` | Suppress output |
-| `--strict` | | `false` | Exit with code 1 on validation failure (for CI/CD) |
+| `--json` | | `false` | Output as JSON (both success and failure) |
+| `--quiet` | `-q` | `false` | Suppress all output (including errors) |
 | `--no-duplicate-targets` | | | Skip duplicate target validation |
 
 ## Examples
@@ -45,13 +44,17 @@ ocx validate
 ocx validate ./my-registry
 ```
 
-### Strict Mode for CI/CD
+### CI/CD Integration
+
+The command always exits with code 1 on validation failure, making it suitable for continuous integration pipelines:
 
 ```bash
-ocx validate --strict
+ocx validate
+if [ $? -ne 0 ]; then
+  echo "Validation failed"
+  exit 1
+fi
 ```
-
-This ensures the command exits with code 1 if any validation errors are found, making it suitable for continuous integration pipelines.
 
 ### Skip Duplicate Target Validation
 
@@ -65,7 +68,21 @@ ocx validate --no-duplicate-targets
 ocx validate --json
 ```
 
+JSON output is provided for both success and failure cases, making it suitable for automated tooling.
+
+### Quiet Mode
+
+```bash
+ocx validate --quiet
+```
+
+Suppresses all output (including errors). Check the exit code to determine success (0) or failure (1).
+
+**Note**: When using `--json` and `--quiet` together, JSON output takes precedence.
+
 ## Output
+
+### Success
 
 ```bash
 $ ocx validate
@@ -79,12 +96,26 @@ $ ocx validate --json
 
 ### Validation Failure
 
+**Human-readable output**:
 ```bash
 $ ocx validate
 Registry validation failed
   Schema validation error: Missing required field 'name'
   File not found: files/agents/missing-agent.md
   Circular dependency detected: component-a -> component-b -> component-a
+```
+
+**JSON output**:
+```bash
+$ ocx validate --json
+{
+  "valid": false,
+  "errors": [
+    "Schema validation error: Missing required field 'name'",
+    "File not found: files/agents/missing-agent.md",
+    "Circular dependency detected: component-a -> component-b -> component-a"
+  ]
+}
 ```
 
 ## Validation Checks
