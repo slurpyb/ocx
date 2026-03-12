@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import {
+	loadRegistrySource,
 	validateRegistrySource,
 	validateRegistryWithOptions,
 	validateSourceFiles,
@@ -190,5 +191,100 @@ describe("validateRegistryWithOptions", () => {
 
 		// Should NOT have duplicate target error
 		expect(errors.some((e) => e.includes("Duplicate target"))).toBe(false)
+	})
+})
+
+describe("loadRegistrySource", () => {
+	let testDir: string
+
+	beforeEach(async () => {
+		testDir = await createTempDir("load-registry-test")
+	})
+
+	afterEach(async () => {
+		await cleanupTempDir(testDir)
+	})
+
+	it("should load and parse registry.json file", async () => {
+		const registryData = {
+			$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
+			name: "Test Registry",
+			namespace: "test",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [],
+		}
+
+		await writeFile(join(testDir, "registry.json"), JSON.stringify(registryData))
+
+		const result = await loadRegistrySource(testDir)
+
+		expect(result.success).toBe(true)
+		expect(result.data).toEqual(registryData)
+	})
+
+	it("should load and parse registry.jsonc file", async () => {
+		const registryData = {
+			$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
+			name: "Test Registry",
+			namespace: "test",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [],
+		}
+
+		// Write JSONC with comments and trailing commas
+		await writeFile(
+			join(testDir, "registry.jsonc"),
+			`{
+  // Comment
+  "$schema": "https://ocx.kdco.dev/schemas/v2/registry.json",
+  "name": "Test Registry",
+  "namespace": "test",
+  "version": "1.0.0",
+  "author": "Test Author",
+  "components": [],
+}`,
+		)
+
+		const result = await loadRegistrySource(testDir)
+
+		expect(result.success).toBe(true)
+		expect(result.data).toEqual(registryData)
+	})
+
+	it("should prefer registry.jsonc over registry.json when both exist", async () => {
+		const jsonData = {
+			$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
+			name: "JSON Registry",
+			namespace: "json",
+			version: "1.0.0",
+			author: "JSON Author",
+			components: [],
+		}
+
+		const jsoncData = {
+			$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
+			name: "JSONC Registry",
+			namespace: "jsonc",
+			version: "1.0.0",
+			author: "JSONC Author",
+			components: [],
+		}
+
+		await writeFile(join(testDir, "registry.json"), JSON.stringify(jsonData))
+		await writeFile(join(testDir, "registry.jsonc"), JSON.stringify(jsoncData))
+
+		const result = await loadRegistrySource(testDir)
+
+		expect(result.success).toBe(true)
+		expect(result.data?.name).toBe("JSONC Registry")
+	})
+
+	it("should return error when no registry file exists", async () => {
+		const result = await loadRegistrySource(testDir)
+
+		expect(result.success).toBe(false)
+		expect(result.error).toContain("No registry.jsonc or registry.json found")
 	})
 })

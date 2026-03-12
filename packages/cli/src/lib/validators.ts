@@ -6,6 +6,7 @@
  */
 
 import { join } from "node:path"
+import { parse as parseJsonc } from "jsonc-parser"
 import type { Registry } from "../schemas/registry"
 import { normalizeFile, registrySchema } from "../schemas/registry"
 
@@ -14,6 +15,44 @@ export interface ValidationResult<T = unknown> {
 	errors: string[]
 	warnings?: string[]
 	data?: T
+}
+
+export interface LoadRegistryResult {
+	success: boolean
+	data?: unknown
+	error?: string
+}
+
+/**
+ * Load and parse a registry source file from a directory.
+ *
+ * Looks for registry.jsonc first, then registry.json.
+ * Supports JSONC format with comments and trailing commas.
+ *
+ * @param sourcePath - Path to the directory containing the registry file
+ * @returns Result with parsed data or error message
+ */
+export async function loadRegistrySource(sourcePath: string): Promise<LoadRegistryResult> {
+	const jsoncFile = Bun.file(`${sourcePath}/registry.jsonc`)
+	const jsonFile = Bun.file(`${sourcePath}/registry.json`)
+	const jsoncExists = await jsoncFile.exists()
+	const jsonExists = await jsonFile.exists()
+
+	if (!jsoncExists && !jsonExists) {
+		return {
+			success: false,
+			error: "No registry.jsonc or registry.json found in source directory",
+		}
+	}
+
+	const registryFile = jsoncExists ? jsoncFile : jsonFile
+	const content = await registryFile.text()
+	const data = parseJsonc(content, [], { allowTrailingComma: true })
+
+	return {
+		success: true,
+		data,
+	}
 }
 
 /**
