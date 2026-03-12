@@ -50,4 +50,26 @@ describe("runCompleteValidation", () => {
 		expect(result.registry).toBeDefined()
 		expect(result.registry?.name).toBe("Test Registry")
 	})
+
+	it("should return error for invalid schema", async () => {
+		// Create registry file with missing required field
+		const registryContent = {
+			$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
+			name: "Test Registry",
+			// Missing 'version' field - required by schema
+			author: "Test Author",
+			components: [],
+		}
+
+		await writeFile(join(testDir, "registry.json"), JSON.stringify(registryContent, null, 2))
+
+		const result = await runCompleteValidation(testDir, {
+			skipDuplicateTargets: false,
+		})
+
+		expect(result.success).toBe(false)
+		expect(result.errors.length).toBeGreaterThan(0)
+		expect(result.errors[0]).toContain("version")
+		expect(result.registry).toBeUndefined()
+	})
 })
