@@ -189,69 +189,6 @@ describe("ocx validate", () => {
 		expect(output.toLowerCase()).toContain("duplicate")
 	})
 
-	it("should exit with code 1 in strict mode when validation fails", async () => {
-		const sourceDir = join(testDir, "registry")
-		await mkdir(sourceDir, { recursive: true })
-
-		const registryJson = {
-			$schema: REGISTRY_SCHEMA_V2_URL,
-			name: "Test Registry",
-			namespace: "test",
-			version: "1.0.0",
-			author: "Test Author",
-			components: [
-				{
-					name: "test-component",
-					type: "plugin",
-					description: "Test component",
-					files: [{ path: "missing.ts", target: "plugins/missing.ts" }],
-					dependencies: [],
-				},
-			],
-		}
-
-		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(registryJson, null, 2))
-
-		const filesDir = join(sourceDir, "files")
-		await mkdir(filesDir, { recursive: true })
-
-		const { exitCode } = await runCLI(["validate", "registry", "--strict"], testDir)
-
-		expect(exitCode).toBe(1)
-	})
-
-	it("should exit with code 0 in strict mode when validation passes", async () => {
-		const sourceDir = join(testDir, "registry")
-		await mkdir(sourceDir, { recursive: true })
-
-		const registryJson = {
-			$schema: REGISTRY_SCHEMA_V2_URL,
-			name: "Test Registry",
-			namespace: "test",
-			version: "1.0.0",
-			author: "Test Author",
-			components: [
-				{
-					name: "test-component",
-					type: "plugin",
-					description: "Test component",
-					files: [{ path: "test.ts", target: "plugins/test.ts" }],
-					dependencies: [],
-				},
-			],
-		}
-
-		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(registryJson, null, 2))
-
-		const filesDir = join(sourceDir, "files")
-		await mkdir(filesDir, { recursive: true })
-		await writeFile(join(filesDir, "test.ts"), "// test file")
-
-		const { exitCode } = await runCLI(["validate", "registry", "--strict"], testDir)
-
-		expect(exitCode).toBe(0)
-	})
-
 	it("should skip duplicate target validation when --no-duplicate-targets is used", async () => {
 		const sourceDir = join(testDir, "registry")
 		await mkdir(sourceDir, { recursive: true })
@@ -294,5 +231,183 @@ describe("ocx validate", () => {
 
 		expect(exitCode).toBe(0)
 		expect(output.toLowerCase()).not.toContain("duplicate")
+	})
+
+	// Violation 4: JSON output on failure tests
+	it("should output JSON on validation failure when --json flag is used", async () => {
+		const sourceDir = join(testDir, "registry")
+		await mkdir(sourceDir, { recursive: true })
+
+		const registryJson = {
+			$schema: REGISTRY_SCHEMA_V2_URL,
+			name: "Test Registry",
+			namespace: "test",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [
+				{
+					name: "test-component",
+					type: "plugin",
+					description: "Test component",
+					files: [{ path: "missing.ts", target: "plugins/missing.ts" }],
+					dependencies: [],
+				},
+			],
+		}
+
+		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(registryJson, null, 2))
+
+		const filesDir = join(sourceDir, "files")
+		await mkdir(filesDir, { recursive: true })
+
+		const { exitCode, stdout, stderr } = await runCLI(["validate", "registry", "--json"], testDir)
+
+		expect(exitCode).toBe(1)
+		expect(stderr).toBe("") // No error output to stderr in JSON mode
+
+		// Parse JSON output
+		const result = JSON.parse(stdout)
+		expect(result.valid).toBe(false)
+		expect(Array.isArray(result.errors)).toBe(true)
+		expect(result.errors.length).toBeGreaterThan(0)
+		expect(result.errors[0]).toContain("missing.ts")
+	})
+
+	it("should output JSON on schema validation failure when --json flag is used", async () => {
+		const sourceDir = join(testDir, "registry")
+		await mkdir(sourceDir, { recursive: true })
+
+		const invalidRegistryJson = {
+			$schema: REGISTRY_SCHEMA_V2_URL,
+			name: "Test Registry",
+			// Missing required 'version' field
+			author: "Test Author",
+			components: [],
+		}
+
+		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(invalidRegistryJson, null, 2))
+
+		const { exitCode, stdout, stderr } = await runCLI(["validate", "registry", "--json"], testDir)
+
+		expect(exitCode).toBe(1)
+		expect(stderr).toBe("") // No error output to stderr in JSON mode
+
+		// Parse JSON output
+		const result = JSON.parse(stdout)
+		expect(result.valid).toBe(false)
+		expect(Array.isArray(result.errors)).toBe(true)
+		expect(result.errors.length).toBeGreaterThan(0)
+	})
+
+	it("should output JSON on load failure when --json flag is used", async () => {
+		const sourceDir = join(testDir, "nonexistent")
+
+		const { exitCode, stdout, stderr } = await runCLI(["validate", sourceDir, "--json"], testDir)
+
+		expect(exitCode).toBe(1)
+		expect(stderr).toBe("") // No error output to stderr in JSON mode
+
+		// Parse JSON output
+		const result = JSON.parse(stdout)
+		expect(result.valid).toBe(false)
+		expect(Array.isArray(result.errors)).toBe(true)
+		expect(result.errors.length).toBeGreaterThan(0)
+	})
+
+	// Violation 4: Quiet mode tests
+	it("should suppress all output when --quiet flag is used on failure", async () => {
+		const sourceDir = join(testDir, "registry")
+		await mkdir(sourceDir, { recursive: true })
+
+		const registryJson = {
+			$schema: REGISTRY_SCHEMA_V2_URL,
+			name: "Test Registry",
+			namespace: "test",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [
+				{
+					name: "test-component",
+					type: "plugin",
+					description: "Test component",
+					files: [{ path: "missing.ts", target: "plugins/missing.ts" }],
+					dependencies: [],
+				},
+			],
+		}
+
+		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(registryJson, null, 2))
+
+		const filesDir = join(sourceDir, "files")
+		await mkdir(filesDir, { recursive: true })
+
+		const { exitCode, stdout, stderr } = await runCLI(["validate", "registry", "--quiet"], testDir)
+
+		expect(exitCode).toBe(1)
+		expect(stdout).toBe("") // No output to stdout in quiet mode
+		expect(stderr).toBe("") // No output to stderr in quiet mode
+	})
+
+	it("should suppress all output when --quiet flag is used on schema failure", async () => {
+		const sourceDir = join(testDir, "registry")
+		await mkdir(sourceDir, { recursive: true })
+
+		const invalidRegistryJson = {
+			$schema: REGISTRY_SCHEMA_V2_URL,
+			name: "Test Registry",
+			// Missing required 'version' field
+			author: "Test Author",
+			components: [],
+		}
+
+		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(invalidRegistryJson, null, 2))
+
+		const { exitCode, stdout, stderr } = await runCLI(["validate", "registry", "--quiet"], testDir)
+
+		expect(exitCode).toBe(1)
+		expect(stdout).toBe("") // No output to stdout in quiet mode
+		expect(stderr).toBe("") // No output to stderr in quiet mode
+	})
+
+	// Violation 4: JSON + Quiet interaction test
+	it("should output JSON even with --quiet flag (JSON takes precedence)", async () => {
+		const sourceDir = join(testDir, "registry")
+		await mkdir(sourceDir, { recursive: true })
+
+		const registryJson = {
+			$schema: REGISTRY_SCHEMA_V2_URL,
+			name: "Test Registry",
+			namespace: "test",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [
+				{
+					name: "test-component",
+					type: "plugin",
+					description: "Test component",
+					files: [{ path: "missing.ts", target: "plugins/missing.ts" }],
+					dependencies: [],
+				},
+			],
+		}
+
+		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(registryJson, null, 2))
+
+		const filesDir = join(sourceDir, "files")
+		await mkdir(filesDir, { recursive: true })
+
+		const { exitCode, stdout, stderr } = await runCLI(
+			["validate", "registry", "--json", "--quiet"],
+			testDir,
+		)
+
+		expect(exitCode).toBe(1)
+		expect(stderr).toBe("") // No error output to stderr
+
+		// Parse JSON output - should still have JSON even with --quiet
+		const result = JSON.parse(stdout)
+		expect(result.valid).toBe(false)
+		expect(Array.isArray(result.errors)).toBe(true)
+		expect(result.errors.length).toBeGreaterThan(0)
 	})
 })

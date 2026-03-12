@@ -18,7 +18,6 @@ interface ValidateOptions {
 	cwd: string
 	json: boolean
 	quiet: boolean
-	strict: boolean
 	duplicateTargets: boolean
 }
 
@@ -30,16 +29,21 @@ export function registerValidateCommand(program: Command): void {
 		.option("--cwd <path>", "Working directory", process.cwd())
 		.option("--json", "Output as JSON", false)
 		.option("-q, --quiet", "Suppress output", false)
-		.option("--strict", "Exit with code 1 on validation failure (for CI/CD)", false)
 		.option("--no-duplicate-targets", "Skip duplicate target validation")
 		.action(async (path: string, options: ValidateOptions) => {
 			try {
 				const sourcePath = resolve(options.cwd, path)
+				const errors: string[] = []
 
 				// Load registry file
 				const loadResult = await loadRegistrySource(sourcePath)
 				if (!loadResult.success) {
-					if (!options.json) {
+					errors.push(loadResult.error || "Failed to load registry")
+
+					// Output based on mode
+					if (options.json) {
+						console.log(JSON.stringify({ valid: false, errors }, null, 2))
+					} else if (!options.quiet) {
 						logger.error(loadResult.error || "Failed to load registry")
 					}
 					process.exit(1)
@@ -48,7 +52,12 @@ export function registerValidateCommand(program: Command): void {
 				// Validate schema (compatibility + structure)
 				const schemaResult = validateRegistrySchema(loadResult.data, sourcePath)
 				if (!schemaResult.valid) {
-					if (!options.json) {
+					errors.push(...schemaResult.errors)
+
+					// Output based on mode
+					if (options.json) {
+						console.log(JSON.stringify({ valid: false, errors }, null, 2))
+					} else if (!options.quiet) {
 						logger.error("Registry validation failed")
 						for (const error of schemaResult.errors) {
 							console.log(kleur.red(`  ${error}`))
@@ -61,18 +70,20 @@ export function registerValidateCommand(program: Command): void {
 				const registry = schemaResult.data!
 
 				// Run all validators using the generator
-				const validationErrors: string[] = []
 				for await (const error of validateRegistryWithOptions(registry, sourcePath, {
 					skipDuplicateTargets: options.duplicateTargets === false,
 				})) {
-					validationErrors.push(error)
+					errors.push(error)
 				}
 
 				// Report any validation errors
-				if (validationErrors.length > 0) {
-					if (!options.json) {
+				if (errors.length > 0) {
+					// Output based on mode
+					if (options.json) {
+						console.log(JSON.stringify({ valid: false, errors }, null, 2))
+					} else if (!options.quiet) {
 						logger.error("Registry validation failed")
-						for (const error of validationErrors) {
+						for (const error of errors) {
 							console.log(kleur.red(`  ${error}`))
 						}
 					}
