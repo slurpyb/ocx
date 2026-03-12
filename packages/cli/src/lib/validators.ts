@@ -8,7 +8,7 @@
 import { join } from "node:path"
 import { parse as parseJsonc } from "jsonc-parser"
 import type { Registry } from "../schemas/registry"
-import { normalizeFile, registrySchema } from "../schemas/registry"
+import { classifyRegistrySchemaIssue, normalizeFile, registrySchema } from "../schemas/registry"
 
 export interface ValidationResult<T = unknown> {
 	valid: boolean
@@ -53,6 +53,33 @@ export async function loadRegistrySource(sourcePath: string): Promise<LoadRegist
 		success: true,
 		data,
 	}
+}
+
+/**
+ * Validate a registry's schema compatibility and structure.
+ *
+ * This combines schema compatibility check (v1 vs v2) with schema validation.
+ * It's a higher-level function that includes both checks.
+ *
+ * @param registryData - The parsed registry object
+ * @param sourcePath - Path to the registry source (for error messages)
+ * @returns Validation result with parsed data
+ */
+export function validateRegistrySchema(
+	registryData: unknown,
+	sourcePath: string,
+): ValidationResult<Registry> {
+	// Check schema compatibility first
+	const schemaIssue = classifyRegistrySchemaIssue(registryData)
+	if (schemaIssue) {
+		return {
+			valid: false,
+			errors: [`Schema compatibility issue: ${schemaIssue.issue} - ${schemaIssue.remediation}`],
+		}
+	}
+
+	// Then validate against the schema
+	return validateRegistrySource(registryData, sourcePath)
 }
 
 /**

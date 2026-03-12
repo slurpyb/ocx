@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import {
 	loadRegistrySource,
+	validateRegistrySchema,
 	validateRegistrySource,
 	validateRegistryWithOptions,
 	validateSourceFiles,
@@ -286,5 +287,81 @@ describe("loadRegistrySource", () => {
 
 		expect(result.success).toBe(false)
 		expect(result.error).toContain("No registry.jsonc or registry.json found")
+	})
+})
+
+describe("validateRegistrySchema", () => {
+	it("should validate a valid registry schema", () => {
+		const validRegistry = {
+			$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
+			name: "Test Registry",
+			namespace: "test",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [],
+		}
+
+		const result = validateRegistrySchema(validRegistry, "/test/path")
+
+		expect(result.valid).toBe(true)
+		expect(result.errors).toEqual([])
+		expect(result.data).toBeDefined()
+	})
+
+	it("should detect schema compatibility issues", () => {
+		const incompatibleRegistry = {
+			// Missing $schema field - v1 format
+			name: "Old Registry",
+			version: "1.0.0",
+			author: "Test",
+			components: [],
+		}
+
+		const result = validateRegistrySchema(incompatibleRegistry, "/test/path")
+
+		expect(result.valid).toBe(false)
+		expect(result.errors.length).toBeGreaterThan(0)
+		expect(result.errors[0]).toContain("schema")
+	})
+
+	it("should detect schema validation errors", () => {
+		const invalidRegistry = {
+			$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
+			name: "Test Registry",
+			// Missing required 'version' field
+			author: "Test Author",
+			components: [],
+		}
+
+		const result = validateRegistrySchema(invalidRegistry, "/test/path")
+
+		expect(result.valid).toBe(false)
+		expect(result.errors.length).toBeGreaterThan(0)
+	})
+
+	it("should return parsed data on success", () => {
+		const validRegistry = {
+			$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
+			name: "Test Registry",
+			namespace: "test",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [
+				{
+					name: "test-component",
+					type: "plugin" as const,
+					description: "Test",
+					files: [],
+					dependencies: [],
+				},
+			],
+		}
+
+		const result = validateRegistrySchema(validRegistry, "/test/path")
+
+		expect(result.valid).toBe(true)
+		expect(result.data).toBeDefined()
+		expect(result.data?.name).toBe("Test Registry")
+		expect(result.data?.components.length).toBe(1)
 	})
 })
