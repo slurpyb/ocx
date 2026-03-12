@@ -6,11 +6,13 @@
 
 import { relative, resolve } from "node:path"
 import type { Command } from "commander"
-import { parse as parseJsonc } from "jsonc-parser"
 import kleur from "kleur"
 import { BuildRegistryError, type BuildRegistryResult, buildRegistry } from "../lib/build-registry"
-import { validateRegistrySource, validateRegistryWithOptions } from "../lib/validators"
-import { classifyRegistrySchemaIssue } from "../schemas/registry"
+import {
+	loadRegistrySource,
+	validateRegistrySchema,
+	validateRegistryWithOptions,
+} from "../lib/validators"
 import { outputDryRun } from "../utils/dry-run"
 import { createSpinner, handleError, logger, outputJson } from "../utils/index"
 
@@ -43,42 +45,23 @@ export function registerBuildCommand(program: Command): void {
 				if (options.showValidation && !options.json && !options.quiet) {
 					logger.info("Running validation checks...")
 
-					// Read registry file
-					const jsoncFile = Bun.file(`${sourcePath}/registry.jsonc`)
-					const jsonFile = Bun.file(`${sourcePath}/registry.json`)
-					const jsoncExists = await jsoncFile.exists()
-					const jsonExists = await jsonFile.exists()
-
-					if (!jsoncExists && !jsonExists) {
-						logger.error("No registry.jsonc or registry.json found in source directory")
+					// Load registry file
+					const loadResult = await loadRegistrySource(sourcePath)
+					if (!loadResult.success) {
+						logger.error(loadResult.error || "Failed to load registry")
 						process.exit(1)
 					}
 
-					const registryFile = jsoncExists ? jsoncFile : jsonFile
-					const content = await registryFile.text()
-					const registryData = parseJsonc(content, [], { allowTrailingComma: true })
-
-					// Check schema compatibility
-					const schemaIssue = classifyRegistrySchemaIssue(registryData)
-					if (schemaIssue) {
-						logger.error(`✗ Schema compatibility: ${schemaIssue.issue}`)
-						console.log(kleur.red(`  ${schemaIssue.remediation}`))
-						process.exit(1)
-					} else {
-						logger.success("✓ Schema compatibility")
-					}
-
-					// Validate schema
-					const schemaResult = validateRegistrySource(registryData, sourcePath)
+					// Validate schema (compatibility + structure)
+					const schemaResult = validateRegistrySchema(loadResult.data, sourcePath)
 					if (!schemaResult.valid) {
 						logger.error("✗ Registry schema")
 						for (const error of schemaResult.errors) {
 							console.log(kleur.red(`  ${error}`))
 						}
 						process.exit(1)
-					} else {
-						logger.success("✓ Registry schema")
 					}
+					logger.success("✓ Schema compatibility and structure")
 
 					// Use the parsed and validated registry data
 					const registry = schemaResult.data!
