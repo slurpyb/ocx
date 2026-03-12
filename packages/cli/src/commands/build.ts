@@ -76,31 +76,15 @@ export function registerBuildCommand(program: Command): void {
 
 					// If there are errors, report them and exit
 					if (validationErrors.length > 0) {
-						// Categorize errors for better reporting
-						const fileErrors = validationErrors.filter((e) => e.includes("Source file not found"))
-						const circularErrors = validationErrors.filter((e) => e.includes("Circular dependency"))
-						const duplicateErrors = validationErrors.filter((e) => e.includes("Duplicate target"))
-
-						if (fileErrors.length > 0) {
-							logger.error("✗ Source files")
-							for (const error of fileErrors) {
-								console.log(kleur.red(`  ${error}`))
+						// Categorize and display errors
+						const categorized = categorizeValidationErrors(validationErrors)
+						displayCategorizedErrors(categorized, (msg) => {
+							if (msg.startsWith("✗")) {
+								logger.error(msg)
+							} else {
+								console.log(kleur.red(msg))
 							}
-						}
-
-						if (circularErrors.length > 0) {
-							logger.error("✗ Circular dependencies")
-							for (const error of circularErrors) {
-								console.log(kleur.red(`  ${error}`))
-							}
-						}
-
-						if (duplicateErrors.length > 0) {
-							logger.error("✗ Duplicate targets")
-							for (const error of duplicateErrors) {
-								console.log(kleur.red(`  ${error}`))
-							}
-						}
+						})
 
 						process.exit(1)
 					}
