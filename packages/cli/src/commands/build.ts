@@ -8,11 +8,7 @@ import { relative, resolve } from "node:path"
 import type { Command } from "commander"
 import kleur from "kleur"
 import { BuildRegistryError, type BuildRegistryResult, buildRegistry } from "../lib/build-registry"
-import {
-	loadRegistrySource,
-	validateRegistrySchema,
-	validateRegistryWithOptions,
-} from "../lib/validators"
+import { runCompleteValidation } from "../lib/validation-runner"
 import { outputDryRun } from "../utils/dry-run"
 import {
 	categorizeValidationErrors,
@@ -52,39 +48,13 @@ export function registerBuildCommand(program: Command): void {
 				if (options.showValidation && !options.json && !options.quiet) {
 					logger.info("Running validation checks...")
 
-					// Load registry file
-					const loadResult = await loadRegistrySource(sourcePath)
-					if (!loadResult.success) {
-						logger.error(loadResult.error || "Failed to load registry")
-						process.exit(1)
-					}
-
-					// Validate schema (compatibility + structure)
-					const schemaResult = validateRegistrySchema(loadResult.data, sourcePath)
-					if (!schemaResult.valid) {
-						logger.error("✗ Registry schema")
-						for (const error of schemaResult.errors) {
-							console.log(kleur.red(`  ${error}`))
-						}
-						process.exit(1)
-					}
-					logger.success("✓ Schema compatibility and structure")
-
-					// Use the parsed and validated registry data
-					const registry = schemaResult.data!
-
-					// Collect all validation errors first
-					const validationErrors: string[] = []
-					for await (const error of validateRegistryWithOptions(registry, sourcePath, {
+					const validationResult = await runCompleteValidation(sourcePath, {
 						skipDuplicateTargets: false,
-					})) {
-						validationErrors.push(error)
-					}
+					})
 
-					// If there are errors, report them and exit
-					if (validationErrors.length > 0) {
+					if (!validationResult.success) {
 						// Categorize and display errors
-						const categorized = categorizeValidationErrors(validationErrors)
+						const categorized = categorizeValidationErrors(validationResult.errors)
 						displayCategorizedErrors(categorized, (msg) => {
 							if (msg.startsWith("✗")) {
 								logger.error(msg)
@@ -97,6 +67,7 @@ export function registerBuildCommand(program: Command): void {
 					}
 
 					// All validations passed - show success messages
+					logger.success("✓ Schema compatibility and structure")
 					logger.success("✓ Source files")
 					logger.success("✓ No circular dependencies")
 					logger.success("✓ No duplicate targets")
