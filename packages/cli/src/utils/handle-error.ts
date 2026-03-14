@@ -16,6 +16,7 @@ import {
 	ProfileNotFoundError,
 	RegistryCompatibilityError,
 	RegistryExistsError,
+	ValidationFailedError,
 } from "./errors"
 import { logger } from "./logger"
 
@@ -247,6 +248,21 @@ function formatErrorAsJson(error: unknown): JsonErrorOutput {
 				code: error.code,
 				message: error.message,
 				details,
+			},
+			exitCode: error.exitCode,
+			meta: {
+				timestamp: new Date().toISOString(),
+			},
+		}
+	}
+
+	if (error instanceof ValidationFailedError) {
+		return {
+			success: false,
+			error: {
+				code: error.code,
+				message: error.message,
+				details: error.details as unknown as Record<string, unknown>,
 			},
 			exitCode: error.exitCode,
 			meta: {

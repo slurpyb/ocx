@@ -17,6 +17,7 @@ import {
 	ProfileNotFoundError,
 	RegistryCompatibilityError,
 	RegistryExistsError,
+	ValidationFailedError,
 } from "../../src/utils/errors"
 import { handleError, wrapAction } from "../../src/utils/handle-error"
 
@@ -632,6 +633,49 @@ describe("handleError JSON output", () => {
 			expect(output.error.code).toBe("REGISTRY_COMPAT_ERROR")
 			expect(output.error.details?.issue).toBe("invalid-format")
 			expect(output.meta.timestamp).toBeDefined()
+		})
+	})
+
+	describe("ValidationFailedError", () => {
+		it("formats validation failure details for JSON output", () => {
+			const error = new ValidationFailedError({
+				valid: false,
+				errors: ["comp-a: Source file not found at missing.ts"],
+				summary: {
+					valid: false,
+					totalErrors: 1,
+					schemaErrors: 0,
+					sourceFileErrors: 1,
+					circularDependencyErrors: 0,
+					duplicateTargetErrors: 0,
+					otherErrors: 0,
+				},
+			})
+
+			try {
+				handleError(error, { json: true })
+			} catch {
+				// Expected process.exit
+			}
+
+			const output = parseJsonOutput()
+			expect(output.success).toBe(false)
+			expect(output.error.code).toBe("VALIDATION_FAILED")
+			expect(output.error.details).toEqual({
+				valid: false,
+				errors: ["comp-a: Source file not found at missing.ts"],
+				summary: {
+					valid: false,
+					totalErrors: 1,
+					schemaErrors: 0,
+					sourceFileErrors: 1,
+					circularDependencyErrors: 0,
+					duplicateTargetErrors: 0,
+					otherErrors: 0,
+				},
+			})
+			expect(output.exitCode).toBe(EXIT_CODES.CONFIG)
+			expect(capturedExitCode).toBe(EXIT_CODES.CONFIG)
 		})
 	})
 })

@@ -57,9 +57,9 @@ export function registerUpdateCheckHook(program: Command): void {
 			return
 		}
 
-		// Skip for JSON-mode commands (strict machine output contract)
-		const actionOptions = actionCommand.opts<{ json?: boolean }>()
-		if (actionOptions.json) {
+		// Skip for JSON-mode and quiet-mode commands (strict output contract)
+		const actionOptions = actionCommand.opts<{ json?: boolean; quiet?: boolean }>()
+		if (actionOptions.json || actionOptions.quiet) {
 			return
 		}
 
