@@ -50,7 +50,9 @@ ocx validate ./my-registry
 
 - `0` — registry is valid
 - `78` — configuration or validation failed (`CONFIG_ERROR` or `VALIDATION_FAILED`)
-- other non-zero codes — runtime/tool failures (for example missing files, I/O, or internal errors)
+- other non-zero codes — runtime/tool failures (for example missing manifest/source directory, I/O, or internal errors)
+
+Referenced files missing under `files/` are validation failures and return `78`.
 
 Example shell gate:
 
@@ -82,7 +84,7 @@ JSON output is provided for both success and failure cases, making it suitable f
 ocx validate --quiet
 ```
 
-Suppresses all output (including errors). Check the exit code to determine outcome (`0` for valid, `78` for configuration/validation failures, other non-zero for runtime/tool failures).
+Suppresses all output (including errors). Check the exit code to determine outcome (`0` for valid, `78` for configuration/validation failures—including missing referenced files under `files/`—and other non-zero for runtime/tool failures).
 
 **Note**: When using `--json` and `--quiet` together, JSON output takes precedence.
 
