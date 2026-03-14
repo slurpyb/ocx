@@ -162,6 +162,42 @@ describe("worktree-state", () => {
 			// Path should contain the project ID
 			expect(worktreePath).toContain(projectId)
 		})
+
+		it("should getWorktreePath use custom basePath when provided", async () => {
+			const projectRoot = path.join(testDir, "worktree-custom-path-test")
+			fs.mkdirSync(projectRoot, { recursive: true })
+
+			const customBase = path.join(testDir, "custom-worktrees")
+			const projectId = await getProjectId(projectRoot)
+			const worktreePath = await getWorktreePath(projectRoot, "my-branch", customBase)
+
+			expect(worktreePath).toBe(path.join(customBase, projectId, "my-branch"))
+			// Should NOT contain the default path
+			expect(worktreePath).not.toContain(".local")
+		})
+
+		it("should getWorktreePath use absolute basePath as-is", async () => {
+			const projectRoot = path.join(testDir, "worktree-absolute-test")
+			fs.mkdirSync(projectRoot, { recursive: true })
+
+			const projectId = await getProjectId(projectRoot)
+			const absoluteBase = path.join(os.homedir(), "my-worktrees")
+			const worktreePath = await getWorktreePath(projectRoot, "abs-branch", absoluteBase)
+
+			expect(worktreePath).toBe(path.join(absoluteBase, projectId, "abs-branch"))
+		})
+
+		it("should getWorktreePath use default when basePath is undefined", async () => {
+			const projectRoot = path.join(testDir, "worktree-default-test")
+			fs.mkdirSync(projectRoot, { recursive: true })
+
+			const withUndefined = await getWorktreePath(projectRoot, "branch-a", undefined)
+			const withoutArg = await getWorktreePath(projectRoot, "branch-a")
+
+			expect(withUndefined).toBe(withoutArg)
+			// Should use the default ~/.local/share/opencode/worktree path
+			expect(withUndefined).toContain(path.join(".local", "share", "opencode", "worktree"))
+		})
 	})
 
 	describe("Session CRUD", () => {

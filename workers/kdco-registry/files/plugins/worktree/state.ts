@@ -68,18 +68,31 @@ const pendingDeleteSchema = z.object({
 // =============================================================================
 
 /**
+ * Get the default base directory for worktree storage.
+ * Location: ~/.local/share/opencode/worktree/
+ */
+function getWorktreeBaseDirectory(): string {
+	return path.join(os.homedir(), ".local", "share", "opencode", "worktree")
+}
+
+/**
  * Get the worktree path for a given project and branch.
  *
  * @param projectRoot - Absolute path to the project root
  * @param branch - Branch name for the worktree
+ * @param basePath - Optional custom base path (absolute). Defaults to ~/.local/share/opencode/worktree
  * @returns Absolute path to the worktree directory
  */
-export async function getWorktreePath(projectRoot: string, branch: string): Promise<string> {
+export async function getWorktreePath(
+	projectRoot: string,
+	branch: string,
+	basePath?: string,
+): Promise<string> {
 	if (!branch || typeof branch !== "string") {
 		throw new Error("branch is required")
 	}
 	const projectId = await getProjectId(projectRoot)
-	return path.join(os.homedir(), ".local", "share", "opencode", "worktree", projectId, branch)
+	return path.join(basePath ?? getWorktreeBaseDirectory(), projectId, branch)
 }
 
 /**

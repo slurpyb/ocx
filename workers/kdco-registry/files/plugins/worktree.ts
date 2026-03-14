@@ -119,6 +119,8 @@ const branchNameSchema = z
  * Config file: .opencode/worktree.jsonc
  */
 const worktreeConfigSchema = z.object({
+	/** Custom base path for worktree storage. Supports ~ for home directory. */
+	worktreePath: z.string().optional(),
 	sync: z
 		.object({
 			/** Files to copy from main worktree (relative paths only) */
@@ -440,8 +442,9 @@ async function createWorktree(
 	repoRoot: string,
 	branch: string,
 	baseBranch?: string,
+	basePath?: string,
 ): Promise<Result<string, string>> {
-	const worktreePath = await getWorktreePath(repoRoot, branch)
+	const worktreePath = await getWorktreePath(repoRoot, branch, basePath)
 
 	// Ensure parent directory exists
 	await mkdir(path.dirname(worktreePath), { recursive: true })
@@ -604,6 +607,16 @@ async function runHooks(cwd: string, commands: string[], log: Logger): Promise<v
 }
 
 /**
+ * Resolve a path that may contain a leading `~` to the user's home directory.
+ */
+function resolveHomePath(p: string): string {
+	if (p === "~" || p.startsWith("~/") || p.startsWith("~\\")) {
+		return path.join(os.homedir(), p.slice(1))
+	}
+	return p
+}
+
+/**
  * Load worktree-specific configuration from .opencode/worktree.jsonc
  * Auto-creates config file with helpful defaults if it doesn't exist.
  */
@@ -619,6 +632,10 @@ async function loadWorktreeConfig(directory: string, log: Logger): Promise<Workt
 
   // Worktree plugin configuration
   // Documentation: https://github.com/kdcokenny/ocx
+
+  // Custom base path for worktree storage (supports ~)
+  // Default: ~/.local/share/opencode/worktree
+  // "worktreePath": "~/my-worktrees",
 
   "sync": {
     // Files to copy from main worktree to new worktrees
@@ -658,7 +675,11 @@ async function loadWorktreeConfig(directory: string, log: Logger): Promise<Workt
 			log.error(`[worktree] Invalid worktree.jsonc syntax`)
 			return worktreeConfigSchema.parse({})
 		}
-		return worktreeConfigSchema.parse(parsed)
+		const config = worktreeConfigSchema.parse(parsed)
+		if (config.worktreePath) {
+			config.worktreePath = resolveHomePath(config.worktreePath)
+		}
+		return config
 	} catch (error) {
 		log.warn(`[worktree] Failed to load config: ${error}`)
 		return worktreeConfigSchema.parse({})
@@ -723,8 +744,16 @@ export const WorktreePlugin: Plugin = async (ctx) => {
 						}
 					}
 
+					// Load config first so worktreePath is available for createWorktree
+					const worktreeConfig = await loadWorktreeConfig(directory, log)
+
 					// Create worktree
-					const result = await createWorktree(directory, args.branch, args.baseBranch)
+					const result = await createWorktree(
+						directory,
+						args.branch,
+						args.baseBranch,
+						worktreeConfig.worktreePath,
+					)
 					if (!result.ok) {
 						return `Failed to create worktree: ${result.error}`
 					}
@@ -732,7 +761,6 @@ export const WorktreePlugin: Plugin = async (ctx) => {
 					const worktreePath = result.value
 
 					// Sync files from main worktree
-					const worktreeConfig = await loadWorktreeConfig(directory, log)
 					const mainWorktreePath = directory // The repo root is the main worktree
 
 					// Copy files
