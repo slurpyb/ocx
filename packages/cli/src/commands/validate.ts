@@ -32,10 +32,10 @@ function createLoadValidationError(message: string, errorKind?: LoadRegistryErro
 	}
 
 	if (errorKind === "parse_error") {
-		return new OCXError(message, "CONFIG_ERROR", EXIT_CODES.GENERAL)
+		return new OCXError(message, "CONFIG_ERROR", EXIT_CODES.CONFIG)
 	}
 
-	return new OCXError(message, "CONFIG_ERROR", EXIT_CODES.GENERAL)
+	return new OCXError(message, "CONFIG_ERROR", EXIT_CODES.CONFIG)
 }
 
 function createValidationFailureError(

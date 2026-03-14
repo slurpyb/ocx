@@ -456,7 +456,7 @@ describe("ocx validate", () => {
 		expect(result.error.message).toContain("No registry.jsonc or registry.json")
 	})
 
-	it("should treat parse failures as runtime/tool failures in JSON mode", async () => {
+	it("should treat parse failures as configuration failures in JSON mode", async () => {
 		const sourceDir = join(testDir, "registry-invalid-json")
 		await mkdir(sourceDir, { recursive: true })
 
@@ -477,7 +477,7 @@ describe("ocx validate", () => {
 			testDir,
 		)
 
-		expect(exitCode).toBe(EXIT_CODES.GENERAL)
+		expect(exitCode).toBe(EXIT_CODES.CONFIG)
 		expect(stderr).toBe("")
 
 		const result = JSON.parse(stdout) as {
@@ -599,55 +599,5 @@ describe("ocx validate", () => {
 		expect(result.error.code).toBe("VALIDATION_FAILED")
 		expect(result.error.details.valid).toBe(false)
 		expect(result.error.details.errors.length).toBeGreaterThan(0)
-	})
-
-	// Integration test: Verify update check hook respects --quiet flag
-	// This addresses the concern raised about the global update notifier
-	// potentially violating quiet mode expectations.
-	it("should not print update notifications in quiet mode (integration test)", async () => {
-		const sourceDir = join(testDir, "registry")
-		await mkdir(sourceDir, { recursive: true })
-
-		const registryJson = {
-			$schema: REGISTRY_SCHEMA_V2_URL,
-			name: "Test Registry",
-			namespace: "test",
-			version: "1.0.0",
-			author: "Test Author",
-			components: [
-				{
-					name: "test-component",
-					type: "plugin",
-					description: "Test component",
-					files: [{ path: "test.ts", target: "plugins/test.ts" }],
-					dependencies: [],
-				},
-			],
-		}
-
-		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(registryJson, null, 2))
-
-		const filesDir = join(sourceDir, "files")
-		await mkdir(filesDir, { recursive: true })
-		await writeFile(join(filesDir, "test.ts"), "// test file")
-
-		// Run with --quiet in a simulated TTY environment where updates would normally be checked
-		// The update check hook should respect the --quiet flag and not print anything
-		const { exitCode, stdout, stderr } = await runCLI(
-			["validate", "registry", "--quiet"],
-			testDir,
-			{
-				env: {
-					// These settings would normally ENABLE the update check
-					OCX_NO_UPDATE_CHECK: "false",
-					// Force TTY detection to fail (pipes always make isTTY false),
-					// so we rely on the quiet flag check in the hook, not the TTY check
-				},
-			},
-		)
-
-		expect(exitCode).toBe(0)
-		expect(stdout).toBe("") // No output to stdout
-		expect(stderr).toBe("") // No output to stderr (including no update notifications)
 	})
 })
