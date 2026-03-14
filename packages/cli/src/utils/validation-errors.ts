@@ -10,6 +10,16 @@ export interface CategorizedErrors {
 	duplicate: string[]
 }
 
+export interface ValidationErrorSummary {
+	valid: boolean
+	totalErrors: number
+	schemaErrors: number
+	sourceFileErrors: number
+	circularDependencyErrors: number
+	duplicateTargetErrors: number
+	otherErrors: number
+}
+
 /**
  * Categorize validation errors by type.
  *
@@ -53,5 +63,38 @@ export function displayCategorizedErrors(
 		for (const error of categorized.duplicate) {
 			logFn(`  ${error}`)
 		}
+	}
+}
+
+/**
+ * Build a stable summary object for validation results.
+ *
+ * @param errors - Validation error messages
+ * @param options - Optional overrides for explicit schema errors
+ */
+export function summarizeValidationErrors(
+	errors: string[],
+	options: { schemaErrors?: number } = {},
+): ValidationErrorSummary {
+	const categorized = categorizeValidationErrors(errors)
+	const schemaErrors = options.schemaErrors ?? 0
+	const totalErrors = errors.length
+	const otherErrors = Math.max(
+		0,
+		totalErrors -
+			schemaErrors -
+			categorized.file.length -
+			categorized.circular.length -
+			categorized.duplicate.length,
+	)
+
+	return {
+		valid: totalErrors === 0,
+		totalErrors,
+		schemaErrors,
+		sourceFileErrors: categorized.file.length,
+		circularDependencyErrors: categorized.circular.length,
+		duplicateTargetErrors: categorized.duplicate.length,
+		otherErrors,
 	}
 }

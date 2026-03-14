@@ -8,6 +8,7 @@ export type ErrorCode =
 	| "NETWORK_ERROR"
 	| "CONFIG_ERROR"
 	| "VALIDATION_ERROR"
+	| "VALIDATION_FAILED"
 	| "CONFLICT"
 	| "PERMISSION_ERROR"
 	| "INTEGRITY_ERROR"
@@ -77,6 +78,27 @@ export class ValidationError extends OCXError {
 	constructor(message: string) {
 		super(message, "VALIDATION_ERROR", EXIT_CODES.GENERAL)
 		this.name = "ValidationError"
+	}
+}
+
+export interface ValidationFailureDetails {
+	valid: false
+	errors: string[]
+	summary: {
+		valid: false
+		totalErrors: number
+		schemaErrors: number
+		sourceFileErrors: number
+		circularDependencyErrors: number
+		duplicateTargetErrors: number
+		otherErrors: number
+	}
+}
+
+export class ValidationFailedError extends OCXError {
+	constructor(public readonly details: ValidationFailureDetails) {
+		super("Registry validation failed", "VALIDATION_FAILED", EXIT_CODES.CONFIG)
+		this.name = "ValidationFailedError"
 	}
 }
 

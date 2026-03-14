@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
+import { EXIT_CODES } from "../src/utils/errors"
 import { cleanupTempDir, createTempDir, runCLI } from "./helpers"
 
 const REGISTRY_SCHEMA_V2_URL = "https://ocx.kdco.dev/schemas/v2/registry.json"
@@ -178,6 +179,109 @@ describe("ocx build", () => {
 
 		// Verify build output is still present
 		expect(output).toContain("Built 1 component")
+	})
+
+	it("should run --show-validation checks even in JSON mode", async () => {
+		const sourceDir = join(testDir, "registry-json-show-validation")
+		await mkdir(sourceDir, { recursive: true })
+
+		const registryJson = {
+			$schema: REGISTRY_SCHEMA_V2_URL,
+			name: "JSON Validation Registry",
+			namespace: "kdco",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [
+				{
+					name: "component-a",
+					type: "plugin",
+					description: "Component A",
+					files: [],
+					dependencies: ["component-b"],
+				},
+				{
+					name: "component-b",
+					type: "plugin",
+					description: "Component B",
+					files: [],
+					dependencies: ["component-a"],
+				},
+			],
+		}
+
+		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(registryJson, null, 2))
+
+		const outDir = "dist-json-show-validation"
+		const { exitCode, stdout, stderr } = await runCLI(
+			["build", "registry-json-show-validation", "--out", outDir, "--show-validation", "--json"],
+			testDir,
+		)
+
+		expect(exitCode).toBe(EXIT_CODES.CONFIG)
+		expect(stderr).toBe("")
+
+		const payload = JSON.parse(stdout) as {
+			success: boolean
+			error: {
+				code: string
+				details: {
+					valid: boolean
+					errors: string[]
+					summary: {
+						circularDependencyErrors: number
+					}
+				}
+			}
+		}
+
+		expect(payload.success).toBe(false)
+		expect(payload.error.code).toBe("VALIDATION_FAILED")
+		expect(payload.error.details.valid).toBe(false)
+		expect(
+			payload.error.details.errors.some((error) => error.includes("Circular dependency")),
+		).toBe(true)
+		expect(payload.error.details.summary.circularDependencyErrors).toBeGreaterThan(0)
+	})
+
+	it("should run --show-validation checks even in quiet mode", async () => {
+		const sourceDir = join(testDir, "registry-quiet-show-validation")
+		await mkdir(sourceDir, { recursive: true })
+
+		const registryJson = {
+			$schema: REGISTRY_SCHEMA_V2_URL,
+			name: "Quiet Validation Registry",
+			namespace: "kdco",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [
+				{
+					name: "component-a",
+					type: "plugin",
+					description: "Component A",
+					files: [],
+					dependencies: ["component-b"],
+				},
+				{
+					name: "component-b",
+					type: "plugin",
+					description: "Component B",
+					files: [],
+					dependencies: ["component-a"],
+				},
+			],
+		}
+
+		await writeFile(join(sourceDir, "registry.json"), JSON.stringify(registryJson, null, 2))
+
+		const outDir = "dist-quiet-show-validation"
+		const { exitCode, output } = await runCLI(
+			["build", "registry-quiet-show-validation", "--out", outDir, "--show-validation", "--quiet"],
+			testDir,
+		)
+
+		expect(exitCode).toBe(EXIT_CODES.CONFIG)
+		expect(output).not.toContain("Built")
+		expect(output).not.toContain("Running validation checks")
 	})
 
 	it("should fail if component name is invalid", async () => {

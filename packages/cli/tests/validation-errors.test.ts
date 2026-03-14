@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 import {
 	categorizeValidationErrors,
 	displayCategorizedErrors,
+	summarizeValidationErrors,
 } from "../src/utils/validation-errors"
 
 describe("categorizeValidationErrors", () => {
@@ -150,5 +151,57 @@ describe("displayCategorizedErrors", () => {
 		expect(output).toContain("✗ Source files")
 		expect(output).not.toContain("✗ Circular dependencies")
 		expect(output).not.toContain("✗ Duplicate targets")
+	})
+})
+
+describe("summarizeValidationErrors", () => {
+	it("should summarize category counts for rule validation errors", () => {
+		const errors = [
+			"comp-a: Source file not found at file.ts",
+			"Circular dependency detected: comp-a -> comp-b -> comp-a",
+			'Duplicate target "plugins/test.ts" in components "comp-a" and "comp-b"',
+		]
+
+		const summary = summarizeValidationErrors(errors)
+
+		expect(summary).toEqual({
+			valid: false,
+			totalErrors: 3,
+			schemaErrors: 0,
+			sourceFileErrors: 1,
+			circularDependencyErrors: 1,
+			duplicateTargetErrors: 1,
+			otherErrors: 0,
+		})
+	})
+
+	it("should support explicit schema error counts", () => {
+		const errors = ["name: Required", "components.0.name: Must be lowercase"]
+
+		const summary = summarizeValidationErrors(errors, { schemaErrors: errors.length })
+
+		expect(summary).toEqual({
+			valid: false,
+			totalErrors: 2,
+			schemaErrors: 2,
+			sourceFileErrors: 0,
+			circularDependencyErrors: 0,
+			duplicateTargetErrors: 0,
+			otherErrors: 0,
+		})
+	})
+
+	it("should return zero counts for valid results", () => {
+		const summary = summarizeValidationErrors([])
+
+		expect(summary).toEqual({
+			valid: true,
+			totalErrors: 0,
+			schemaErrors: 0,
+			sourceFileErrors: 0,
+			circularDependencyErrors: 0,
+			duplicateTargetErrors: 0,
+			otherErrors: 0,
+		})
 	})
 })

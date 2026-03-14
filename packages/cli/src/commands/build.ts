@@ -8,13 +8,18 @@ import { relative, resolve } from "node:path"
 import type { Command } from "commander"
 import kleur from "kleur"
 import { BuildRegistryError, type BuildRegistryResult, buildRegistry } from "../lib/build-registry"
-import {
-	loadRegistrySource,
-	validateRegistrySchema,
-	validateRegistryWithOptions,
-} from "../lib/validators"
+import { runCompleteValidation } from "../lib/validation-runner"
+import type { LoadRegistryErrorKind } from "../lib/validators"
 import { outputDryRun } from "../utils/dry-run"
+import {
+	EXIT_CODES,
+	NotFoundError,
+	OCXError,
+	ValidationFailedError,
+	type ValidationFailureDetails,
+} from "../utils/errors"
 import { createSpinner, handleError, logger, outputJson } from "../utils/index"
+import { categorizeValidationErrors, summarizeValidationErrors } from "../utils/validation-errors"
 
 interface BuildOptions {
 	cwd: string
@@ -23,6 +28,76 @@ interface BuildOptions {
 	quiet: boolean
 	dryRun?: boolean
 	showValidation: boolean
+}
+
+function createLoadValidationError(message: string, errorKind?: LoadRegistryErrorKind): Error {
+	if (errorKind === "not_found") {
+		return new NotFoundError(message)
+	}
+
+	if (errorKind === "parse_error") {
+		return new OCXError(message, "CONFIG_ERROR", EXIT_CODES.GENERAL)
+	}
+
+	return new OCXError(message, "CONFIG_ERROR", EXIT_CODES.GENERAL)
+}
+
+function createValidationFailureError(
+	errors: string[],
+	failureType: "schema" | "rules",
+): ValidationFailedError {
+	const summary = summarizeValidationErrors(errors, {
+		schemaErrors: failureType === "schema" ? errors.length : 0,
+	})
+
+	const details: ValidationFailureDetails = {
+		valid: false,
+		errors,
+		summary: {
+			valid: false,
+			totalErrors: summary.totalErrors,
+			schemaErrors: summary.schemaErrors,
+			sourceFileErrors: summary.sourceFileErrors,
+			circularDependencyErrors: summary.circularDependencyErrors,
+			duplicateTargetErrors: summary.duplicateTargetErrors,
+			otherErrors: summary.otherErrors,
+		},
+	}
+
+	return new ValidationFailedError(details)
+}
+
+function outputValidationFailures(errors: string[], failureType: "schema" | "rules"): void {
+	if (failureType === "schema") {
+		logger.error("✗ Registry schema")
+		for (const error of errors) {
+			console.log(kleur.red(`  ${error}`))
+		}
+		return
+	}
+
+	const categorized = categorizeValidationErrors(errors)
+
+	if (categorized.file.length > 0) {
+		logger.error("✗ Source files")
+		for (const error of categorized.file) {
+			console.log(kleur.red(`  ${error}`))
+		}
+	}
+
+	if (categorized.circular.length > 0) {
+		logger.error("✗ Circular dependencies")
+		for (const error of categorized.circular) {
+			console.log(kleur.red(`  ${error}`))
+		}
+	}
+
+	if (categorized.duplicate.length > 0) {
+		logger.error("✗ Duplicate targets")
+		for (const error of categorized.duplicate) {
+			console.log(kleur.red(`  ${error}`))
+		}
+	}
 }
 
 export function registerBuildCommand(program: Command): void {
@@ -41,76 +116,47 @@ export function registerBuildCommand(program: Command): void {
 				const sourcePath = resolve(options.cwd, path)
 				const outPath = resolve(options.cwd, options.out)
 
-				// Show validation results if requested
-				if (options.showValidation && !options.json && !options.quiet) {
-					logger.info("Running validation checks...")
-
-					// Load registry file
-					const loadResult = await loadRegistrySource(sourcePath)
-					if (!loadResult.success) {
-						logger.error(loadResult.error || "Failed to load registry")
-						process.exit(1)
+				if (options.showValidation) {
+					const shouldDisplayValidation = !options.json && !options.quiet
+					if (shouldDisplayValidation) {
+						logger.info("Running validation checks...")
 					}
 
-					// Validate schema (compatibility + structure)
-					const schemaResult = validateRegistrySchema(loadResult.data, sourcePath)
-					if (!schemaResult.valid) {
-						logger.error("✗ Registry schema")
-						for (const error of schemaResult.errors) {
-							console.log(kleur.red(`  ${error}`))
-						}
-						process.exit(1)
-					}
-					logger.success("✓ Schema compatibility and structure")
-
-					// Use the parsed and validated registry data
-					const registry = schemaResult.data!
-
-					// Collect all validation errors first
-					const validationErrors: string[] = []
-					for await (const error of validateRegistryWithOptions(registry, sourcePath, {
+					const validationResult = await runCompleteValidation(sourcePath, {
 						skipDuplicateTargets: false,
-					})) {
-						validationErrors.push(error)
+					})
+
+					if (!validationResult.success) {
+						const [firstError = "Registry validation failed"] = validationResult.errors
+
+						if (validationResult.failureType === "load") {
+							throw createLoadValidationError(firstError, validationResult.loadErrorKind)
+						}
+
+						const failureType = validationResult.failureType === "schema" ? "schema" : "rules"
+						const validationError = createValidationFailureError(
+							validationResult.errors,
+							failureType,
+						)
+
+						if (options.json) {
+							throw validationError
+						}
+
+						if (!options.quiet) {
+							outputValidationFailures(validationResult.errors, failureType)
+						}
+
+						process.exit(validationError.exitCode)
 					}
 
-					// If there are errors, report them and exit
-					if (validationErrors.length > 0) {
-						// Categorize errors for better reporting
-						const fileErrors = validationErrors.filter((e) => e.includes("Source file not found"))
-						const circularErrors = validationErrors.filter((e) => e.includes("Circular dependency"))
-						const duplicateErrors = validationErrors.filter((e) => e.includes("Duplicate target"))
-
-						if (fileErrors.length > 0) {
-							logger.error("✗ Source files")
-							for (const error of fileErrors) {
-								console.log(kleur.red(`  ${error}`))
-							}
-						}
-
-						if (circularErrors.length > 0) {
-							logger.error("✗ Circular dependencies")
-							for (const error of circularErrors) {
-								console.log(kleur.red(`  ${error}`))
-							}
-						}
-
-						if (duplicateErrors.length > 0) {
-							logger.error("✗ Duplicate targets")
-							for (const error of duplicateErrors) {
-								console.log(kleur.red(`  ${error}`))
-							}
-						}
-
-						process.exit(1)
+					if (shouldDisplayValidation) {
+						logger.success("✓ Schema compatibility and structure")
+						logger.success("✓ Source files")
+						logger.success("✓ No circular dependencies")
+						logger.success("✓ No duplicate targets")
+						console.log("")
 					}
-
-					// All validations passed - show success messages
-					logger.success("✓ Source files")
-					logger.success("✓ No circular dependencies")
-					logger.success("✓ No duplicate targets")
-
-					console.log("") // Empty line before build starts
 				}
 
 				const spinner = createSpinner({
@@ -154,7 +200,11 @@ export function registerBuildCommand(program: Command): void {
 				}
 			} catch (error) {
 				if (error instanceof BuildRegistryError) {
-					if (!options.json) {
+					if (options.json) {
+						handleError(error, { json: true })
+					}
+
+					if (!options.quiet) {
 						logger.error(error.message)
 						for (const err of error.errors) {
 							console.log(kleur.red(`  ${err}`))

@@ -6,16 +6,21 @@
 
 import type { Registry } from "../schemas/registry"
 import {
+	type LoadRegistryErrorKind,
 	loadRegistrySource,
 	type ValidateRegistryOptions,
 	validateRegistrySchema,
 	validateRegistryWithOptions,
 } from "./validators"
 
+export type ValidationFailureType = "load" | "schema" | "rules"
+
 export interface CompleteValidationResult {
 	success: boolean
 	errors: string[]
 	registry?: Registry
+	failureType?: ValidationFailureType
+	loadErrorKind?: LoadRegistryErrorKind
 }
 
 /**
@@ -35,6 +40,8 @@ export async function runCompleteValidation(
 		return {
 			success: false,
 			errors: [loadResult.error || "Failed to load registry"],
+			failureType: "load",
+			loadErrorKind: loadResult.errorKind,
 		}
 	}
 
@@ -44,11 +51,15 @@ export async function runCompleteValidation(
 		return {
 			success: false,
 			errors: schemaResult.errors,
+			failureType: "schema",
 		}
 	}
 
 	// Use the parsed and validated registry data
-	const registry = schemaResult.data!
+	const registry = schemaResult.data
+	if (!registry) {
+		throw new Error("Registry validation succeeded but returned no parsed data")
+	}
 
 	// Collect all validation errors
 	const validationErrors: string[] = []
@@ -60,6 +71,7 @@ export async function runCompleteValidation(
 		return {
 			success: false,
 			errors: validationErrors,
+			failureType: "rules",
 		}
 	}
 

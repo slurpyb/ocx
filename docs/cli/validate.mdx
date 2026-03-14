@@ -46,7 +46,13 @@ ocx validate ./my-registry
 
 ### CI/CD Integration
 
-The command always exits with code 1 on validation failure, making it suitable for continuous integration pipelines:
+`ocx validate` uses distinct exit codes so CI can tell validation failures apart from runtime/tool failures:
+
+- `0` — registry is valid
+- `78` — validation failed (`VALIDATION_FAILED`)
+- other non-zero codes — runtime/tool failures (for example parse, I/O, or internal errors)
+
+Example shell gate:
 
 ```bash
 ocx validate
@@ -76,7 +82,7 @@ JSON output is provided for both success and failure cases, making it suitable f
 ocx validate --quiet
 ```
 
-Suppresses all output (including errors). Check the exit code to determine success (0) or failure (1).
+Suppresses all output (including errors). Check the exit code to determine outcome (`0` for valid, `78` for validation failures, other non-zero for runtime/tool failures).
 
 **Note**: When using `--json` and `--quiet` together, JSON output takes precedence.
 
@@ -90,7 +96,20 @@ $ ocx validate
 
 $ ocx validate --json
 {
-  "valid": true
+  "success": true,
+  "data": {
+    "valid": true,
+    "errors": [],
+    "summary": {
+      "valid": true,
+      "totalErrors": 0,
+      "schemaErrors": 0,
+      "sourceFileErrors": 0,
+      "circularDependencyErrors": 0,
+      "duplicateTargetErrors": 0,
+      "otherErrors": 0
+    }
+  }
 }
 ```
 
@@ -109,12 +128,51 @@ Registry validation failed
 ```bash
 $ ocx validate --json
 {
-  "valid": false,
-  "errors": [
-    "Schema validation error: Missing required field 'name'",
-    "File not found: files/agents/missing-agent.md",
-    "Circular dependency detected: component-a -> component-b -> component-a"
-  ]
+  "success": false,
+  "error": {
+    "code": "VALIDATION_FAILED",
+    "message": "Registry validation failed",
+    "details": {
+      "valid": false,
+      "errors": [
+        "Schema validation error: Missing required field 'name'",
+        "File not found: files/agents/missing-agent.md",
+        "Circular dependency detected: component-a -> component-b -> component-a"
+      ],
+      "summary": {
+        "valid": false,
+        "totalErrors": 3,
+        "schemaErrors": 1,
+        "sourceFileErrors": 1,
+        "circularDependencyErrors": 1,
+        "duplicateTargetErrors": 0,
+        "otherErrors": 0
+      }
+    }
+  },
+  "exitCode": 78,
+  "meta": {
+    "timestamp": "2026-01-01T00:00:00.000Z"
+  }
+}
+```
+
+### Runtime / Tool Failure (JSON)
+
+Runtime failures (for example missing manifest file or parse errors) use the standard failure envelope with non-validation error codes:
+
+```bash
+$ ocx validate ./missing --json
+{
+  "success": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No registry.jsonc or registry.json found in source directory"
+  },
+  "exitCode": 66,
+  "meta": {
+    "timestamp": "2026-01-01T00:00:00.000Z"
+  }
 }
 ```
 

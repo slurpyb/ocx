@@ -154,6 +154,48 @@ describe("validateRegistryWithOptions", () => {
 		expect(errors.some((e) => e.includes("Duplicate target"))).toBe(true)
 	})
 
+	it("should treat equivalent target paths as duplicates", async () => {
+		const filesDir = join(testDir, "files")
+		await mkdir(filesDir, { recursive: true })
+		await writeFile(join(filesDir, "a.ts"), "// a")
+		await writeFile(join(filesDir, "b.ts"), "// b")
+
+		const registry = {
+			$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
+			name: "Test Registry",
+			namespace: "test",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [
+				{
+					name: "comp-a",
+					type: "plugin" as const,
+					description: "Component A",
+					files: [{ path: "a.ts", target: "./plugins/shared.ts" }],
+					dependencies: [],
+				},
+				{
+					name: "comp-b",
+					type: "plugin" as const,
+					description: "Component B",
+					files: [{ path: "b.ts", target: "plugins/./shared.ts" }],
+					dependencies: [],
+				},
+			],
+		}
+
+		const errors: string[] = []
+		for await (const error of validateRegistryWithOptions(registry, testDir, {
+			skipDuplicateTargets: false,
+		})) {
+			errors.push(error)
+		}
+
+		expect(errors).toContain(
+			'Duplicate target "plugins/shared.ts" in components "comp-a" and "comp-b"',
+		)
+	})
+
 	it("should skip duplicate target validation when option is set", async () => {
 		const filesDir = join(testDir, "files")
 		await mkdir(filesDir, { recursive: true })
@@ -279,7 +321,7 @@ describe("loadRegistrySource", () => {
 		const result = await loadRegistrySource(testDir)
 
 		expect(result.success).toBe(true)
-		expect(result.data?.name).toBe("JSONC Registry")
+		expect((result.data as { name?: string } | undefined)?.name).toBe("JSONC Registry")
 	})
 
 	it("should return error when no registry file exists", async () => {

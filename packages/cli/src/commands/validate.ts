@@ -7,18 +7,66 @@
 import { resolve } from "node:path"
 import type { Command } from "commander"
 import kleur from "kleur"
+import { runCompleteValidation } from "../lib/validation-runner"
+import type { LoadRegistryErrorKind } from "../lib/validators"
 import {
-	loadRegistrySource,
-	validateRegistrySchema,
-	validateRegistryWithOptions,
-} from "../lib/validators"
-import { handleError, logger } from "../utils/index"
+	EXIT_CODES,
+	NotFoundError,
+	OCXError,
+	ValidationFailedError,
+	type ValidationFailureDetails,
+} from "../utils/errors"
+import { handleError, logger, outputJson } from "../utils/index"
+import { summarizeValidationErrors } from "../utils/validation-errors"
 
 interface ValidateOptions {
 	cwd: string
 	json: boolean
 	quiet: boolean
 	duplicateTargets: boolean
+}
+
+function createLoadValidationError(message: string, errorKind?: LoadRegistryErrorKind): Error {
+	if (errorKind === "not_found") {
+		return new NotFoundError(message)
+	}
+
+	if (errorKind === "parse_error") {
+		return new OCXError(message, "CONFIG_ERROR", EXIT_CODES.GENERAL)
+	}
+
+	return new OCXError(message, "CONFIG_ERROR", EXIT_CODES.GENERAL)
+}
+
+function createValidationFailureError(
+	errors: string[],
+	failureType: "schema" | "rules",
+): ValidationFailedError {
+	const summary = summarizeValidationErrors(errors, {
+		schemaErrors: failureType === "schema" ? errors.length : 0,
+	})
+
+	const details: ValidationFailureDetails = {
+		valid: false,
+		errors,
+		summary: {
+			valid: false,
+			totalErrors: summary.totalErrors,
+			schemaErrors: summary.schemaErrors,
+			sourceFileErrors: summary.sourceFileErrors,
+			circularDependencyErrors: summary.circularDependencyErrors,
+			duplicateTargetErrors: summary.duplicateTargetErrors,
+			otherErrors: summary.otherErrors,
+		},
+	}
+
+	return new ValidationFailedError(details)
+}
+
+function outputValidationErrors(errors: string[]): void {
+	for (const error of errors) {
+		console.log(kleur.red(`  ${error}`))
+	}
 }
 
 export function registerValidateCommand(program: Command): void {
@@ -33,61 +81,39 @@ export function registerValidateCommand(program: Command): void {
 		.action(async (path: string, options: ValidateOptions) => {
 			try {
 				const sourcePath = resolve(options.cwd, path)
-				const errors: string[] = []
 
-				// Load registry file
-				const loadResult = await loadRegistrySource(sourcePath)
-				if (!loadResult.success) {
-					errors.push(loadResult.error || "Failed to load registry")
-
-					// Output based on mode
-					if (options.json) {
-						console.log(JSON.stringify({ valid: false, errors }, null, 2))
-					} else if (!options.quiet) {
-						logger.error(loadResult.error || "Failed to load registry")
-					}
-					process.exit(1)
-				}
-
-				// Validate schema (compatibility + structure)
-				const schemaResult = validateRegistrySchema(loadResult.data, sourcePath)
-				if (!schemaResult.valid) {
-					errors.push(...schemaResult.errors)
-
-					// Output based on mode
-					if (options.json) {
-						console.log(JSON.stringify({ valid: false, errors }, null, 2))
-					} else if (!options.quiet) {
-						logger.error("Registry validation failed")
-						for (const error of schemaResult.errors) {
-							console.log(kleur.red(`  ${error}`))
-						}
-					}
-					process.exit(1)
-				}
-
-				// Use the parsed and validated registry data
-				const registry = schemaResult.data!
-
-				// Run all validators using the generator
-				for await (const error of validateRegistryWithOptions(registry, sourcePath, {
+				const validationResult = await runCompleteValidation(sourcePath, {
 					skipDuplicateTargets: options.duplicateTargets === false,
-				})) {
-					errors.push(error)
-				}
+				})
 
-				// Report any validation errors
-				if (errors.length > 0) {
-					// Output based on mode
-					if (options.json) {
-						console.log(JSON.stringify({ valid: false, errors }, null, 2))
-					} else if (!options.quiet) {
-						logger.error("Registry validation failed")
-						for (const error of errors) {
-							console.log(kleur.red(`  ${error}`))
+				if (!validationResult.success) {
+					const [firstError = "Registry validation failed"] = validationResult.errors
+
+					if (validationResult.failureType === "load") {
+						const loadError = createLoadValidationError(firstError, validationResult.loadErrorKind)
+						if (!options.json && options.quiet) {
+							const exitCode =
+								loadError instanceof OCXError ? loadError.exitCode : EXIT_CODES.GENERAL
+							process.exit(exitCode)
 						}
+						throw loadError
 					}
-					process.exit(1)
+
+					const validationError = createValidationFailureError(
+						validationResult.errors,
+						validationResult.failureType === "schema" ? "schema" : "rules",
+					)
+
+					if (options.json) {
+						throw validationError
+					}
+
+					if (!options.quiet) {
+						logger.error(validationError.message)
+						outputValidationErrors(validationResult.errors)
+					}
+
+					process.exit(validationError.exitCode)
 				}
 
 				// All validations passed
@@ -96,9 +122,21 @@ export function registerValidateCommand(program: Command): void {
 				}
 
 				if (options.json) {
-					console.log(JSON.stringify({ valid: true }, null, 2))
+					outputJson({
+						success: true,
+						data: {
+							valid: true,
+							errors: [],
+							summary: summarizeValidationErrors([]),
+						},
+					})
 				}
 			} catch (error) {
+				if (!options.json && options.quiet) {
+					const exitCode = error instanceof OCXError ? error.exitCode : EXIT_CODES.GENERAL
+					process.exit(exitCode)
+				}
+
 				handleError(error, { json: options.json })
 			}
 		})

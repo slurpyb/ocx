@@ -5,7 +5,7 @@
  * Shared by both validate command and build command.
  */
 
-import { join } from "node:path"
+import { join, posix } from "node:path"
 import { type ParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser"
 import type { Registry } from "../schemas/registry"
 import { classifyRegistrySchemaIssue, normalizeFile, registrySchema } from "../schemas/registry"
@@ -17,10 +17,13 @@ export interface ValidationResult<T = unknown> {
 	data?: T
 }
 
+export type LoadRegistryErrorKind = "not_found" | "parse_error"
+
 export interface LoadRegistryResult {
 	success: boolean
 	data?: unknown
 	error?: string
+	errorKind?: LoadRegistryErrorKind
 }
 
 /**
@@ -58,6 +61,7 @@ export async function loadRegistrySource(sourcePath: string): Promise<LoadRegist
 		return {
 			success: false,
 			error: "No registry.jsonc or registry.json found in source directory",
+			errorKind: "not_found",
 		}
 	}
 
@@ -73,6 +77,7 @@ export async function loadRegistrySource(sourcePath: string): Promise<LoadRegist
 		return {
 			success: false,
 			error: `Invalid JSONC in ${fileName}: ${errorDetail}`,
+			errorKind: "parse_error",
 		}
 	}
 
@@ -118,7 +123,7 @@ export function validateRegistrySchema(
  */
 export function validateRegistrySource(
 	registryData: unknown,
-	sourcePath: string,
+	_sourcePath: string,
 ): ValidationResult<Registry> {
 	const parseResult = registrySchema.safeParse(registryData)
 
@@ -255,19 +260,29 @@ export function validateCircularDependencies(registry: Registry): ValidationResu
  */
 export function validateDuplicateTargets(registry: Registry): ValidationResult {
 	const errors: string[] = []
-	const targetMap = new Map<string, string>()
+	const targetMap = new Map<string, { componentName: string }>()
+
+	const canonicalizeTargetForComparison = (target: string): string => {
+		const normalizedUnicode = target.normalize("NFC")
+		const unifiedSeparators = normalizedUnicode.replace(/\\/g, "/")
+		const normalizedTarget = posix.normalize(unifiedSeparators)
+		return normalizedTarget.replace(/^\.\//, "")
+	}
 
 	for (const component of registry.components) {
 		for (const rawFile of component.files) {
 			const file = normalizeFile(rawFile, component.type)
-			const existingComponent = targetMap.get(file.target)
+			const canonicalTarget = canonicalizeTargetForComparison(file.target)
+			const existing = targetMap.get(canonicalTarget)
 
-			if (existingComponent) {
+			if (existing) {
 				errors.push(
-					`Duplicate target "${file.target}" in components "${existingComponent}" and "${component.name}"`,
+					`Duplicate target "${canonicalTarget}" in components "${existing.componentName}" and "${component.name}"`,
 				)
 			} else {
-				targetMap.set(file.target, component.name)
+				targetMap.set(canonicalTarget, {
+					componentName: component.name,
+				})
 			}
 		}
 	}
