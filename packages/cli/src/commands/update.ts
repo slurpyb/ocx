@@ -9,7 +9,7 @@ import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 
 import type { Command } from "commander"
-import { type ConfigProvider, LocalConfigProvider } from "../config/provider"
+import { type ConfigProvider, GlobalConfigProvider, LocalConfigProvider } from "../config/provider"
 import { fetchComponentVersion, fetchFileContent } from "../registry/fetcher"
 import { parseCanonicalId, type Receipt, readReceipt, writeReceipt } from "../schemas/config"
 import {
@@ -23,7 +23,7 @@ import { createSpinner, handleError, logger } from "../utils/index"
 import { resolveTargetPath } from "../utils/paths"
 import { registerPlannedWriteOrThrow } from "../utils/planned-writes"
 import { hashBundle, hashContent } from "../utils/receipt"
-import { addCommonOptions, addVerboseOption } from "../utils/shared-options"
+import { addCommonOptions, addGlobalOption, addVerboseOption } from "../utils/shared-options"
 
 // =============================================================================
 // TYPES
@@ -33,6 +33,7 @@ export interface UpdateOptions {
 	all?: boolean
 	registry?: string
 	dryRun?: boolean
+	global?: boolean
 	cwd?: string
 	quiet?: boolean
 	verbose?: boolean
@@ -101,6 +102,7 @@ export function registerUpdateCommand(program: Command): void {
 
 	addCommonOptions(cmd)
 	addVerboseOption(cmd)
+	addGlobalOption(cmd)
 
 	cmd
 		.option("--all", "Update all installed components")
@@ -121,7 +123,9 @@ export function registerUpdateCommand(program: Command): void {
 
 async function runUpdate(componentNames: string[], options: UpdateOptions): Promise<void> {
 	const cwd = options.cwd ?? process.cwd()
-	const provider = await LocalConfigProvider.requireInitialized(cwd)
+	const provider = options.global
+		? await GlobalConfigProvider.requireInitialized()
+		: await LocalConfigProvider.requireInitialized(cwd)
 	await runUpdateCore(componentNames, options, provider)
 }
 
