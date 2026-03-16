@@ -89,6 +89,10 @@ interface UpdateFileOps {
 
 type UpdateFailurePhase = "check" | "apply"
 
+function formatAddCommandHint(component: string, options: UpdateOptions): string {
+	return `ocx add${options.global ? " --global" : ""} ${component}`
+}
+
 export function resolveUpdateFailureMessage(phase: UpdateFailurePhase): string {
 	return phase === "apply" ? "Failed to update components" : "Failed to check for updates"
 }
@@ -158,12 +162,18 @@ export async function runUpdateCore(
 	if (!receipt || Object.keys(receipt.installed).length === 0) {
 		// If user specified components, give specific error
 		if (componentNames.length > 0) {
+			const requestedComponent = componentNames[0]
+			if (!requestedComponent) {
+				throw new Error("Unexpected: component name missing despite non-empty componentNames")
+			}
 			throw new NotFoundError(
-				`Component '${componentNames[0]}' is not installed. Run 'ocx add ${componentNames[0]}' first.`,
+				`Component '${requestedComponent}' is not installed. Run '${formatAddCommandHint(requestedComponent, options)}' first.`,
 			)
 		}
 		// Generic case for --all or --registry
-		throw new NotFoundError("No components installed. Run 'ocx add <component>' first.")
+		throw new NotFoundError(
+			`No components installed. Run '${formatAddCommandHint("<component>", options)}' first.`,
+		)
 	}
 
 	// Guard: No args and no flags
@@ -685,7 +695,7 @@ function resolveComponentsToUpdate(
 
 		if (matchingIds.length === 0) {
 			throw new NotFoundError(
-				`Component '${name}' is not installed.\nRun 'ocx add ${name}' to install it first.`,
+				`Component '${name}' is not installed.\nRun '${formatAddCommandHint(name, options)}' to install it first.`,
 			)
 		}
 

@@ -597,6 +597,85 @@ describe("ocx update", () => {
 		expect(output).toContain("ocx init --global")
 	})
 
+	it("should suggest --global add hint for missing global component", async () => {
+		testDir = await createTempDir("update-global-missing-component-hint")
+
+		const xdgConfigHome = join(testDir, "xdg-config")
+		const emptyCwd = join(testDir, "workspace")
+		await mkdir(emptyCwd, { recursive: true })
+
+		const isolatedOptions = {
+			isolated: true as const,
+			env: { XDG_CONFIG_HOME: xdgConfigHome },
+		}
+
+		const initResult = await runCLI(["init", "--global"], emptyCwd, isolatedOptions)
+		expect(initResult.exitCode).toBe(0)
+
+		const globalConfigPath = join(xdgConfigHome, "opencode", "ocx.jsonc")
+		const globalConfig = parseJsonc(await readFile(globalConfigPath, "utf-8")) as Record<
+			string,
+			unknown
+		>
+		globalConfig.registries = {
+			kdco: { url: registry.url },
+		}
+		await writeFile(globalConfigPath, JSON.stringify(globalConfig, null, 2))
+
+		const addResult = await runCLI(
+			["add", "--global", "kdco/test-plugin"],
+			emptyCwd,
+			isolatedOptions,
+		)
+		expect(addResult.exitCode).toBe(0)
+
+		const { exitCode, output } = await runCLI(
+			["update", "--global", "kdco/test-agent"],
+			emptyCwd,
+			isolatedOptions,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("ocx add --global kdco/test-agent")
+		expect(output).not.toContain("Run 'ocx add kdco/test-agent' to install it first.")
+	})
+
+	it("should suggest --global add hint when no global components are installed", async () => {
+		testDir = await createTempDir("update-global-no-components-installed-hint")
+
+		const xdgConfigHome = join(testDir, "xdg-config")
+		const emptyCwd = join(testDir, "workspace")
+		await mkdir(emptyCwd, { recursive: true })
+
+		const isolatedOptions = {
+			isolated: true as const,
+			env: { XDG_CONFIG_HOME: xdgConfigHome },
+		}
+
+		const initResult = await runCLI(["init", "--global"], emptyCwd, isolatedOptions)
+		expect(initResult.exitCode).toBe(0)
+
+		const globalConfigPath = join(xdgConfigHome, "opencode", "ocx.jsonc")
+		const globalConfig = parseJsonc(await readFile(globalConfigPath, "utf-8")) as Record<
+			string,
+			unknown
+		>
+		globalConfig.registries = {
+			kdco: { url: registry.url },
+		}
+		await writeFile(globalConfigPath, JSON.stringify(globalConfig, null, 2))
+
+		const { exitCode, output } = await runCLI(
+			["update", "--global", "kdco/test-plugin"],
+			emptyCwd,
+			isolatedOptions,
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("ocx add --global kdco/test-plugin")
+		expect(output).not.toContain("Run 'ocx add kdco/test-plugin' first.")
+	})
+
 	it("should handle component with dependencies correctly", async () => {
 		testDir = await setupProject("update-with-deps")
 
