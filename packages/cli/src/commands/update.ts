@@ -9,7 +9,7 @@ import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 
 import type { Command } from "commander"
-import { type ConfigProvider, LocalConfigProvider } from "../config/provider"
+import { type ConfigProvider, GlobalConfigProvider, LocalConfigProvider } from "../config/provider"
 import { fetchComponentVersion, fetchFileContent } from "../registry/fetcher"
 import { parseCanonicalId, type Receipt, readReceipt, writeReceipt } from "../schemas/config"
 import {
@@ -23,7 +23,7 @@ import { createSpinner, handleError, logger } from "../utils/index"
 import { resolveTargetPath } from "../utils/paths"
 import { registerPlannedWriteOrThrow } from "../utils/planned-writes"
 import { hashBundle, hashContent } from "../utils/receipt"
-import { addCommonOptions, addVerboseOption } from "../utils/shared-options"
+import { addCommonOptions, addGlobalOption, addVerboseOption } from "../utils/shared-options"
 
 // =============================================================================
 // TYPES
@@ -33,6 +33,7 @@ export interface UpdateOptions {
 	all?: boolean
 	registry?: string
 	dryRun?: boolean
+	global?: boolean
 	cwd?: string
 	quiet?: boolean
 	verbose?: boolean
@@ -88,6 +89,10 @@ interface UpdateFileOps {
 
 type UpdateFailurePhase = "check" | "apply"
 
+function formatAddCommandHint(component: string, options: UpdateOptions): string {
+	return `ocx add${options.global ? " --global" : ""} ${component}`
+}
+
 export function resolveUpdateFailureMessage(phase: UpdateFailurePhase): string {
 	return phase === "apply" ? "Failed to update components" : "Failed to check for updates"
 }
@@ -101,6 +106,7 @@ export function registerUpdateCommand(program: Command): void {
 
 	addCommonOptions(cmd)
 	addVerboseOption(cmd)
+	addGlobalOption(cmd)
 
 	cmd
 		.option("--all", "Update all installed components")
@@ -121,7 +127,9 @@ export function registerUpdateCommand(program: Command): void {
 
 async function runUpdate(componentNames: string[], options: UpdateOptions): Promise<void> {
 	const cwd = options.cwd ?? process.cwd()
-	const provider = await LocalConfigProvider.requireInitialized(cwd)
+	const provider = options.global
+		? await GlobalConfigProvider.requireInitialized()
+		: await LocalConfigProvider.requireInitialized(cwd)
 	await runUpdateCore(componentNames, options, provider)
 }
 
@@ -154,12 +162,18 @@ export async function runUpdateCore(
 	if (!receipt || Object.keys(receipt.installed).length === 0) {
 		// If user specified components, give specific error
 		if (componentNames.length > 0) {
+			const requestedComponent = componentNames[0]
+			if (!requestedComponent) {
+				throw new Error("Unexpected: component name missing despite non-empty componentNames")
+			}
 			throw new NotFoundError(
-				`Component '${componentNames[0]}' is not installed. Run 'ocx add ${componentNames[0]}' first.`,
+				`Component '${requestedComponent}' is not installed. Run '${formatAddCommandHint(requestedComponent, options)}' first.`,
 			)
 		}
 		// Generic case for --all or --registry
-		throw new NotFoundError("No components installed. Run 'ocx add <component>' first.")
+		throw new NotFoundError(
+			`No components installed. Run '${formatAddCommandHint("<component>", options)}' first.`,
+		)
 	}
 
 	// Guard: No args and no flags
@@ -681,7 +695,7 @@ function resolveComponentsToUpdate(
 
 		if (matchingIds.length === 0) {
 			throw new NotFoundError(
-				`Component '${name}' is not installed.\nRun 'ocx add ${name}' to install it first.`,
+				`Component '${name}' is not installed.\nRun '${formatAddCommandHint(name, options)}' to install it first.`,
 			)
 		}
 
