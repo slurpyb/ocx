@@ -640,7 +640,7 @@ describe("ocx update", () => {
 		expect(output).not.toContain("Run 'ocx add kdco/test-agent' to install it first.")
 	})
 
-	it("should suggest --global add hint when no global components are installed", async () => {
+	it("should suggest generic --global add hint when no global components installed", async () => {
 		testDir = await createTempDir("update-global-no-components-installed-hint")
 
 		const xdgConfigHome = join(testDir, "xdg-config")
@@ -666,14 +666,15 @@ describe("ocx update", () => {
 		await writeFile(globalConfigPath, JSON.stringify(globalConfig, null, 2))
 
 		const { exitCode, output } = await runCLI(
-			["update", "--global", "kdco/test-plugin"],
+			["update", "--global", "--all"],
 			emptyCwd,
 			isolatedOptions,
 		)
 
 		expect(exitCode).not.toBe(0)
-		expect(output).toContain("ocx add --global kdco/test-plugin")
-		expect(output).not.toContain("Run 'ocx add kdco/test-plugin' first.")
+		expect(output).toContain("No components installed")
+		expect(output).toContain("ocx add --global <component>")
+		expect(output).not.toContain("ocx add <component>")
 	})
 
 	it("should handle component with dependencies correctly", async () => {
