@@ -575,6 +575,28 @@ describe("ocx update", () => {
 		expect(output).toContain("ocx init --global")
 	})
 
+	it("should fail global update when OpenCode directory exists without ocx global config (global)", async () => {
+		testDir = await createTempDir("update-global-missing-ocx-config")
+
+		const xdgConfigHome = join(testDir, "xdg-config")
+		const emptyCwd = join(testDir, "workspace")
+		await mkdir(emptyCwd, { recursive: true })
+		await mkdir(join(xdgConfigHome, "opencode"), { recursive: true })
+
+		const { exitCode, output } = await runCLI(
+			["update", "--global", "kdco/test-plugin"],
+			emptyCwd,
+			{
+				isolated: true,
+				env: { XDG_CONFIG_HOME: xdgConfigHome },
+			},
+		)
+
+		expect(exitCode).not.toBe(0)
+		expect(output).toContain("Global config not found")
+		expect(output).toContain("ocx init --global")
+	})
+
 	it("should handle component with dependencies correctly", async () => {
 		testDir = await setupProject("update-with-deps")
 
