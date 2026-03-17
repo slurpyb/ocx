@@ -134,6 +134,32 @@ export interface TerminalResult {
 	error?: string
 }
 
+function normalizeArgv(argv?: string[]): string[] {
+	if (!argv) {
+		return []
+	}
+
+	return argv
+}
+
+export function buildBashCommandFromArgv(argv?: string[]): string | undefined {
+	const normalizedArgv = normalizeArgv(argv)
+	if (normalizedArgv.length === 0) {
+		return undefined
+	}
+
+	return normalizedArgv.map((arg) => `"${escapeBash(arg)}"`).join(" ")
+}
+
+export function buildBatchCommandFromArgv(argv?: string[]): string | undefined {
+	const normalizedArgv = normalizeArgv(argv)
+	if (normalizedArgv.length === 0) {
+		return undefined
+	}
+
+	return normalizedArgv.map((arg) => `"${escapeBatch(arg).replace(/"/g, '""')}"`).join(" ")
+}
+
 type ResolveExecutable = (command: string) => string | null | undefined
 type CmuxEnvironment = Record<string, string | undefined>
 type CmuxCommandResult = {
@@ -349,9 +375,10 @@ export async function openTmuxWindow(options: {
 	sessionName?: string
 	windowName: string
 	cwd: string
-	command?: string
+	argv?: string[]
 }): Promise<TerminalResult> {
-	const { sessionName, windowName, cwd, command } = options
+	const { sessionName, windowName, cwd, argv } = options
+	const command = buildBashCommandFromArgv(argv)
 
 	return tmuxMutex.runExclusive(async () => {
 		try {
@@ -367,10 +394,9 @@ export async function openTmuxWindow(options: {
 			if (command) {
 				const scriptPath = path.join(getTempDir(), `worktree-${Bun.randomUUIDv7()}.sh`)
 				const escapedCwd = escapeBash(cwd)
-				const escapedCommand = escapeBash(command)
 				const scriptContent = wrapWithSelfCleanup(
 					`cd "${escapedCwd}" || exit 1
-${escapedCommand}
+${command}
 exec $SHELL`,
 				)
 				await Bun.write(scriptPath, scriptContent)
@@ -409,14 +435,15 @@ exec $SHELL`,
 export function buildCmuxCommandSequence(
 	_context: CmuxContext,
 	cwd: string,
-	command?: string,
+	argv?: string[],
 ): string[][] {
 	// Product policy: each worktree launch gets a new cmux workspace.
 	// We intentionally do not reuse the current workspace context.
 	const cmuxArgs = ["new-workspace", "--cwd", cwd]
+	const command = buildBashCommandFromArgv(argv)
 
 	if (command) {
-		cmuxArgs.push("--command", escapeBash(command))
+		cmuxArgs.push("--command", command)
 	}
 
 	return [cmuxArgs]
@@ -457,7 +484,7 @@ async function runCmuxCommandWithBun(
 
 export async function openCmuxTerminalWithState(
 	cwd: string,
-	command?: string,
+	argv?: string[],
 	options?: {
 		env?: CmuxEnvironment
 		resolveExecutable?: ResolveExecutable
@@ -485,7 +512,7 @@ export async function openCmuxTerminalWithState(
 	const context = detectCmuxContext(env)
 	const runCmuxCommand: RunCmuxCommand =
 		options?.runCmuxCommand ?? ((args) => runCmuxCommandWithBun(cmuxCommand, args))
-	const commandSequence = buildCmuxCommandSequence(context, cwd, command)
+	const commandSequence = buildCmuxCommandSequence(context, cwd, argv)
 	let hasStateMutation = false
 
 	for (const args of commandSequence) {
@@ -522,7 +549,7 @@ export async function openCmuxTerminalWithState(
 
 export async function openCmuxTerminal(
 	cwd: string,
-	command?: string,
+	argv?: string[],
 	options?: {
 		env?: CmuxEnvironment
 		resolveExecutable?: ResolveExecutable
@@ -530,7 +557,7 @@ export async function openCmuxTerminal(
 		cmuxCommand?: string
 	},
 ): Promise<TerminalResult> {
-	const result = await openCmuxTerminalWithState(cwd, command, options)
+	const result = await openCmuxTerminalWithState(cwd, argv, options)
 	return result.terminalResult
 }
 
@@ -574,21 +601,19 @@ function detectCurrentMacTerminal(): MacTerminal {
  * Detects current terminal and uses appropriate method.
  *
  * @param cwd - Working directory for the terminal
- * @param command - Optional command to execute
+ * @param argv - Optional argv command to execute
  * @returns Success status and optional error message
  */
-export async function openMacOSTerminal(cwd: string, command?: string): Promise<TerminalResult> {
+export async function openMacOSTerminal(cwd: string, argv?: string[]): Promise<TerminalResult> {
 	// Guard: validate cwd
 	if (!cwd) {
 		return { success: false, error: "Working directory is required" }
 	}
 
 	const escapedCwd = escapeBash(cwd)
-	const escapedCommand = command ? escapeBash(command) : ""
+	const command = buildBashCommandFromArgv(argv)
 	const scriptContent = wrapWithSelfCleanup(
-		command
-			? `cd "${escapedCwd}" && ${escapedCommand}\nexec bash`
-			: `cd "${escapedCwd}"\nexec bash`,
+		command ? `cd "${escapedCwd}" && ${command}\nexec bash` : `cd "${escapedCwd}"\nexec bash`,
 	)
 
 	const terminal = detectCurrentMacTerminal()
@@ -612,7 +637,7 @@ export async function openMacOSTerminal(cwd: string, command?: string): Promise<
 							"-e",
 							"bash",
 							"-c",
-							command ? `cd "${escapedCwd}" && ${escapedCommand}` : `cd "${escapedCwd}"`,
+							command ? `cd "${escapedCwd}" && ${command}` : `cd "${escapedCwd}"`,
 						],
 						{
 							detached: true,
@@ -824,18 +849,16 @@ function detectCurrentLinuxTerminal(): LinuxTerminal | null {
  * @param command - Optional command to execute
  * @returns Success status and optional error message
  */
-export async function openLinuxTerminal(cwd: string, command?: string): Promise<TerminalResult> {
+export async function openLinuxTerminal(cwd: string, argv?: string[]): Promise<TerminalResult> {
 	// Guard: validate cwd
 	if (!cwd) {
 		return { success: false, error: "Working directory is required" }
 	}
 
 	const escapedCwd = escapeBash(cwd)
-	const escapedCommand = command ? escapeBash(command) : ""
+	const command = buildBashCommandFromArgv(argv)
 	const scriptContent = wrapWithSelfCleanup(
-		command
-			? `cd "${escapedCwd}" && ${escapedCommand}\nexec bash`
-			: `cd "${escapedCwd}"\nexec bash`,
+		command ? `cd "${escapedCwd}" && ${command}\nexec bash` : `cd "${escapedCwd}"\nexec bash`,
 	)
 
 	let scriptPath: string | null = null
@@ -1121,18 +1144,16 @@ export async function openLinuxTerminal(cwd: string, command?: string): Promise<
  * @param command - Optional command to execute
  * @returns Success status and optional error message
  */
-export async function openWindowsTerminal(cwd: string, command?: string): Promise<TerminalResult> {
+export async function openWindowsTerminal(cwd: string, argv?: string[]): Promise<TerminalResult> {
 	// Guard: validate cwd
 	if (!cwd) {
 		return { success: false, error: "Working directory is required" }
 	}
 
 	const escapedCwd = escapeBatch(cwd)
-	const escapedCommand = command ? escapeBatch(command) : ""
+	const command = buildBatchCommandFromArgv(argv)
 	const scriptContent = wrapBatchWithSelfCleanup(
-		command
-			? `cd /d "${escapedCwd}"\r\n${escapedCommand}\r\ncmd /k`
-			: `cd /d "${escapedCwd}"\r\ncmd /k`,
+		command ? `cd /d "${escapedCwd}"\r\n${command}\r\ncmd /k` : `cd /d "${escapedCwd}"\r\ncmd /k`,
 	)
 
 	// Write script directly - it self-deletes via goto trick
@@ -1203,18 +1224,16 @@ export async function openWindowsTerminal(cwd: string, command?: string): Promis
  * NOTE: All WSL terminal spawns are detached, so we write the script directly
  * instead of using withTempScript. The script self-deletes via trap.
  */
-export async function openWSLTerminal(cwd: string, command?: string): Promise<TerminalResult> {
+export async function openWSLTerminal(cwd: string, argv?: string[]): Promise<TerminalResult> {
 	// Guard: validate cwd
 	if (!cwd) {
 		return { success: false, error: "Working directory is required" }
 	}
 
 	const escapedCwd = escapeBash(cwd)
-	const escapedCommand = command ? escapeBash(command) : ""
+	const command = buildBashCommandFromArgv(argv)
 	const scriptContent = wrapWithSelfCleanup(
-		command
-			? `cd "${escapedCwd}" && ${escapedCommand}\nexec bash`
-			: `cd "${escapedCwd}"\nexec bash`,
+		command ? `cd "${escapedCwd}" && ${command}\nexec bash` : `cd "${escapedCwd}"\nexec bash`,
 	)
 
 	// Write script directly - it self-deletes via trap
@@ -1286,69 +1305,69 @@ export async function openWSLTerminal(cwd: string, command?: string): Promise<Te
  */
 export async function openTerminal(
 	cwd: string,
-	command?: string,
+	argv?: string[],
 	windowName?: string,
 	options?: {
 		detectTerminalType?: () => TerminalType
 		openCmuxTerminalWithState?: (
 			cwd: string,
-			command?: string,
+			argv?: string[],
 		) => Promise<CmuxTerminalExecutionResult>
-		openPlatformTerminal?: (cwd: string, command?: string) => Promise<TerminalResult>
+		openPlatformTerminal?: (cwd: string, argv?: string[]) => Promise<TerminalResult>
 	},
 ): Promise<TerminalResult> {
 	const terminalType = options?.detectTerminalType?.() ?? detectTerminalType()
 	if (terminalType === "cmux") {
 		const cmuxResult = await (options?.openCmuxTerminalWithState ?? openCmuxTerminalWithState)(
 			cwd,
-			command,
+			argv,
 		)
 		if (cmuxResult.terminalResult.success) {
 			return cmuxResult.terminalResult
 		}
 
 		if (!cmuxResult.hasStateMutation) {
-			return (options?.openPlatformTerminal ?? openPlatformTerminal)(cwd, command)
+			return (options?.openPlatformTerminal ?? openPlatformTerminal)(cwd, argv)
 		}
 
 		return cmuxResult.terminalResult
 	}
 
-	return openTerminalByType(terminalType, cwd, command, windowName)
+	return openTerminalByType(terminalType, cwd, argv, windowName)
 }
 
-async function openPlatformTerminal(cwd: string, command?: string): Promise<TerminalResult> {
+async function openPlatformTerminal(cwd: string, argv?: string[]): Promise<TerminalResult> {
 	const platformTerminalType = detectPlatformTerminalType()
-	return openTerminalByType(platformTerminalType, cwd, command)
+	return openTerminalByType(platformTerminalType, cwd, argv)
 }
 
 async function openTerminalByType(
 	terminalType: Exclude<TerminalType, "cmux">,
 	cwd: string,
-	command?: string,
+	argv?: string[],
 	windowName?: string,
 ): Promise<TerminalResult> {
 	if (terminalType === "tmux") {
 		return openTmuxWindow({
 			windowName: windowName || "worktree",
 			cwd,
-			command,
+			argv,
 		})
 	}
 
 	switch (terminalType) {
 		case "macos":
-			return openMacOSTerminal(cwd, command)
+			return openMacOSTerminal(cwd, argv)
 
 		case "windows":
 			// Check if we're in WSL
 			if (process.platform === "linux" && isInsideWSL()) {
-				return openWSLTerminal(cwd, command)
+				return openWSLTerminal(cwd, argv)
 			}
-			return openWindowsTerminal(cwd, command)
+			return openWindowsTerminal(cwd, argv)
 
 		case "linux-desktop":
-			return openLinuxTerminal(cwd, command)
+			return openLinuxTerminal(cwd, argv)
 
 		default:
 			return { success: false, error: `Unsupported terminal type: ${terminalType}` }

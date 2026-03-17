@@ -9,6 +9,8 @@ import os from "node:os"
 import path from "node:path"
 import { escapeAppleScript, escapeBash, escapeBatch } from "../files/plugins/kdco-primitives/shell"
 import {
+	buildBashCommandFromArgv,
+	buildBatchCommandFromArgv,
 	buildCmuxCommandSequence,
 	canUseCmuxWorkflow,
 	detectCmuxContext,
@@ -164,6 +166,18 @@ describe("worktree-terminal", () => {
 				expect(result).toContain("^>")
 				expect(result).toContain("^|")
 				expect(result).toContain("^^")
+			})
+		})
+
+		describe("argv command builders", () => {
+			it("treats empty argv as no command", () => {
+				expect(buildBashCommandFromArgv([])).toBeUndefined()
+				expect(buildBatchCommandFromArgv([])).toBeUndefined()
+			})
+
+			it("escapes embedded double quotes in batch arguments", () => {
+				const command = buildBatchCommandFromArgv(["ocx", "--message", 'say "hello"'])
+				expect(command).toBe('"ocx" "--message" "say ""hello"""')
 			})
 		})
 	})
@@ -391,15 +405,19 @@ setInterval(() => {}, 1000)
 
 		it("openCmuxTerminalWithState honors cmuxCommand preflight", async () => {
 			let commandCount = 0
-			const result = await openCmuxTerminalWithState("/tmp/worktree", "opencode --session abc", {
-				env: { CMUX_WORKSPACE_ID: "workspace-123" },
-				cmuxCommand: "/custom/cmux",
-				resolveExecutable: (command) => (command === "/custom/cmux" ? "/custom/cmux" : undefined),
-				runCmuxCommand: () => {
-					commandCount += 1
-					return { exitCode: 0, stderr: "" }
+			const result = await openCmuxTerminalWithState(
+				"/tmp/worktree",
+				["opencode", "--session", "abc"],
+				{
+					env: { CMUX_WORKSPACE_ID: "workspace-123" },
+					cmuxCommand: "/custom/cmux",
+					resolveExecutable: (command) => (command === "/custom/cmux" ? "/custom/cmux" : undefined),
+					runCmuxCommand: () => {
+						commandCount += 1
+						return { exitCode: 0, stderr: "" }
+					},
 				},
-			})
+			)
 
 			expect(result.terminalResult).toEqual({ success: true })
 			expect(commandCount).toBe(1)
@@ -433,14 +451,14 @@ setInterval(() => {}, 1000)
 		})
 
 		it("always builds new-workspace cmux command even with workspace context", () => {
-			const commands = buildCmuxCommandSequence(
-				{ workspaceID: "workspace-123" },
-				"/tmp/worktree",
-				"opencode --session abc",
-			)
+			const commands = buildCmuxCommandSequence({ workspaceID: "workspace-123" }, "/tmp/worktree", [
+				"opencode",
+				"--session",
+				"abc",
+			])
 
 			expect(commands).toEqual([
-				["new-workspace", "--cwd", "/tmp/worktree", "--command", "opencode --session abc"],
+				["new-workspace", "--cwd", "/tmp/worktree", "--command", '"opencode" "--session" "abc"'],
 			])
 			expect(commands.some((args) => args[0] === "select-workspace")).toBe(false)
 		})
@@ -454,7 +472,7 @@ setInterval(() => {}, 1000)
 		it("executes new-workspace cmux command when workspace context is available", async () => {
 			const executed: string[][] = []
 
-			const result = await openCmuxTerminal("/tmp/worktree", "opencode --session abc", {
+			const result = await openCmuxTerminal("/tmp/worktree", ["opencode", "--session", "abc"], {
 				env: { CMUX_WORKSPACE_ID: "workspace-123" },
 				resolveExecutable: () => "/usr/bin/cmux",
 				runCmuxCommand: (args) => {
@@ -465,13 +483,13 @@ setInterval(() => {}, 1000)
 
 			expect(result).toEqual({ success: true })
 			expect(executed).toEqual([
-				["new-workspace", "--cwd", "/tmp/worktree", "--command", "opencode --session abc"],
+				["new-workspace", "--cwd", "/tmp/worktree", "--command", '"opencode" "--session" "abc"'],
 			])
 			expect(executed.some((args) => args[0] === "select-workspace")).toBe(false)
 		})
 
 		it("returns failure when cmux command exits non-zero", async () => {
-			const result = await openCmuxTerminal("/tmp/worktree", "opencode --session abc", {
+			const result = await openCmuxTerminal("/tmp/worktree", ["opencode", "--session", "abc"], {
 				env: { CMUX_WORKSPACE_ID: "workspace-123" },
 				resolveExecutable: () => "/usr/bin/cmux",
 				runCmuxCommand: (args) => {
@@ -486,16 +504,20 @@ setInterval(() => {}, 1000)
 		})
 
 		it("handles async cmux runner rejection without falling through", async () => {
-			const result = await openCmuxTerminalWithState("/tmp/worktree", "opencode --session abc", {
-				env: { CMUX_WORKSPACE_ID: "workspace-123" },
-				resolveExecutable: () => "/usr/bin/cmux",
-				runCmuxCommand: async (args) => {
-					if (args[0] === "new-workspace") {
-						throw new Error("timed out")
-					}
-					return { exitCode: 0, stderr: "" }
+			const result = await openCmuxTerminalWithState(
+				"/tmp/worktree",
+				["opencode", "--session", "abc"],
+				{
+					env: { CMUX_WORKSPACE_ID: "workspace-123" },
+					resolveExecutable: () => "/usr/bin/cmux",
+					runCmuxCommand: async (args) => {
+						if (args[0] === "new-workspace") {
+							throw new Error("timed out")
+						}
+						return { exitCode: 0, stderr: "" }
+					},
 				},
-			})
+			)
 
 			expect(result).toEqual({
 				terminalResult: { success: false, error: "cmux new-workspace failed: timed out" },
@@ -507,11 +529,15 @@ setInterval(() => {}, 1000)
 			const { cmuxPath, markerPath, pidPath, cleanup } = createHangingCmuxExecutable()
 
 			try {
-				const result = await openCmuxTerminalWithState("/tmp/worktree", "opencode --session abc", {
-					env: { CMUX_WORKSPACE_ID: "workspace-123" },
-					resolveExecutable: () => cmuxPath,
-					cmuxCommand: cmuxPath,
-				})
+				const result = await openCmuxTerminalWithState(
+					"/tmp/worktree",
+					["opencode", "--session", "abc"],
+					{
+						env: { CMUX_WORKSPACE_ID: "workspace-123" },
+						resolveExecutable: () => cmuxPath,
+						cmuxCommand: cmuxPath,
+					},
+				)
 
 				expect(result.terminalResult.success).toBe(false)
 				expect(result.terminalResult.error).toContain("timed out")
@@ -563,16 +589,20 @@ setInterval(() => {}, 1000)
 		})
 
 		it("keeps pre-mutation status when new-workspace command exits non-zero", async () => {
-			const result = await openCmuxTerminalWithState("/tmp/worktree", "opencode --session abc", {
-				env: { CMUX_WORKSPACE_ID: "workspace-123" },
-				resolveExecutable: () => "/usr/bin/cmux",
-				runCmuxCommand: (args) => {
-					if (args[0] === "new-workspace") {
-						return { exitCode: 1, stderr: "send failed" }
-					}
-					return { exitCode: 0, stderr: "" }
+			const result = await openCmuxTerminalWithState(
+				"/tmp/worktree",
+				["opencode", "--session", "abc"],
+				{
+					env: { CMUX_WORKSPACE_ID: "workspace-123" },
+					resolveExecutable: () => "/usr/bin/cmux",
+					runCmuxCommand: (args) => {
+						if (args[0] === "new-workspace") {
+							return { exitCode: 1, stderr: "send failed" }
+						}
+						return { exitCode: 0, stderr: "" }
+					},
 				},
-			})
+			)
 
 			expect(result).toEqual({
 				terminalResult: { success: false, error: "cmux new-workspace failed: send failed" },
@@ -583,17 +613,22 @@ setInterval(() => {}, 1000)
 		it("openTerminal falls back when cmux fails before mutation", async () => {
 			let platformCalled = false
 
-			const result = await openTerminal("/tmp/worktree", "opencode --session abc", undefined, {
-				detectTerminalType: () => "cmux",
-				openCmuxTerminalWithState: async () => ({
-					terminalResult: { success: false, error: "cmux unavailable" },
-					hasStateMutation: false,
-				}),
-				openPlatformTerminal: async () => {
-					platformCalled = true
-					return { success: true }
+			const result = await openTerminal(
+				"/tmp/worktree",
+				["opencode", "--session", "abc"],
+				undefined,
+				{
+					detectTerminalType: () => "cmux",
+					openCmuxTerminalWithState: async () => ({
+						terminalResult: { success: false, error: "cmux unavailable" },
+						hasStateMutation: false,
+					}),
+					openPlatformTerminal: async () => {
+						platformCalled = true
+						return { success: true }
+					},
 				},
-			})
+			)
 
 			expect(platformCalled).toBe(true)
 			expect(result).toEqual({ success: true })
@@ -602,17 +637,22 @@ setInterval(() => {}, 1000)
 		it("openTerminal does not fallback after mutated cmux failure", async () => {
 			let platformCalled = false
 
-			const result = await openTerminal("/tmp/worktree", "opencode --session abc", undefined, {
-				detectTerminalType: () => "cmux",
-				openCmuxTerminalWithState: async () => ({
-					terminalResult: { success: false, error: "cmux send failed: send failed" },
-					hasStateMutation: true,
-				}),
-				openPlatformTerminal: async () => {
-					platformCalled = true
-					return { success: true }
+			const result = await openTerminal(
+				"/tmp/worktree",
+				["opencode", "--session", "abc"],
+				undefined,
+				{
+					detectTerminalType: () => "cmux",
+					openCmuxTerminalWithState: async () => ({
+						terminalResult: { success: false, error: "cmux send failed: send failed" },
+						hasStateMutation: true,
+					}),
+					openPlatformTerminal: async () => {
+						platformCalled = true
+						return { success: true }
+					},
 				},
-			})
+			)
 
 			expect(platformCalled).toBe(false)
 			expect(result).toEqual({ success: false, error: "cmux send failed: send failed" })
@@ -623,19 +663,24 @@ setInterval(() => {}, 1000)
 			let platformCalled = false
 
 			try {
-				const result = await openTerminal("/tmp/worktree", "opencode --session abc", undefined, {
-					detectTerminalType: () => "cmux",
-					openCmuxTerminalWithState: (cwd, command) =>
-						openCmuxTerminalWithState(cwd, command, {
-							env: { CMUX_WORKSPACE_ID: "workspace-123" },
-							resolveExecutable: () => cmuxPath,
-							cmuxCommand: cmuxPath,
-						}),
-					openPlatformTerminal: async () => {
-						platformCalled = true
-						return { success: true }
+				const result = await openTerminal(
+					"/tmp/worktree",
+					["opencode", "--session", "abc"],
+					undefined,
+					{
+						detectTerminalType: () => "cmux",
+						openCmuxTerminalWithState: (cwd, argv) =>
+							openCmuxTerminalWithState(cwd, argv, {
+								env: { CMUX_WORKSPACE_ID: "workspace-123" },
+								resolveExecutable: () => cmuxPath,
+								cmuxCommand: cmuxPath,
+							}),
+						openPlatformTerminal: async () => {
+							platformCalled = true
+							return { success: true }
+						},
 					},
-				})
+				)
 
 				expect(platformCalled).toBe(false)
 				expect(result.success).toBe(false)
