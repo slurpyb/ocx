@@ -12,6 +12,7 @@
  */
 
 import type { Database } from "bun:sqlite"
+import { constants as fsConstants } from "node:fs"
 import { access, copyFile, cp, mkdir, rm, stat, symlink } from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
@@ -209,7 +210,7 @@ async function pathPointsToLaunchableBinary(absolutePath: string): Promise<boole
 			return false
 		}
 
-		await access(absolutePath)
+		await access(absolutePath, fsConstants.X_OK)
 		return true
 	} catch {
 		return false

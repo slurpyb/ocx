@@ -3,7 +3,7 @@
  * Tests database initialization, session CRUD, pending operations, and concurrent access.
  */
 
-import type { Database } from "bun:sqlite"
+import { type Database, Database as SqliteDatabase } from "bun:sqlite"
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test"
 import fs from "node:fs"
 import os from "node:os"
@@ -116,6 +116,44 @@ describe("worktree-state", () => {
 			await expect(initStateDb(null as unknown as string)).rejects.toThrow(
 				"valid project root path",
 			)
+		})
+
+		it("should tolerate concurrent launch metadata column migration", async () => {
+			const projectRoot = path.join(testDir, "migration-race")
+			fs.mkdirSync(projectRoot, { recursive: true })
+
+			const projectId = await getProjectId(projectRoot)
+			const dbDir = path.join(os.homedir(), ".local", "share", "opencode", "plugins", "worktree")
+			const dbPath = path.join(dbDir, `${projectId}.sqlite`)
+
+			fs.mkdirSync(dbDir, { recursive: true })
+			const legacyDb = new SqliteDatabase(dbPath)
+			legacyDb.exec("DROP TABLE IF EXISTS sessions")
+			legacyDb.exec(`
+				CREATE TABLE sessions (
+					id TEXT PRIMARY KEY,
+					branch TEXT NOT NULL,
+					path TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				)
+			`)
+			legacyDb.close()
+
+			const handles = await Promise.all(Array.from({ length: 12 }, () => initStateDb(projectRoot)))
+			for (const handle of handles) {
+				handle.close()
+			}
+
+			const migratedDb = new SqliteDatabase(dbPath)
+			const tableInfo = migratedDb.prepare("PRAGMA table_info(sessions)").all() as Array<{
+				name: string
+			}>
+			const columns = new Set(tableInfo.map((column) => column.name))
+			migratedDb.close()
+
+			expect(columns.has("launch_mode")).toBe(true)
+			expect(columns.has("profile")).toBe(true)
+			expect(columns.has("ocx_bin")).toBe(true)
 		})
 	})
 

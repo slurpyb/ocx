@@ -192,16 +192,40 @@ function ensureSessionLaunchMetadataColumns(db: Database): void {
 	const sessionColumns = new Set(tableInfo.map((column) => column.name).filter(Boolean))
 
 	if (!sessionColumns.has("launch_mode")) {
-		db.exec("ALTER TABLE sessions ADD COLUMN launch_mode TEXT")
+		addSessionColumn(db, "launch_mode", "ALTER TABLE sessions ADD COLUMN launch_mode TEXT")
 	}
 
 	if (!sessionColumns.has("profile")) {
-		db.exec("ALTER TABLE sessions ADD COLUMN profile TEXT")
+		addSessionColumn(db, "profile", "ALTER TABLE sessions ADD COLUMN profile TEXT")
 	}
 
 	if (!sessionColumns.has("ocx_bin")) {
-		db.exec("ALTER TABLE sessions ADD COLUMN ocx_bin TEXT")
+		addSessionColumn(db, "ocx_bin", "ALTER TABLE sessions ADD COLUMN ocx_bin TEXT")
 	}
+}
+
+function addSessionColumn(db: Database, columnName: string, sql: string): void {
+	try {
+		db.exec(sql)
+	} catch (error) {
+		if (isDuplicateColumnError(error, columnName)) {
+			return
+		}
+
+		throw error
+	}
+}
+
+function isDuplicateColumnError(error: unknown, columnName: string): boolean {
+	if (!(error instanceof Error)) {
+		return false
+	}
+
+	const normalizedMessage = error.message.toLowerCase()
+	return (
+		normalizedMessage.includes("duplicate column name") &&
+		normalizedMessage.includes(columnName.toLowerCase())
+	)
 }
 
 function normalizeSessionRow(row: Record<string, string | null>): Session {

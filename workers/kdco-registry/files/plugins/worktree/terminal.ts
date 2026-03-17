@@ -139,10 +139,6 @@ function normalizeArgv(argv?: string[]): string[] {
 		return []
 	}
 
-	if (argv.length === 0) {
-		throw new Error("Launch argv must contain at least one argument")
-	}
-
 	return argv
 }
 
@@ -161,7 +157,7 @@ export function buildBatchCommandFromArgv(argv?: string[]): string | undefined {
 		return undefined
 	}
 
-	return normalizedArgv.map((arg) => `"${escapeBatch(arg)}"`).join(" ")
+	return normalizedArgv.map((arg) => `"${escapeBatch(arg).replace(/"/g, '""')}"`).join(" ")
 }
 
 type ResolveExecutable = (command: string) => string | null | undefined

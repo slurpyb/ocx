@@ -9,6 +9,8 @@ import os from "node:os"
 import path from "node:path"
 import { escapeAppleScript, escapeBash, escapeBatch } from "../files/plugins/kdco-primitives/shell"
 import {
+	buildBashCommandFromArgv,
+	buildBatchCommandFromArgv,
 	buildCmuxCommandSequence,
 	canUseCmuxWorkflow,
 	detectCmuxContext,
@@ -164,6 +166,18 @@ describe("worktree-terminal", () => {
 				expect(result).toContain("^>")
 				expect(result).toContain("^|")
 				expect(result).toContain("^^")
+			})
+		})
+
+		describe("argv command builders", () => {
+			it("treats empty argv as no command", () => {
+				expect(buildBashCommandFromArgv([])).toBeUndefined()
+				expect(buildBatchCommandFromArgv([])).toBeUndefined()
+			})
+
+			it("escapes embedded double quotes in batch arguments", () => {
+				const command = buildBatchCommandFromArgv(["ocx", "--message", 'say "hello"'])
+				expect(command).toBe('"ocx" "--message" "say ""hello"""')
 			})
 		})
 	})

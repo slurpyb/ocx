@@ -1,5 +1,8 @@
 import type { Database } from "bun:sqlite"
 import { describe, expect, it } from "bun:test"
+import { chmod, mkdtemp, rm } from "node:fs/promises"
+import * as os from "node:os"
+import * as path from "node:path"
 import {
 	ensureLaunchContextExecutable,
 	ensureLaunchContextProfile,
@@ -24,20 +27,51 @@ describe("worktree launch preflight", () => {
 		expect(validated.ocxBin).toBe("/opt/bin/ocx")
 	})
 
-	it("fails loud for stale path-based OCX launchers", async () => {
+	it("fails loud for stale PATH-resolved OCX launchers", async () => {
+		let checkedPath: string | undefined
+
 		await expect(
 			ensureLaunchContextExecutable(
 				{
 					mode: "ocx",
-					ocxBin: "./definitely-missing-ocx-launcher",
+					ocxBin: "ocx",
 					profile: "work",
 				},
 				"/tmp/repo",
 				{
-					pathExists: async () => false,
+					resolveExecutable: (command) => (command === "ocx" ? "/opt/bin/ocx" : undefined),
+					pathExists: async (resolvedPath) => {
+						checkedPath = resolvedPath
+						return false
+					},
 				},
 			),
 		).rejects.toThrow(/missing or stale/i)
+
+		expect(checkedPath).toBe("/opt/bin/ocx")
+	})
+
+	it("fails loud for non-executable OCX binaries", async () => {
+		if (process.platform === "win32") {
+			return
+		}
+
+		const tempDir = await mkdtemp(path.join(os.tmpdir(), "worktree-ocx-bin-test-"))
+		const nonExecutablePath = path.join(tempDir, "ocx")
+
+		try {
+			await Bun.write(nonExecutablePath, "#!/bin/sh\nexit 0\n")
+			await chmod(nonExecutablePath, 0o644)
+
+			await expect(
+				ensureLaunchContextExecutable(
+					{ mode: "ocx", ocxBin: nonExecutablePath, profile: "work" },
+					"/tmp/repo",
+				),
+			).rejects.toThrow(/missing or stale/i)
+		} finally {
+			await rm(tempDir, { recursive: true, force: true })
+		}
 	})
 
 	it("fails loud for missing OCX profiles before terminal launch", async () => {
