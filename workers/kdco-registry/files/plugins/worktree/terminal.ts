@@ -21,6 +21,8 @@ import {
 	isInsideTmux,
 	logWarn,
 	Mutex,
+	TimeoutError,
+	withTimeout,
 } from "../kdco-primitives"
 
 // =============================================================================
@@ -124,13 +126,28 @@ function getWarpLaunchConfigDir(): string {
 // =============================================================================
 
 /** Terminal type for the current platform */
-export type TerminalType = "tmux" | "macos" | "windows" | "linux-desktop"
+export type TerminalType = "tmux" | "cmux" | "macos" | "windows" | "linux-desktop"
 
 /** Result of a terminal operation */
 export interface TerminalResult {
 	success: boolean
 	error?: string
 }
+
+type ResolveExecutable = (command: string) => string | null | undefined
+type CmuxEnvironment = Record<string, string | undefined>
+type CmuxCommandResult = {
+	exitCode: number
+	stderr: string
+}
+type RunCmuxCommand = (args: string[]) => CmuxCommandResult | Promise<CmuxCommandResult>
+
+export interface CmuxTerminalExecutionResult {
+	terminalResult: TerminalResult
+	hasStateMutation: boolean
+}
+
+const CMUX_COMMAND_TIMEOUT_MS = 1500
 
 // Singleton mutex for all tmux operations in this process
 const tmuxMutex = new Mutex()
@@ -146,6 +163,14 @@ const STABILIZATION_DELAY_MS = 150
 const wslEnvSchema = z.object({
 	WSL_DISTRO_NAME: z.string().optional(),
 	WSLENV: z.string().optional(),
+})
+
+/** Validates cmux environment detection */
+const cmuxEnvSchema = z.object({
+	CMUX_WORKSPACE_ID: z.string().optional(),
+	CMUX_SURFACE_ID: z.string().optional(),
+	CMUX_SOCKET_PATH: z.string().optional(),
+	CMUX_SOCKET_MODE: z.string().optional(),
 })
 
 /** Validates Linux terminal environment detection */
@@ -207,18 +232,50 @@ function isInsideWSL(): boolean {
 	}
 }
 
-/**
- * Detect the best terminal type for the current platform.
- * Priority: tmux > WSL > platform-specific
- *
- * @returns The detected terminal type
- */
-export function detectTerminalType(): TerminalType {
-	// tmux takes priority - user may be inside tmux on any platform
-	if (isInsideTmux()) {
-		return "tmux"
+export interface CmuxContext {
+	workspaceID?: string
+	surfaceID?: string
+	socketPath?: string
+	socketMode?: string
+}
+
+function normalizeCmuxValue(value?: string): string | undefined {
+	const trimmed = value?.trim()
+	return trimmed ? trimmed : undefined
+}
+
+export function detectCmuxContext(env: CmuxEnvironment = process.env): CmuxContext {
+	const parsed = cmuxEnvSchema.parse(env)
+
+	return {
+		workspaceID: normalizeCmuxValue(parsed.CMUX_WORKSPACE_ID),
+		surfaceID: normalizeCmuxValue(parsed.CMUX_SURFACE_ID),
+		socketPath: normalizeCmuxValue(parsed.CMUX_SOCKET_PATH),
+		socketMode: normalizeCmuxValue(parsed.CMUX_SOCKET_MODE),
+	}
+}
+
+export function canUseCmuxWorkflow(
+	env: CmuxEnvironment = process.env,
+	resolveExecutable: ResolveExecutable = (command) => Bun.which(command),
+	cmuxExecutable: string = "cmux",
+): boolean {
+	if (!resolveExecutable(cmuxExecutable)) {
+		return false
 	}
 
+	const context = detectCmuxContext(env)
+	if (context.workspaceID) {
+		return true
+	}
+
+	const socketModeAllowsExternalControl = context.socketMode?.toLowerCase() === "allowall"
+	return Boolean(context.socketPath && socketModeAllowsExternalControl)
+}
+
+type PlatformTerminalType = Exclude<TerminalType, "tmux" | "cmux">
+
+function detectPlatformTerminalType(): PlatformTerminalType {
 	// WSL check (Linux inside Windows) - before platform detection
 	if (process.platform === "linux" && isInsideWSL()) {
 		return "windows" // Use Windows Terminal via interop
@@ -235,6 +292,25 @@ export function detectTerminalType(): TerminalType {
 		default:
 			return "linux-desktop"
 	}
+}
+
+/**
+ * Detect the best terminal type for the current platform.
+ * Priority: tmux > cmux > WSL/platform-specific
+ *
+ * @returns The detected terminal type
+ */
+export function detectTerminalType(): TerminalType {
+	// tmux takes priority - user may be inside tmux on any platform
+	if (isInsideTmux()) {
+		return "tmux"
+	}
+
+	if (canUseCmuxWorkflow()) {
+		return "cmux"
+	}
+
+	return detectPlatformTerminalType()
 }
 
 // =============================================================================
@@ -324,6 +400,138 @@ exec $SHELL`,
 			}
 		}
 	})
+}
+
+// =============================================================================
+// CMUX OPERATIONS
+// =============================================================================
+
+export function buildCmuxCommandSequence(
+	_context: CmuxContext,
+	cwd: string,
+	command?: string,
+): string[][] {
+	// Product policy: each worktree launch gets a new cmux workspace.
+	// We intentionally do not reuse the current workspace context.
+	const cmuxArgs = ["new-workspace", "--cwd", cwd]
+
+	if (command) {
+		cmuxArgs.push("--command", escapeBash(command))
+	}
+
+	return [cmuxArgs]
+}
+
+async function runCmuxCommandWithBun(
+	cmuxCommand: string,
+	args: string[],
+): Promise<CmuxCommandResult> {
+	const proc = Bun.spawn([cmuxCommand, ...args], {
+		stdout: "ignore",
+		stderr: "pipe",
+	})
+
+	try {
+		const exitCode = await withTimeout(
+			proc.exited,
+			CMUX_COMMAND_TIMEOUT_MS,
+			`cmux ${args[0]} timed out after ${CMUX_COMMAND_TIMEOUT_MS}ms`,
+		)
+		const stderr = await new Response(proc.stderr).text()
+		return {
+			exitCode,
+			stderr: stderr.trim(),
+		}
+	} catch (error) {
+		if (error instanceof TimeoutError) {
+			try {
+				proc.kill()
+			} catch {
+				// Best-effort process cleanup
+			}
+		}
+
+		throw error
+	}
+}
+
+export async function openCmuxTerminalWithState(
+	cwd: string,
+	command?: string,
+	options?: {
+		env?: CmuxEnvironment
+		resolveExecutable?: ResolveExecutable
+		runCmuxCommand?: RunCmuxCommand
+		cmuxCommand?: string
+	},
+): Promise<CmuxTerminalExecutionResult> {
+	if (!cwd) {
+		return {
+			terminalResult: { success: false, error: "Working directory is required" },
+			hasStateMutation: false,
+		}
+	}
+
+	const env = options?.env ?? process.env
+	const cmuxCommand = options?.cmuxCommand ?? "cmux"
+	const resolveExecutable = options?.resolveExecutable ?? ((executable) => Bun.which(executable))
+	if (!canUseCmuxWorkflow(env, resolveExecutable, cmuxCommand)) {
+		return {
+			terminalResult: { success: false, error: "cmux environment not available" },
+			hasStateMutation: false,
+		}
+	}
+
+	const context = detectCmuxContext(env)
+	const runCmuxCommand: RunCmuxCommand =
+		options?.runCmuxCommand ?? ((args) => runCmuxCommandWithBun(cmuxCommand, args))
+	const commandSequence = buildCmuxCommandSequence(context, cwd, command)
+	let hasStateMutation = false
+
+	for (const args of commandSequence) {
+		let result: CmuxCommandResult
+		try {
+			result = await runCmuxCommand(args)
+		} catch (error) {
+			const hasIndeterminateMutation = error instanceof TimeoutError
+			return {
+				terminalResult: {
+					success: false,
+					error: `cmux ${args[0]} failed: ${error instanceof Error ? error.message : String(error)}`,
+				},
+				hasStateMutation: hasStateMutation || hasIndeterminateMutation,
+			}
+		}
+
+		if (result.exitCode !== 0) {
+			const stderr = result.stderr || "unknown cmux error"
+			return {
+				terminalResult: {
+					success: false,
+					error: `cmux ${args[0]} failed: ${stderr}`,
+				},
+				hasStateMutation,
+			}
+		}
+
+		hasStateMutation = true
+	}
+
+	return { terminalResult: { success: true }, hasStateMutation }
+}
+
+export async function openCmuxTerminal(
+	cwd: string,
+	command?: string,
+	options?: {
+		env?: CmuxEnvironment
+		resolveExecutable?: ResolveExecutable
+		runCmuxCommand?: RunCmuxCommand
+		cmuxCommand?: string
+	},
+): Promise<TerminalResult> {
+	const result = await openCmuxTerminalWithState(cwd, command, options)
+	return result.terminalResult
 }
 
 // =============================================================================
@@ -1080,17 +1288,55 @@ export async function openTerminal(
 	cwd: string,
 	command?: string,
 	windowName?: string,
+	options?: {
+		detectTerminalType?: () => TerminalType
+		openCmuxTerminalWithState?: (
+			cwd: string,
+			command?: string,
+		) => Promise<CmuxTerminalExecutionResult>
+		openPlatformTerminal?: (cwd: string, command?: string) => Promise<TerminalResult>
+	},
 ): Promise<TerminalResult> {
-	const terminalType = detectTerminalType()
+	const terminalType = options?.detectTerminalType?.() ?? detectTerminalType()
+	if (terminalType === "cmux") {
+		const cmuxResult = await (options?.openCmuxTerminalWithState ?? openCmuxTerminalWithState)(
+			cwd,
+			command,
+		)
+		if (cmuxResult.terminalResult.success) {
+			return cmuxResult.terminalResult
+		}
+
+		if (!cmuxResult.hasStateMutation) {
+			return (options?.openPlatformTerminal ?? openPlatformTerminal)(cwd, command)
+		}
+
+		return cmuxResult.terminalResult
+	}
+
+	return openTerminalByType(terminalType, cwd, command, windowName)
+}
+
+async function openPlatformTerminal(cwd: string, command?: string): Promise<TerminalResult> {
+	const platformTerminalType = detectPlatformTerminalType()
+	return openTerminalByType(platformTerminalType, cwd, command)
+}
+
+async function openTerminalByType(
+	terminalType: Exclude<TerminalType, "cmux">,
+	cwd: string,
+	command?: string,
+	windowName?: string,
+): Promise<TerminalResult> {
+	if (terminalType === "tmux") {
+		return openTmuxWindow({
+			windowName: windowName || "worktree",
+			cwd,
+			command,
+		})
+	}
 
 	switch (terminalType) {
-		case "tmux":
-			return openTmuxWindow({
-				windowName: windowName || "worktree",
-				cwd,
-				command,
-			})
-
 		case "macos":
 			return openMacOSTerminal(cwd, command)
 
