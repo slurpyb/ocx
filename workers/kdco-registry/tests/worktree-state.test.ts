@@ -224,7 +224,71 @@ describe("worktree-state", () => {
 			addSession(db, session)
 
 			const retrieved = getSession(db, "test-session-123")
-			expect(retrieved).toEqual(session)
+			expect(retrieved).toEqual({
+				...session,
+				launchMode: "plain",
+				profile: null,
+				ocxBin: null,
+			})
+		})
+
+		it("should persist and retrieve OCX launch metadata", () => {
+			addSession(db, {
+				id: "ocx-session",
+				branch: "feature/ocx",
+				path: "/path/ocx",
+				createdAt: "2026-01-07T12:30:00.000Z",
+				launchMode: "ocx",
+				profile: "work",
+				ocxBin: "/usr/local/bin/ocx",
+			})
+
+			const session = getSession(db, "ocx-session")
+			expect(session).toEqual({
+				id: "ocx-session",
+				branch: "feature/ocx",
+				path: "/path/ocx",
+				createdAt: "2026-01-07T12:30:00.000Z",
+				launchMode: "ocx",
+				profile: "work",
+				ocxBin: "/usr/local/bin/ocx",
+			})
+		})
+
+		it("should interpret legacy rows without launch metadata as plain", () => {
+			db.prepare(
+				`INSERT OR REPLACE INTO sessions (id, branch, path, created_at) VALUES ($id, $branch, $path, $createdAt)`,
+			).run({
+				$id: "legacy-session",
+				$branch: "legacy-branch",
+				$path: "/legacy/path",
+				$createdAt: "2026-01-07T13:00:00.000Z",
+			})
+
+			const session = getSession(db, "legacy-session")
+			expect(session).toEqual({
+				id: "legacy-session",
+				branch: "legacy-branch",
+				path: "/legacy/path",
+				createdAt: "2026-01-07T13:00:00.000Z",
+				launchMode: "plain",
+				profile: null,
+				ocxBin: null,
+			})
+		})
+
+		it("should fail loud for invalid persisted ocx metadata", () => {
+			db.prepare(
+				`INSERT OR REPLACE INTO sessions (id, branch, path, created_at, launch_mode, profile, ocx_bin)
+				 VALUES ($id, $branch, $path, $createdAt, 'ocx', NULL, '/stale/ocx')`,
+			).run({
+				$id: "invalid-ocx",
+				$branch: "invalid-ocx-branch",
+				$path: "/invalid/ocx",
+				$createdAt: "2026-01-07T14:00:00.000Z",
+			})
+
+			expect(() => getSession(db, "invalid-ocx")).toThrow(/launch metadata/i)
 		})
 
 		it("should getSession retrieve existing session by ID", () => {
