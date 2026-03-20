@@ -149,6 +149,18 @@ If you prefer not to use OCX, copy the plugin files into `.opencode/plugins/` an
 
 This plugin is part of the [KDCO Registry](https://github.com/kdcokenny/ocx/tree/main/registry/src/kdco). For the full experience, check out [kdco-workspace](https://github.com/kdcokenny/ocx) which bundles notifications with background agents, specialist agents, and planning tools.
 
+## Contributing
+
+This facade is maintained from the main [OCX monorepo](https://github.com/kdcokenny/ocx).
+
+If you want to update opencode-notify itself, start here:
+
+- https://github.com/kdcokenny/ocx/blob/main/workers/kdco-registry/files/plugins/notify.ts
+
+- Open issues here: https://github.com/kdcokenny/ocx/issues/new
+- Open pull requests here: https://github.com/kdcokenny/ocx/compare
+- Please do **not** open issues or PRs in this facade repository.
+
 ## Disclaimer
 
 This project is not built by the OpenCode team and is not affiliated with [OpenCode](https://github.com/sst/opencode) in any way.
