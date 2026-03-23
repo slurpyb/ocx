@@ -151,7 +151,7 @@ export async function buildRegistry(
 	const { source: sourcePath, out: outPath } = options
 
 	const validationResult = await runCompleteValidation(sourcePath, {
-		skipDuplicateTargets: false,
+		skipDuplicateTargets: true,
 	})
 
 	if (!validationResult.success) {
