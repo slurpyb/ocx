@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises"
+import { builtinModules } from "node:module"
 import { tmpdir } from "node:os"
 import { dirname, extname, join, relative, resolve } from "node:path"
 import ts from "typescript"
@@ -20,7 +21,16 @@ import type { PluginLoadabilityIssue, PluginLoadabilityValidationResult } from "
 const VALIDATION_ROOT_PREFIX = "ocx-plugin-validation-"
 const RUNTIME_SMOKE_RESULT_FILE_PREFIX = ".ocx-plugin-runtime-smoke-"
 
-const ENTRYPOINT_EXTENSIONS = new Set([".ts", ".js"])
+const ENTRYPOINT_EXTENSIONS = new Set([
+	".ts",
+	".js",
+	".mjs",
+	".cjs",
+	".mts",
+	".cts",
+	".tsx",
+	".jsx",
+])
 
 const LOCAL_RESOLUTION_EXTENSIONS = [
 	"",
@@ -48,6 +58,15 @@ const INDEX_CANDIDATES = [
 ]
 
 const NON_DETERMINISTIC_PLUGIN_VERSIONS = new Set(["*", "latest"])
+
+const EXACT_PINNED_SEMVER_VERSION =
+	/^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
+
+const NODE_BUILTIN_PACKAGE_NAMES = new Set(
+	builtinModules
+		.map((moduleName) => (moduleName.startsWith("node:") ? moduleName.slice(5) : moduleName))
+		.map((moduleName) => moduleName.split("/")[0] ?? moduleName),
+)
 
 interface PackagePluginSpec {
 	rawSpecifier: string
@@ -392,7 +411,24 @@ function isDeterministicPluginSpecifier(specifier: string, parsedVersion: string
 		return false
 	}
 
-	return !NON_DETERMINISTIC_PLUGIN_VERSIONS.has(parsedVersion.toLowerCase())
+	return isDeterministicPluginVersion(parsedVersion)
+}
+
+function isDeterministicPluginVersion(version: string): boolean {
+	const normalizedVersion = version.trim()
+	if (!normalizedVersion) {
+		return false
+	}
+
+	if (normalizedVersion.startsWith("file:")) {
+		return true
+	}
+
+	if (NON_DETERMINISTIC_PLUGIN_VERSIONS.has(normalizedVersion.toLowerCase())) {
+		return false
+	}
+
+	return EXACT_PINNED_SEMVER_VERSION.test(normalizedVersion)
 }
 
 function hasExplicitSpecifierVersion(specifier: string): boolean {
@@ -805,7 +841,14 @@ function extractPackageNameFromImportSpecifier(specifier: string): string | null
 		return null
 	}
 
-	const normalizedSpecifier = specifier.startsWith("npm:") ? specifier.slice(4) : specifier
+	const isNpmProtocolImport = specifier.startsWith("npm:")
+	const normalizedSpecifier = stripSpecifierQuery(
+		isNpmProtocolImport ? specifier.slice(4) : specifier,
+	).trim()
+
+	if (!normalizedSpecifier) {
+		return null
+	}
 
 	if (
 		normalizedSpecifier.startsWith("./") ||
@@ -822,16 +865,59 @@ function extractPackageNameFromImportSpecifier(specifier: string): string | null
 		return null
 	}
 
+	if (isNpmProtocolImport) {
+		return extractNpmProtocolPackageName(normalizedSpecifier)
+	}
+
 	if (normalizedSpecifier.startsWith("@")) {
 		const segments = normalizedSpecifier.split("/")
 		if (segments.length < 2) {
 			return normalizedSpecifier
 		}
-		return `${segments[0]}/${segments[1]}`
+		const packageName = `${segments[0]}/${segments[1]}`
+		if (NODE_BUILTIN_PACKAGE_NAMES.has(packageName)) {
+			return null
+		}
+		return packageName
 	}
 
 	const [packageName] = normalizedSpecifier.split("/")
+	if (!packageName) {
+		return null
+	}
+
+	if (NODE_BUILTIN_PACKAGE_NAMES.has(packageName)) {
+		return null
+	}
+
 	return packageName ?? null
+}
+
+function extractNpmProtocolPackageName(specifier: string): string | null {
+	if (specifier.startsWith("@")) {
+		const segments = specifier.split("/")
+		if (segments.length < 2 || !segments[0] || !segments[1]) {
+			return null
+		}
+
+		const packageWithVersion = `${segments[0]}/${segments[1]}`
+		return safelyParseDependencyName(packageWithVersion)
+	}
+
+	const [packageWithVersion] = specifier.split("/")
+	if (!packageWithVersion) {
+		return null
+	}
+
+	return safelyParseDependencyName(packageWithVersion)
+}
+
+function safelyParseDependencyName(specifier: string): string {
+	try {
+		return parseNpmDependencySpecifier(specifier).name
+	} catch {
+		return specifier
+	}
 }
 
 async function writeValidationWorkspacePackageJson(

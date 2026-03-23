@@ -643,6 +643,29 @@ describe("validatePluginLoadability", () => {
 		)
 	})
 
+	it("does not flag bare Node builtins as undeclared external dependencies", async () => {
+		await mkdir(join(testDir, "files", "plugins"), { recursive: true })
+		await writeFile(
+			join(testDir, "files", "plugins", "builtins.ts"),
+			[
+				'import path from "path"',
+				'import os from "os"',
+				'import { readFile } from "fs/promises"',
+				"export default { sep: path.sep, cwd: process.cwd, tmpdir: os.tmpdir, readFile }",
+			].join("\n"),
+		)
+
+		const registry = createRegistry([
+			{ path: "plugins/builtins.ts", target: "plugins/builtins.ts" },
+		])
+		const result = await validatePluginLoadability(registry, testDir)
+
+		expect(result.valid).toBe(true)
+		expect(
+			result.issues.some((issue) => issue.code === "plugin_external_dependency_undeclared"),
+		).toBe(false)
+	})
+
 	it("ignores type-only imports and exports for dependency checks", async () => {
 		await mkdir(join(testDir, "files", "plugins"), { recursive: true })
 		await mkdir(join(testDir, "files", "shared"), { recursive: true })
@@ -702,6 +725,64 @@ describe("validatePluginLoadability", () => {
 		expect(result.errors).toEqual([])
 	})
 
+	it("does not misclassify versioned npm: imports for unscoped packages", async () => {
+		const localDependency = await createLocalPackageFixture(testDir, {
+			name: "versioned-import-dep",
+			version: "4.17.21",
+			entrypointCode: "export default { ok: true }\n",
+		})
+
+		await mkdir(join(testDir, "files", "plugins"), { recursive: true })
+		await writeFile(
+			join(testDir, "files", "plugins", "versioned-unscoped.ts"),
+			[
+				'import dep from "npm:versioned-import-dep@4.17.21"',
+				'import "./missing-local"',
+				"export default dep",
+			].join("\n"),
+		)
+
+		const registry = createRegistry(
+			[{ path: "plugins/versioned-unscoped.ts", target: "plugins/versioned-unscoped.ts" }],
+			{
+				npmDependencies: [localDependency.specifier],
+			},
+		)
+
+		const result = await validatePluginLoadability(registry, testDir)
+
+		expect(
+			result.issues.some((issue) => issue.code === "plugin_external_dependency_undeclared"),
+		).toBe(false)
+		expect(
+			result.issues.some((issue) => issue.code === "plugin_static_local_import_unresolved"),
+		).toBe(true)
+	})
+
+	it("does not misclassify versioned npm: imports for scoped host packages", async () => {
+		await mkdir(join(testDir, "files", "plugins"), { recursive: true })
+		await writeFile(
+			join(testDir, "files", "plugins", "versioned-scoped.ts"),
+			[
+				'import { tool } from "npm:@opencode-ai/plugin@0.0.0"',
+				'import "./missing-local"',
+				"export default tool",
+			].join("\n"),
+		)
+
+		const registry = createRegistry([
+			{ path: "plugins/versioned-scoped.ts", target: "plugins/versioned-scoped.ts" },
+		])
+		const result = await validatePluginLoadability(registry, testDir)
+
+		expect(
+			result.issues.some((issue) => issue.code === "plugin_external_dependency_undeclared"),
+		).toBe(false)
+		expect(
+			result.issues.some((issue) => issue.code === "plugin_static_local_import_unresolved"),
+		).toBe(true)
+	})
+
 	it("validates opencode.plugin package imports from deterministic local fixtures", async () => {
 		const localPlugin = await createLocalPackageFixture(testDir, {
 			name: "fixture-plugin",
@@ -750,6 +831,35 @@ describe("validatePluginLoadability", () => {
 		expect(result.valid).toBe(true)
 		expect(result.errors).toEqual([])
 		expect(result.warnings.some((warning) => warning.includes("non-deterministic"))).toBe(true)
+	})
+
+	it("warns for range and tag plugin versions instead of treating them as deterministic", async () => {
+		const nonDeterministicSpecs = [
+			"missing-range-plugin@^1.2.0",
+			"missing-wildcard-plugin@1.x",
+			"missing-tag-plugin@next",
+			"missing-beta-plugin@beta",
+		]
+
+		const registry = createRegistry([], {
+			opencode: {
+				plugin: nonDeterministicSpecs,
+			},
+		})
+
+		const result = await validatePluginLoadability(registry, testDir)
+
+		expect(result.valid).toBe(true)
+		expect(result.errors).toEqual([])
+
+		const nonDeterministicIssues = result.issues.filter(
+			(issue) => issue.code === "plugin_package_spec_nondeterministic",
+		)
+		expect(nonDeterministicIssues).toHaveLength(nonDeterministicSpecs.length)
+
+		for (const spec of nonDeterministicSpecs) {
+			expect(result.warnings.some((warning) => warning.includes(`"${spec}"`))).toBe(true)
+		}
 	})
 
 	it("preserves all owning components for shared opencode.plugin diagnostics", async () => {
@@ -852,14 +962,32 @@ describe("validatePluginLoadability", () => {
 		).toBe(true)
 	})
 
-	it("supports .js plugin entrypoints", async () => {
+	it("validates all Bun-supported plugin entrypoint extensions", async () => {
+		const supportedExtensions = [".ts", ".js", ".mjs", ".cjs", ".mts", ".cts", ".tsx", ".jsx"]
+
 		await mkdir(join(testDir, "files", "plugins"), { recursive: true })
-		await writeFile(join(testDir, "files", "plugins", "plain.js"), "export default { ok: true }\n")
 
-		const registry = createRegistry([{ path: "plugins/plain.js", target: "plugins/plain.js" }])
-		const result = await validatePluginLoadability(registry, testDir)
+		for (const extension of supportedExtensions) {
+			const fileName = `entry${extension}`
+			await writeFile(
+				join(testDir, "files", "plugins", fileName),
+				'import leftPad from "left-pad"\nexport default leftPad\n',
+			)
 
-		expect(result.valid).toBe(true)
+			const registry = createRegistry([
+				{ path: `plugins/${fileName}`, target: `plugins/${fileName}` },
+			])
+			const result = await validatePluginLoadability(registry, testDir)
+
+			expect(result.valid).toBe(false)
+			expect(
+				result.issues.some(
+					(issue) =>
+						issue.code === "plugin_external_dependency_undeclared" &&
+						issue.affectedEntrypoints.includes(`.opencode/plugins/${fileName}`),
+				),
+			).toBe(true)
+		}
 	})
 
 	it("cleans up ocx-plugin-validation-* workspaces on failure", async () => {

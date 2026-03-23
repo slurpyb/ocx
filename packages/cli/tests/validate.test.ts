@@ -168,6 +168,39 @@ describe("ocx validate", () => {
 		expect(result.data.warnings.some((warning) => warning.includes("non-deterministic"))).toBe(true)
 	})
 
+	it("shows all operational validation failure details in non-JSON mode", async () => {
+		const sourceDir = join(testDir, "registry-operational-failure")
+		await mkdir(sourceDir, { recursive: true })
+
+		await writeFile(
+			join(sourceDir, "registry.json"),
+			JSON.stringify({
+				$schema: REGISTRY_SCHEMA_V2_URL,
+				name: "Operational Failure Registry",
+				version: "1.0.0",
+				author: "Test Author",
+				components: [
+					{
+						name: "ops-failure",
+						type: "skill",
+						description: "Forcing install failure",
+						files: [],
+						dependencies: [],
+						opencode: {
+							plugin: ["broken-plugin@file:/definitely/not/a/real/package"],
+						},
+					},
+				],
+			}),
+		)
+
+		const { exitCode, output } = await runCLI(["validate", "registry-operational-failure"], testDir)
+
+		expect(exitCode).toBe(EXIT_CODES.GENERAL)
+		expect(output).toContain("Failed to hydrate plugin validation dependencies")
+		expect(output).toContain("exitCode=")
+	})
+
 	it("should report validation errors for missing source files", async () => {
 		const sourceDir = join(testDir, "registry")
 		await mkdir(sourceDir, { recursive: true })

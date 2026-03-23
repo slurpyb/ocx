@@ -171,6 +171,19 @@ export function registerValidateCommand(program: Command): void {
 					process.exit(exitCode)
 				}
 
+				if (error instanceof BuildRegistryError) {
+					if (options.json) {
+						handleError(error, { json: true })
+					}
+
+					if (!options.quiet) {
+						logger.error(error.message)
+						outputValidationErrors(error.errors)
+					}
+
+					process.exit(EXIT_CODES.GENERAL)
+				}
+
 				handleError(error, { json: options.json })
 			}
 		})
