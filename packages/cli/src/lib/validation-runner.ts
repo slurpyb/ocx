@@ -8,16 +8,20 @@ import type { Registry } from "../schemas/registry"
 import {
 	type LoadRegistryErrorKind,
 	loadRegistrySource,
+	PluginLoadabilityOperationalError,
+	type RegistryValidationIssue,
 	type ValidateRegistryOptions,
+	validateRegistryRules,
 	validateRegistrySchema,
-	validateRegistryWithOptions,
 } from "./validators"
 
-export type ValidationFailureType = "load" | "schema" | "rules"
+export type ValidationFailureType = "load" | "schema" | "rules" | "operational"
 
 export interface CompleteValidationResult {
 	success: boolean
 	errors: string[]
+	warnings: string[]
+	issues: RegistryValidationIssue[]
 	registry?: Registry
 	failureType?: ValidationFailureType
 	loadErrorKind?: LoadRegistryErrorKind
@@ -25,59 +29,71 @@ export interface CompleteValidationResult {
 
 /**
  * Run complete validation workflow: load, validate schema, and run all validators.
- *
- * @param sourcePath - Path to the registry source directory
- * @param options - Validation options
- * @returns Validation result with registry data if successful
  */
 export async function runCompleteValidation(
 	sourcePath: string,
 	options: ValidateRegistryOptions = {},
 ): Promise<CompleteValidationResult> {
-	// Load registry file
 	const loadResult = await loadRegistrySource(sourcePath)
 	if (!loadResult.success) {
 		return {
 			success: false,
 			errors: [loadResult.error || "Failed to load registry"],
+			warnings: [],
+			issues: [],
 			failureType: "load",
 			loadErrorKind: loadResult.errorKind,
 		}
 	}
 
-	// Validate schema (compatibility + structure)
 	const schemaResult = validateRegistrySchema(loadResult.data, sourcePath)
 	if (!schemaResult.valid) {
 		return {
 			success: false,
 			errors: schemaResult.errors,
+			warnings: schemaResult.warnings ?? [],
+			issues: schemaResult.issues ?? [],
 			failureType: "schema",
 		}
 	}
 
-	// Use the parsed and validated registry data
 	const registry = schemaResult.data
 	if (!registry) {
 		throw new Error("Registry validation succeeded but returned no parsed data")
 	}
 
-	// Collect all validation errors
-	const validationErrors: string[] = []
-	for await (const error of validateRegistryWithOptions(registry, sourcePath, options)) {
-		validationErrors.push(error)
-	}
+	try {
+		const rulesResult = await validateRegistryRules(registry, sourcePath, options)
 
-	if (validationErrors.length > 0) {
-		return {
-			success: false,
-			errors: validationErrors,
-			failureType: "rules",
+		if (!rulesResult.valid) {
+			return {
+				success: false,
+				errors: rulesResult.errors,
+				warnings: rulesResult.warnings ?? [],
+				issues: rulesResult.issues ?? [],
+				registry,
+				failureType: "rules",
+			}
 		}
-	}
 
-	return {
-		success: true,
-		errors: [],
-		registry,
+		return {
+			success: true,
+			errors: [],
+			warnings: rulesResult.warnings ?? [],
+			issues: rulesResult.issues ?? [],
+			registry,
+		}
+	} catch (error) {
+		if (error instanceof PluginLoadabilityOperationalError) {
+			return {
+				success: false,
+				errors: [error.message, ...error.details],
+				warnings: [],
+				issues: [],
+				failureType: "operational",
+			}
+		}
+
+		throw error
 	}
 }

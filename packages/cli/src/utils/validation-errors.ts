@@ -4,10 +4,18 @@
  * Shared utilities for categorizing and displaying validation errors.
  */
 
+export interface StructuredValidationIssueLike {
+	kind?: string
+	code?: string
+	severity?: "error" | "warning"
+	rendered?: string
+}
+
 export interface CategorizedErrors {
 	file: string[]
 	circular: string[]
 	duplicate: string[]
+	pluginLoadability: string[]
 }
 
 export interface ValidationErrorSummary {
@@ -17,33 +25,31 @@ export interface ValidationErrorSummary {
 	sourceFileErrors: number
 	circularDependencyErrors: number
 	duplicateTargetErrors: number
+	pluginLoadabilityErrors: number
 	otherErrors: number
 }
 
 /**
  * Categorize validation errors by type.
- *
- * @param errors - Array of validation error messages
- * @returns Object with categorized errors
  */
 export function categorizeValidationErrors(errors: string[]): CategorizedErrors {
 	return {
-		file: errors.filter((e) => e.includes("Source file not found")),
-		circular: errors.filter((e) => e.includes("Circular dependency")),
-		duplicate: errors.filter((e) => e.includes("Duplicate target")),
+		file: errors.filter((error) => error.includes("Source file not found")),
+		circular: errors.filter((error) => error.includes("Circular dependency")),
+		duplicate: errors.filter((error) => error.includes("Duplicate target")),
+		pluginLoadability: errors.filter((error) => error.includes("Plugin loadability")),
 	}
 }
 
 /**
  * Display categorized validation errors with headings.
- *
- * @param categorized - Categorized errors object
- * @param logFn - Function to output messages (defaults to console.log)
  */
 export function displayCategorizedErrors(
 	categorized: CategorizedErrors,
 	logFn: (msg: string) => void = console.log,
 ): void {
+	const pluginErrors = categorized.pluginLoadability ?? []
+
 	if (categorized.file.length > 0) {
 		logFn("✗ Source files")
 		for (const error of categorized.file) {
@@ -64,20 +70,32 @@ export function displayCategorizedErrors(
 			logFn(`  ${error}`)
 		}
 	}
+
+	if (pluginErrors.length > 0) {
+		logFn("✗ Plugin loadability")
+		for (const error of pluginErrors) {
+			logFn(`  ${error}`)
+		}
+	}
 }
 
 /**
  * Build a stable summary object for validation results.
- *
- * @param errors - Validation error messages
- * @param options - Optional overrides for explicit schema errors
  */
 export function summarizeValidationErrors(
 	errors: string[],
-	options: { schemaErrors?: number } = {},
+	options: {
+		schemaErrors?: number
+		issues?: StructuredValidationIssueLike[]
+	} = {},
 ): ValidationErrorSummary {
 	const categorized = categorizeValidationErrors(errors)
 	const schemaErrors = options.schemaErrors ?? 0
+	const pluginLoadabilityErrors =
+		options.issues
+			?.filter((issue) => issue.severity !== "warning")
+			.filter((issue) => issue.kind === "plugin_loadability" || issue.code?.startsWith("plugin_"))
+			.length ?? categorized.pluginLoadability.length
 	const totalErrors = errors.length
 	const otherErrors = Math.max(
 		0,
@@ -85,7 +103,8 @@ export function summarizeValidationErrors(
 			schemaErrors -
 			categorized.file.length -
 			categorized.circular.length -
-			categorized.duplicate.length,
+			categorized.duplicate.length -
+			pluginLoadabilityErrors,
 	)
 
 	return {
@@ -95,6 +114,7 @@ export function summarizeValidationErrors(
 		sourceFileErrors: categorized.file.length,
 		circularDependencyErrors: categorized.circular.length,
 		duplicateTargetErrors: categorized.duplicate.length,
+		pluginLoadabilityErrors,
 		otherErrors,
 	}
 }

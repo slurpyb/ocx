@@ -15,6 +15,7 @@ async function runCliEntryPoint(): Promise<void> {
 }
 
 export {
+	BuildRegistryError,
 	type BuildRegistryOptions,
 	type BuildRegistryResult,
 	buildRegistry,
@@ -28,4 +29,5 @@ export {
 	packumentSchema,
 	type Registry,
 	registrySchema,
+	ValidationFailedError,
 } from "./programmatic-exports"

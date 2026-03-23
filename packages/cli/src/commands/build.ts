@@ -9,7 +9,7 @@ import type { Command } from "commander"
 import kleur from "kleur"
 import { BuildRegistryError, type BuildRegistryResult, buildRegistry } from "../lib/build-registry"
 import { runCompleteValidation } from "../lib/validation-runner"
-import type { LoadRegistryErrorKind } from "../lib/validators"
+import type { LoadRegistryErrorKind, RegistryValidationIssue } from "../lib/validators"
 import { outputDryRun } from "../utils/dry-run"
 import {
 	EXIT_CODES,
@@ -47,15 +47,20 @@ function createLoadValidationError(message: string, errorKind?: LoadRegistryErro
 
 function createValidationFailureError(
 	errors: string[],
+	warnings: string[],
+	issues: RegistryValidationIssue[],
 	failureType: "schema" | "rules",
 ): ValidationFailedError {
 	const summary = summarizeValidationErrors(errors, {
 		schemaErrors: failureType === "schema" ? errors.length : 0,
+		issues,
 	})
 
 	const details: ValidationFailureDetails = {
 		valid: false,
 		errors,
+		warnings,
+		issues,
 		summary: {
 			valid: false,
 			totalErrors: summary.totalErrors,
@@ -63,6 +68,7 @@ function createValidationFailureError(
 			sourceFileErrors: summary.sourceFileErrors,
 			circularDependencyErrors: summary.circularDependencyErrors,
 			duplicateTargetErrors: summary.duplicateTargetErrors,
+			pluginLoadabilityErrors: summary.pluginLoadabilityErrors,
 			otherErrors: summary.otherErrors,
 		},
 	}
@@ -101,6 +107,13 @@ function outputValidationFailures(errors: string[], failureType: "schema" | "rul
 			console.log(kleur.red(`  ${error}`))
 		}
 	}
+
+	if (categorized.pluginLoadability.length > 0) {
+		logger.error("✗ Plugin loadability")
+		for (const error of categorized.pluginLoadability) {
+			console.log(kleur.red(`  ${error}`))
+		}
+	}
 }
 
 export function registerBuildCommand(program: Command): void {
@@ -136,9 +149,15 @@ export function registerBuildCommand(program: Command): void {
 							throw createLoadValidationError(firstError, validationResult.loadErrorKind)
 						}
 
+						if (validationResult.failureType === "operational") {
+							throw new BuildRegistryError(firstError, validationResult.errors.slice(1))
+						}
+
 						const failureType = validationResult.failureType === "schema" ? "schema" : "rules"
 						const validationError = createValidationFailureError(
 							validationResult.errors,
+							validationResult.warnings,
+							validationResult.issues,
 							failureType,
 						)
 
@@ -158,6 +177,10 @@ export function registerBuildCommand(program: Command): void {
 						logger.success("✓ Source files")
 						logger.success("✓ No circular dependencies")
 						logger.success("✓ No duplicate targets")
+						logger.success("✓ Plugin loadability")
+						for (const warning of validationResult.warnings) {
+							logger.warn(`  ${warning}`)
+						}
 						console.log("")
 					}
 				}
@@ -178,6 +201,9 @@ export function registerBuildCommand(program: Command): void {
 				if ("dryRun" in result && result.dryRun) {
 					if (!options.json) spinner.stop()
 					outputDryRun(result, { json: options.json, quiet: options.quiet })
+					if (!result.validation.passed) {
+						process.exit(EXIT_CODES.CONFIG)
+					}
 					return
 				}
 
@@ -202,6 +228,22 @@ export function registerBuildCommand(program: Command): void {
 					})
 				}
 			} catch (error) {
+				if (error instanceof ValidationFailedError) {
+					if (options.json) {
+						handleError(error, { json: true })
+					}
+
+					if (!options.quiet) {
+						logger.error(error.message)
+						outputValidationFailures(error.details.errors, "rules")
+						for (const warning of error.details.warnings ?? []) {
+							console.log(kleur.yellow(`  ${warning}`))
+						}
+					}
+
+					process.exit(error.exitCode)
+				}
+
 				if (error instanceof BuildRegistryError) {
 					if (options.json) {
 						handleError(error, { json: true })

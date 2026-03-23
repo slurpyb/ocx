@@ -668,6 +668,18 @@ describe("handleError JSON output", () => {
 			const error = new ValidationFailedError({
 				valid: false,
 				errors: ["comp-a: Source file not found at missing.ts"],
+				warnings: ["Plugin loadability: non-deterministic package spec"],
+				issues: [
+					{
+						kind: "plugin_loadability",
+						code: "plugin_package_spec_nondeterministic",
+						severity: "warning",
+						message: "non-deterministic package spec",
+						rendered: "Plugin loadability: non-deterministic package spec",
+						affectedComponents: ["comp-a"],
+						affectedEntrypoints: ["package:example-plugin"],
+					},
+				],
 				summary: {
 					valid: false,
 					totalErrors: 1,
@@ -675,6 +687,7 @@ describe("handleError JSON output", () => {
 					sourceFileErrors: 1,
 					circularDependencyErrors: 0,
 					duplicateTargetErrors: 0,
+					pluginLoadabilityErrors: 0,
 					otherErrors: 0,
 				},
 			})
@@ -691,6 +704,18 @@ describe("handleError JSON output", () => {
 			expect(output.error.details).toEqual({
 				valid: false,
 				errors: ["comp-a: Source file not found at missing.ts"],
+				warnings: ["Plugin loadability: non-deterministic package spec"],
+				issues: [
+					{
+						kind: "plugin_loadability",
+						code: "plugin_package_spec_nondeterministic",
+						severity: "warning",
+						message: "non-deterministic package spec",
+						rendered: "Plugin loadability: non-deterministic package spec",
+						affectedComponents: ["comp-a"],
+						affectedEntrypoints: ["package:example-plugin"],
+					},
+				],
 				summary: {
 					valid: false,
 					totalErrors: 1,
@@ -698,6 +723,7 @@ describe("handleError JSON output", () => {
 					sourceFileErrors: 1,
 					circularDependencyErrors: 0,
 					duplicateTargetErrors: 0,
+					pluginLoadabilityErrors: 0,
 					otherErrors: 0,
 				},
 			})

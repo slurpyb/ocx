@@ -7,8 +7,9 @@
 import { resolve } from "node:path"
 import type { Command } from "commander"
 import kleur from "kleur"
+import { BuildRegistryError } from "../lib/build-registry"
 import { runCompleteValidation } from "../lib/validation-runner"
-import type { LoadRegistryErrorKind } from "../lib/validators"
+import type { LoadRegistryErrorKind, RegistryValidationIssue } from "../lib/validators"
 import {
 	EXIT_CODES,
 	NotFoundError,
@@ -42,15 +43,20 @@ function createLoadValidationError(message: string, errorKind?: LoadRegistryErro
 
 function createValidationFailureError(
 	errors: string[],
+	warnings: string[],
+	issues: RegistryValidationIssue[],
 	failureType: "schema" | "rules",
 ): ValidationFailedError {
 	const summary = summarizeValidationErrors(errors, {
 		schemaErrors: failureType === "schema" ? errors.length : 0,
+		issues,
 	})
 
 	const details: ValidationFailureDetails = {
 		valid: false,
 		errors,
+		warnings,
+		issues,
 		summary: {
 			valid: false,
 			totalErrors: summary.totalErrors,
@@ -58,6 +64,7 @@ function createValidationFailureError(
 			sourceFileErrors: summary.sourceFileErrors,
 			circularDependencyErrors: summary.circularDependencyErrors,
 			duplicateTargetErrors: summary.duplicateTargetErrors,
+			pluginLoadabilityErrors: summary.pluginLoadabilityErrors,
 			otherErrors: summary.otherErrors,
 		},
 	}
@@ -68,6 +75,12 @@ function createValidationFailureError(
 function outputValidationErrors(errors: string[]): void {
 	for (const error of errors) {
 		console.log(kleur.red(`  ${error}`))
+	}
+}
+
+function outputValidationWarnings(warnings: string[]): void {
+	for (const warning of warnings) {
+		console.log(kleur.yellow(`  ${warning}`))
 	}
 }
 
@@ -101,8 +114,14 @@ export function registerValidateCommand(program: Command): void {
 						throw loadError
 					}
 
+					if (validationResult.failureType === "operational") {
+						throw new BuildRegistryError(firstError, validationResult.errors.slice(1))
+					}
+
 					const validationError = createValidationFailureError(
 						validationResult.errors,
+						validationResult.warnings,
+						validationResult.issues,
 						validationResult.failureType === "schema" ? "schema" : "rules",
 					)
 
@@ -113,6 +132,10 @@ export function registerValidateCommand(program: Command): void {
 					if (!options.quiet) {
 						logger.error(validationError.message)
 						outputValidationErrors(validationResult.errors)
+						if (validationResult.warnings.length > 0) {
+							logger.warn("Validation warnings:")
+							outputValidationWarnings(validationResult.warnings)
+						}
 					}
 
 					process.exit(validationError.exitCode)
@@ -121,15 +144,24 @@ export function registerValidateCommand(program: Command): void {
 				// All validations passed
 				if (!options.quiet && !options.json) {
 					logger.success("✓ Registry source is valid")
+					if (validationResult.warnings.length > 0) {
+						logger.warn("Validation warnings:")
+						outputValidationWarnings(validationResult.warnings)
+					}
 				}
 
 				if (options.json) {
+					const summary = summarizeValidationErrors([], {
+						issues: validationResult.issues,
+					})
 					outputJson({
 						success: true,
 						data: {
 							valid: true,
 							errors: [],
-							summary: summarizeValidationErrors([]),
+							warnings: validationResult.warnings,
+							issues: validationResult.issues,
+							summary,
 						},
 					})
 				}

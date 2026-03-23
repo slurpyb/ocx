@@ -43,6 +43,7 @@ import { ConfigError, ConflictError, IntegrityError, ValidationError } from "../
 import { handleError } from "../utils/handle-error"
 import { outputJson } from "../utils/json-output"
 import { logger } from "../utils/logger"
+import { mergeNpmDependencySpecifiers, type NpmDependency } from "../utils/npm-dependencies"
 import {
 	extractPackageName,
 	fetchPackageVersion,
@@ -1362,11 +1363,6 @@ async function installComponent(
 // NPM Dependency Management
 // ============================================================================
 
-interface NpmDependency {
-	name: string
-	version: string
-}
-
 interface OpencodePackageJson {
 	name?: string
 	private?: boolean
@@ -1379,33 +1375,6 @@ const DEFAULT_PACKAGE_JSON: OpencodePackageJson = {
 	name: "opencode-plugins",
 	private: true,
 	type: "module",
-}
-
-/**
- * Parses an npm dependency spec into name and version.
- * Handles: "lodash", "lodash@4.0.0", "@types/node", "@types/node@1.0.0"
- */
-function parseNpmDependency(spec: string): NpmDependency {
-	// Guard: invalid input
-	if (!spec?.trim()) {
-		throw new ValidationError(`Invalid npm dependency: expected non-empty string, got "${spec}"`)
-	}
-
-	const trimmed = spec.trim()
-	const lastAt = trimmed.lastIndexOf("@")
-
-	// Has version: "lodash@4.0.0" or "@types/node@1.0.0"
-	if (lastAt > 0) {
-		const name = trimmed.slice(0, lastAt)
-		const version = trimmed.slice(lastAt + 1)
-		if (!version) {
-			throw new ValidationError(`Invalid npm dependency: missing version after @ in "${spec}"`)
-		}
-		return { name, version }
-	}
-
-	// No version: "lodash" or "@types/node" → use "*"
-	return { name: trimmed, version: "*" }
 }
 
 /**
@@ -1518,19 +1487,15 @@ async function updateOpencodePackageDeps(
 	// Ensure directory exists
 	await mkdir(packageDir, { recursive: true })
 
-	// Parse all deps - fails fast on invalid (Law 4)
-	const prodDeps = npmDeps.map(parseNpmDependency)
-	const devDeps = npmDevDeps.map(parseNpmDependency)
-
-	// Law 4 (Fail Loud): Check for conflicts - same package in both lists
-	const prodNames = new Set(prodDeps.map((d) => d.name))
-	const conflicts = devDeps.filter((d) => prodNames.has(d.name))
-	if (conflicts.length > 0) {
-		throw new ConflictError(
-			`Package(s) appear in both dependencies and devDependencies: ${conflicts.map((c) => c.name).join(", ")}.\n` +
-				"A package cannot be in both fields. Remove from one list manually before adding.",
-		)
-	}
+	const mergedDependencySpecs = mergeNpmDependencySpecifiers(npmDeps, npmDevDeps)
+	const prodDeps: NpmDependency[] = Array.from(
+		mergedDependencySpecs.dependencies.entries(),
+		([name, version]) => ({ name, version }),
+	)
+	const devDeps: NpmDependency[] = Array.from(
+		mergedDependencySpecs.devDependencies.entries(),
+		([name, version]) => ({ name, version }),
+	)
 
 	// Read → merge → write
 	const existing = await readOpencodePackageJson(packageDir)

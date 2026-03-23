@@ -4,6 +4,7 @@
  * Pure functions for programmatic use.
  */
 
+export { ValidationFailedError } from "../utils/errors"
 export {
 	BuildRegistryError,
 	type BuildRegistryOptions,

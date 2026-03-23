@@ -98,6 +98,7 @@ describe("ocx validate", () => {
 					sourceFileErrors: number
 					circularDependencyErrors: number
 					duplicateTargetErrors: number
+					pluginLoadabilityErrors: number
 					otherErrors: number
 				}
 			}
@@ -113,8 +114,58 @@ describe("ocx validate", () => {
 			sourceFileErrors: 0,
 			circularDependencyErrors: 0,
 			duplicateTargetErrors: 0,
+			pluginLoadabilityErrors: 0,
 			otherErrors: 0,
 		})
+	})
+
+	it("should keep warnings-only plugin validation as success", async () => {
+		const sourceDir = join(testDir, "registry-warning-only")
+		await mkdir(sourceDir, { recursive: true })
+
+		await writeFile(
+			join(sourceDir, "registry.json"),
+			JSON.stringify({
+				$schema: REGISTRY_SCHEMA_V2_URL,
+				name: "Warning Registry",
+				version: "1.0.0",
+				author: "Test Author",
+				components: [
+					{
+						name: "warning-component",
+						type: "skill",
+						description: "warning component",
+						files: [],
+						dependencies: [],
+						opencode: { plugin: ["example-plugin"] },
+					},
+				],
+			}),
+		)
+
+		const { exitCode, stdout, stderr } = await runCLI(
+			["validate", "registry-warning-only", "--json"],
+			testDir,
+		)
+
+		expect(exitCode).toBe(0)
+		expect(stderr).toBe("")
+
+		const result = JSON.parse(stdout) as {
+			success: boolean
+			data: {
+				valid: boolean
+				warnings: string[]
+				summary: {
+					pluginLoadabilityErrors: number
+				}
+			}
+		}
+
+		expect(result.success).toBe(true)
+		expect(result.data.valid).toBe(true)
+		expect(result.data.summary.pluginLoadabilityErrors).toBe(0)
+		expect(result.data.warnings.some((warning) => warning.includes("non-deterministic"))).toBe(true)
 	})
 
 	it("should report validation errors for missing source files", async () => {

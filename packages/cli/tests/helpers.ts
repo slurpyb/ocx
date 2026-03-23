@@ -1,5 +1,6 @@
 import { expect, type Mock, spyOn } from "bun:test"
-import { mkdir, rm } from "node:fs/promises"
+import { mkdir, readdir, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { parse } from "jsonc-parser"
 
@@ -445,4 +446,50 @@ export async function runCLIIsolated(
 			...env,
 		},
 	})
+}
+
+export interface LocalPackageFixtureOptions {
+	name: string
+	version?: string
+	entrypointCode?: string
+}
+
+export async function createLocalPackageFixture(
+	rootDir: string,
+	options: LocalPackageFixtureOptions,
+): Promise<{ packageDir: string; specifier: string }> {
+	const packageDir = join(rootDir, "fixtures", "npm", options.name.replace(/[/]/g, "-"))
+	const version = options.version ?? "1.0.0"
+
+	await mkdir(packageDir, { recursive: true })
+	await Bun.write(
+		join(packageDir, "package.json"),
+		JSON.stringify(
+			{
+				name: options.name,
+				version,
+				type: "module",
+				exports: {
+					".": "./index.js",
+				},
+			},
+			null,
+			2,
+		),
+	)
+	await Bun.write(join(packageDir, "index.js"), options.entrypointCode ?? "export default {}\n")
+
+	return {
+		packageDir,
+		specifier: `${options.name}@file:${packageDir}`,
+	}
+}
+
+export async function listPluginValidationTempDirs(): Promise<string[]> {
+	const entries = await readdir(tmpdir(), { withFileTypes: true })
+	return entries
+		.filter((entry) => entry.isDirectory())
+		.map((entry) => entry.name)
+		.filter((entry) => entry.startsWith("ocx-plugin-validation-"))
+		.sort()
 }

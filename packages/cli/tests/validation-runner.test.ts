@@ -72,4 +72,66 @@ describe("runCompleteValidation", () => {
 		expect(result.errors[0]).toContain("version")
 		expect(result.registry).toBeUndefined()
 	})
+
+	it("returns warnings-only success for non-deterministic package plugin specs", async () => {
+		const registryContent = {
+			$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
+			name: "Warning Registry",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [
+				{
+					name: "warning-component",
+					type: "skill",
+					description: "Warn-only component",
+					files: [],
+					dependencies: [],
+					opencode: {
+						plugin: ["example-plugin"],
+					},
+				},
+			],
+		}
+
+		await writeFile(join(testDir, "registry.json"), JSON.stringify(registryContent, null, 2))
+
+		const result = await runCompleteValidation(testDir, {
+			skipDuplicateTargets: false,
+		})
+
+		expect(result.success).toBe(true)
+		expect(result.errors).toEqual([])
+		expect(result.warnings.some((warning) => warning.includes("non-deterministic"))).toBe(true)
+	})
+
+	it("classifies dependency hydration failures as operational", async () => {
+		const registryContent = {
+			$schema: "https://ocx.kdco.dev/schemas/v2/registry.json",
+			name: "Operational Failure Registry",
+			version: "1.0.0",
+			author: "Test Author",
+			components: [
+				{
+					name: "ops-failure",
+					type: "skill",
+					description: "Forcing install failure",
+					files: [],
+					dependencies: [],
+					opencode: {
+						plugin: ["broken-plugin@file:/definitely/not/a/real/package"],
+					},
+				},
+			],
+		}
+
+		await writeFile(join(testDir, "registry.json"), JSON.stringify(registryContent, null, 2))
+
+		const result = await runCompleteValidation(testDir, {
+			skipDuplicateTargets: false,
+		})
+
+		expect(result.success).toBe(false)
+		expect(result.failureType).toBe("operational")
+		expect(result.errors[0]).toContain("Failed to hydrate plugin validation dependencies")
+	})
 })

@@ -303,7 +303,7 @@ describe("Error Cases", () => {
 			await Bun.write(join(testDir, "registry.jsonc"), JSON.stringify(registryConfig))
 
 			const result = await runCLI(["build", "--cwd", testDir], testDir)
-			expect(result.exitCode).toBe(1)
+			expect(result.exitCode).toBe(78)
 			// Build errors are logged via console.log (details) and logger.error (summary)
 			// Check combined output for the error details
 			expect(result.output).toMatch(/not found|Source file not found/i)

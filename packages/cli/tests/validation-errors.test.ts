@@ -17,6 +17,7 @@ describe("categorizeValidationErrors", () => {
 		expect(result.file).toEqual(errors)
 		expect(result.circular).toEqual([])
 		expect(result.duplicate).toEqual([])
+		expect(result.pluginLoadability).toEqual([])
 	})
 
 	it("should categorize circular dependency errors", () => {
@@ -27,6 +28,7 @@ describe("categorizeValidationErrors", () => {
 		expect(result.file).toEqual([])
 		expect(result.circular).toEqual(errors)
 		expect(result.duplicate).toEqual([])
+		expect(result.pluginLoadability).toEqual([])
 	})
 
 	it("should categorize duplicate target errors", () => {
@@ -37,6 +39,18 @@ describe("categorizeValidationErrors", () => {
 		expect(result.file).toEqual([])
 		expect(result.circular).toEqual([])
 		expect(result.duplicate).toEqual(errors)
+		expect(result.pluginLoadability).toEqual([])
+	})
+
+	it("should categorize plugin loadability errors", () => {
+		const errors = ['Plugin loadability: package plugin "foo" failed runtime import']
+
+		const result = categorizeValidationErrors(errors)
+
+		expect(result.file).toEqual([])
+		expect(result.circular).toEqual([])
+		expect(result.duplicate).toEqual([])
+		expect(result.pluginLoadability).toEqual(errors)
 	})
 
 	it("should categorize mixed errors", () => {
@@ -57,6 +71,7 @@ describe("categorizeValidationErrors", () => {
 		expect(result.duplicate).toEqual([
 			'Duplicate target "plugins/test.ts" in components "comp-a" and "comp-b"',
 		])
+		expect(result.pluginLoadability).toEqual([])
 	})
 
 	it("should return empty arrays for empty input", () => {
@@ -65,6 +80,7 @@ describe("categorizeValidationErrors", () => {
 		expect(result.file).toEqual([])
 		expect(result.circular).toEqual([])
 		expect(result.duplicate).toEqual([])
+		expect(result.pluginLoadability).toEqual([])
 	})
 })
 
@@ -74,6 +90,7 @@ describe("displayCategorizedErrors", () => {
 			file: ["comp-a: Source file not found at file.ts"],
 			circular: [],
 			duplicate: [],
+			pluginLoadability: [],
 		}
 
 		const output: string[] = []
@@ -90,6 +107,7 @@ describe("displayCategorizedErrors", () => {
 			file: [],
 			circular: ["Circular dependency detected: comp-a -> comp-b -> comp-a"],
 			duplicate: [],
+			pluginLoadability: [],
 		}
 
 		const output: string[] = []
@@ -106,6 +124,7 @@ describe("displayCategorizedErrors", () => {
 			file: [],
 			circular: [],
 			duplicate: ['Duplicate target "plugins/test.ts" in components "comp-a" and "comp-b"'],
+			pluginLoadability: [],
 		}
 
 		const output: string[] = []
@@ -124,6 +143,7 @@ describe("displayCategorizedErrors", () => {
 			file: ["comp-a: Source file not found at file.ts"],
 			circular: ["Circular dependency detected: comp-a -> comp-b -> comp-a"],
 			duplicate: ['Duplicate target "plugins/test.ts" in components "comp-a" and "comp-b"'],
+			pluginLoadability: ['Plugin loadability: package plugin "foo" failed runtime import'],
 		}
 
 		const output: string[] = []
@@ -134,6 +154,7 @@ describe("displayCategorizedErrors", () => {
 		expect(output).toContain("✗ Source files")
 		expect(output).toContain("✗ Circular dependencies")
 		expect(output).toContain("✗ Duplicate targets")
+		expect(output).toContain("✗ Plugin loadability")
 	})
 
 	it("should not display categories with no errors", () => {
@@ -141,6 +162,7 @@ describe("displayCategorizedErrors", () => {
 			file: ["comp-a: Source file not found at file.ts"],
 			circular: [],
 			duplicate: [],
+			pluginLoadability: [],
 		}
 
 		const output: string[] = []
@@ -171,6 +193,7 @@ describe("summarizeValidationErrors", () => {
 			sourceFileErrors: 1,
 			circularDependencyErrors: 1,
 			duplicateTargetErrors: 1,
+			pluginLoadabilityErrors: 0,
 			otherErrors: 0,
 		})
 	})
@@ -187,6 +210,7 @@ describe("summarizeValidationErrors", () => {
 			sourceFileErrors: 0,
 			circularDependencyErrors: 0,
 			duplicateTargetErrors: 0,
+			pluginLoadabilityErrors: 0,
 			otherErrors: 0,
 		})
 	})
@@ -201,7 +225,16 @@ describe("summarizeValidationErrors", () => {
 			sourceFileErrors: 0,
 			circularDependencyErrors: 0,
 			duplicateTargetErrors: 0,
+			pluginLoadabilityErrors: 0,
 			otherErrors: 0,
 		})
+	})
+
+	it("should summarize plugin loadability errors", () => {
+		const errors = ['Plugin loadability: package plugin "foo" failed runtime import']
+		const summary = summarizeValidationErrors(errors)
+
+		expect(summary.pluginLoadabilityErrors).toBe(1)
+		expect(summary.otherErrors).toBe(0)
 	})
 })

@@ -550,4 +550,103 @@ describe("ocx build", () => {
 		expect(output).toContain("invalid-schema-url")
 		expect(output).toContain(REGISTRY_SCHEMA_V2_URL)
 	})
+
+	it("should return non-zero dry-run for fatal plugin loadability failures", async () => {
+		const sourceDir = join(testDir, "registry-dry-run-plugin-fail")
+		await mkdir(join(sourceDir, "files", "plugins"), { recursive: true })
+
+		await writeFile(
+			join(sourceDir, "registry.json"),
+			JSON.stringify({
+				$schema: REGISTRY_SCHEMA_V2_URL,
+				name: "Dry Run Plugin Fail",
+				version: "1.0.0",
+				author: "Test Author",
+				components: [
+					{
+						name: "plugin-fail",
+						type: "plugin",
+						description: "Plugin fail",
+						files: [{ path: "plugins/main.ts", target: "plugins/main.ts" }],
+						dependencies: [],
+					},
+				],
+			}),
+		)
+		await writeFile(
+			join(sourceDir, "files", "plugins", "main.ts"),
+			'import missing from "missing-package"\nexport default missing\n',
+		)
+
+		const { exitCode, stdout, stderr } = await runCLI(
+			["build", "registry-dry-run-plugin-fail", "--out", "dist", "--dry-run", "--json"],
+			testDir,
+		)
+
+		expect(exitCode).toBe(EXIT_CODES.CONFIG)
+		expect(stderr).toBe("")
+
+		const payload = JSON.parse(stdout) as {
+			dryRun: boolean
+			validation: {
+				passed: boolean
+				errors?: string[]
+				issues?: Array<{ kind: string; code: string }>
+			}
+		}
+
+		expect(payload.dryRun).toBe(true)
+		expect(payload.validation.passed).toBe(false)
+		expect(payload.validation.errors?.some((error) => error.includes("Plugin loadability"))).toBe(
+			true,
+		)
+		expect(payload.validation.issues?.some((issue) => issue.kind === "plugin_loadability")).toBe(
+			true,
+		)
+	})
+
+	it("keeps warnings-only plugin dry-runs successful", async () => {
+		const sourceDir = join(testDir, "registry-dry-run-plugin-warning")
+		await mkdir(sourceDir, { recursive: true })
+
+		await writeFile(
+			join(sourceDir, "registry.json"),
+			JSON.stringify({
+				$schema: REGISTRY_SCHEMA_V2_URL,
+				name: "Dry Run Plugin Warning",
+				version: "1.0.0",
+				author: "Test Author",
+				components: [
+					{
+						name: "warn-component",
+						type: "skill",
+						description: "warning only",
+						files: [],
+						dependencies: [],
+						opencode: { plugin: ["example-plugin"] },
+					},
+				],
+			}),
+		)
+
+		const { exitCode, stdout } = await runCLI(
+			["build", "registry-dry-run-plugin-warning", "--out", "dist", "--dry-run", "--json"],
+			testDir,
+		)
+
+		expect(exitCode).toBe(0)
+		const payload = JSON.parse(stdout) as {
+			dryRun: boolean
+			validation: {
+				passed: boolean
+				warnings?: string[]
+			}
+		}
+
+		expect(payload.dryRun).toBe(true)
+		expect(payload.validation.passed).toBe(true)
+		expect(
+			payload.validation.warnings?.some((warning) => warning.includes("non-deterministic")),
+		).toBe(true)
+	})
 })

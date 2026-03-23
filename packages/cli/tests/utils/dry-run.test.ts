@@ -99,6 +99,34 @@ describe("dry-run utilities", () => {
 			expect(output).toContain("Component not found")
 		})
 
+		it("preserves structured validation issues in JSON output", () => {
+			const result: DryRunResult = {
+				dryRun: true,
+				command: "build",
+				wouldPerform: [],
+				validation: {
+					passed: false,
+					errors: ["Plugin loadability: unresolved import"],
+					issues: [
+						{
+							kind: "plugin_loadability",
+							code: "plugin_static_local_import_unresolved",
+							severity: "error",
+							message: "unresolved import",
+							rendered: "Plugin loadability: unresolved import",
+							affectedComponents: ["plugin-component"],
+							affectedEntrypoints: [".opencode/plugins/main.ts"],
+						},
+					],
+				},
+			}
+
+			outputDryRun(result, { json: true })
+
+			const parsed = JSON.parse(consoleOutput[0]) as DryRunResult
+			expect(parsed.validation.issues?.[0]?.code).toBe("plugin_static_local_import_unresolved")
+		})
+
 		it("includes hints in footer", () => {
 			const result: DryRunResult = {
 				dryRun: true,

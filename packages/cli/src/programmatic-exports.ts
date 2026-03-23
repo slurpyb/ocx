@@ -1,4 +1,10 @@
-export { type BuildRegistryOptions, type BuildRegistryResult, buildRegistry } from "./lib/index"
+export {
+	BuildRegistryError,
+	type BuildRegistryOptions,
+	type BuildRegistryResult,
+	buildRegistry,
+	ValidationFailedError,
+} from "./lib/index"
 
 export {
 	type ComponentManifest,

@@ -16,6 +16,15 @@ export interface DryRunValidation {
 	passed: boolean
 	errors?: string[] // Fatal issues that would cause failure
 	warnings?: string[] // Non-fatal issues (e.g., modified files without --force)
+	issues?: Array<{
+		kind: string
+		code: string
+		severity: "error" | "warning"
+		message: string
+		rendered: string
+		affectedComponents: string[]
+		affectedEntrypoints: string[]
+	}>
 }
 
 /** Base result that all commands return */

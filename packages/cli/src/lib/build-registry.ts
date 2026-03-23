@@ -7,9 +7,16 @@
 
 import { mkdir } from "node:fs/promises"
 import { dirname, join } from "node:path"
-import { parse as parseJsonc } from "jsonc-parser"
-import { classifyRegistrySchemaIssue, normalizeFile, registrySchema } from "../schemas/registry"
+import type { Registry } from "../schemas/registry"
+import { normalizeFile } from "../schemas/registry"
 import type { DryRunResult } from "../utils/dry-run"
+import {
+	ValidationFailedError,
+	type ValidationFailureDetails,
+	type ValidationFailureSummary,
+} from "../utils/errors"
+import { summarizeValidationErrors } from "../utils/validation-errors"
+import { runCompleteValidation } from "./validation-runner"
 
 export interface BuildRegistryOptions {
 	/** Source directory containing registry.jsonc (or registry.json) and files/ */
@@ -37,116 +44,165 @@ export class BuildRegistryError extends Error {
 	}
 }
 
+function createValidationSummary(
+	errors: string[],
+	issues: ValidationFailureDetails["issues"] = [],
+	schemaErrors = 0,
+): ValidationFailureSummary {
+	const summary = summarizeValidationErrors(errors, {
+		schemaErrors,
+		issues: issues ?? [],
+	})
+
+	return {
+		valid: false,
+		totalErrors: summary.totalErrors,
+		schemaErrors: summary.schemaErrors,
+		sourceFileErrors: summary.sourceFileErrors,
+		circularDependencyErrors: summary.circularDependencyErrors,
+		duplicateTargetErrors: summary.duplicateTargetErrors,
+		pluginLoadabilityErrors: summary.pluginLoadabilityErrors,
+		otherErrors: summary.otherErrors,
+	}
+}
+
+function toValidationFailureDetails(input: {
+	errors: string[]
+	warnings: string[]
+	issues: ValidationFailureDetails["issues"]
+	schemaErrors?: number
+}): ValidationFailureDetails {
+	return {
+		valid: false,
+		errors: input.errors,
+		warnings: input.warnings,
+		issues: input.issues,
+		summary: createValidationSummary(input.errors, input.issues, input.schemaErrors ?? 0),
+	}
+}
+
+function createDryRunActions(registry: Registry, sourcePath: string): DryRunResult["wouldPerform"] {
+	const actions: DryRunResult["wouldPerform"] = []
+
+	for (const component of registry.components) {
+		actions.push({
+			action: "create",
+			target: `file:components/${component.name}.json`,
+			details: { type: "packument" },
+		})
+
+		for (const rawFile of component.files) {
+			const file = normalizeFile(rawFile, component.type)
+			actions.push({
+				action: "create",
+				target: `file:components/${component.name}/${file.path}`,
+				details: { source: join(sourcePath, "files", file.path) },
+			})
+		}
+	}
+
+	actions.push({
+		action: "create",
+		target: "file:index.json",
+		details: { type: "registry index" },
+	})
+
+	actions.push({
+		action: "create",
+		target: "file:.well-known/ocx.json",
+		details: { type: "discovery file" },
+	})
+
+	return actions
+}
+
+function createBuildValidationDryRunResult(input: {
+	sourcePath: string
+	outPath: string
+	registry: Registry
+	validationPassed: boolean
+	validationErrors: string[]
+	validationWarnings: string[]
+	validationIssues: ValidationFailureDetails["issues"]
+}): DryRunResult {
+	const actions = createDryRunActions(input.registry, input.sourcePath)
+	const totalFiles = actions.filter((action) => action.action === "create").length
+
+	return {
+		dryRun: true,
+		command: "build",
+		wouldPerform: actions,
+		validation: {
+			passed: input.validationPassed,
+			...(input.validationErrors.length > 0 ? { errors: input.validationErrors } : {}),
+			...(input.validationWarnings.length > 0 ? { warnings: input.validationWarnings } : {}),
+			issues: input.validationIssues,
+		},
+		summary: `Would build ${input.registry.components.length} components, ${totalFiles} files to ${input.outPath}`,
+	}
+}
+
 /**
  * Build a registry from source.
- *
- * @param options - Build options
- * @returns Build result with metadata or DryRunResult
- * @throws {BuildRegistryError} If validation fails or files are missing
  */
 export async function buildRegistry(
 	options: BuildRegistryOptions,
 ): Promise<BuildRegistryResult | DryRunResult> {
 	const { source: sourcePath, out: outPath } = options
 
-	// Read registry file from source (prefer .jsonc over .json)
-	const jsoncFile = Bun.file(join(sourcePath, "registry.jsonc"))
-	const jsonFile = Bun.file(join(sourcePath, "registry.json"))
-	const jsoncExists = await jsoncFile.exists()
-	const jsonExists = await jsonFile.exists()
+	const validationResult = await runCompleteValidation(sourcePath, {
+		skipDuplicateTargets: false,
+	})
 
-	if (!jsoncExists && !jsonExists) {
-		throw new BuildRegistryError("No registry.jsonc or registry.json found in source directory")
-	}
-
-	const registryFile = jsoncExists ? jsoncFile : jsonFile
-	const content = await registryFile.text()
-	const registryData = parseJsonc(content, [], { allowTrailingComma: true })
-	const schemaIssue = classifyRegistrySchemaIssue(registryData)
-	if (schemaIssue) {
-		throw new BuildRegistryError(`Registry schema compatibility failed (${schemaIssue.issue})`, [
-			schemaIssue.remediation,
-			...(schemaIssue.schemaUrl !== undefined ? [`Invalid $schema: ${schemaIssue.schemaUrl}`] : []),
-		])
-	}
-
-	// Validate registry schema
-	const parseResult = registrySchema.safeParse(registryData)
-	if (!parseResult.success) {
-		const errors = parseResult.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`)
-		throw new BuildRegistryError("Registry validation failed", errors)
-	}
-
-	const registry = parseResult.data
-	const validationErrors: string[] = []
-
-	// Dry-run: Calculate what would be built without creating files
-	if (options.dryRun) {
-		const actions = []
-
-		// Check for missing source files
-		for (const component of registry.components) {
-			// Would create packument file
-			actions.push({
-				action: "create" as const,
-				target: `file:components/${component.name}.json`,
-				details: { type: "packument" },
+	if (!validationResult.success) {
+		if (validationResult.failureType === "rules") {
+			const details = toValidationFailureDetails({
+				errors: validationResult.errors,
+				warnings: validationResult.warnings,
+				issues: validationResult.issues,
 			})
 
-			// Check source files exist
-			for (const rawFile of component.files) {
-				const file = normalizeFile(rawFile, component.type)
-				const sourceFilePath = join(sourcePath, "files", file.path)
-
-				if (!(await Bun.file(sourceFilePath).exists())) {
-					validationErrors.push(`${component.name}: Source file not found at ${sourceFilePath}`)
-					continue
-				}
-
-				// Would copy file
-				actions.push({
-					action: "create" as const,
-					target: `file:components/${component.name}/${file.path}`,
-					details: { source: sourceFilePath },
+			if (options.dryRun && validationResult.registry) {
+				return createBuildValidationDryRunResult({
+					sourcePath,
+					outPath,
+					registry: validationResult.registry,
+					validationPassed: false,
+					validationErrors: validationResult.errors,
+					validationWarnings: validationResult.warnings,
+					validationIssues: validationResult.issues,
 				})
 			}
+
+			throw new ValidationFailedError(details)
 		}
 
-		// Would create index.json
-		actions.push({
-			action: "create" as const,
-			target: "file:index.json",
-			details: { type: "registry index" },
-		})
-
-		// Would create .well-known/ocx.json
-		actions.push({
-			action: "create" as const,
-			target: "file:.well-known/ocx.json",
-			details: { type: "discovery file" },
-		})
-
-		// Calculate total files
-		const totalFiles = actions.filter((a) => a.action === "create").length
-
-		return {
-			dryRun: true,
-			command: "build",
-			wouldPerform: actions,
-			validation: {
-				passed: validationErrors.length === 0,
-				errors: validationErrors.length > 0 ? validationErrors : undefined,
-			},
-			summary: `Would build ${registry.components.length} components, ${totalFiles} files to ${outPath}`,
-		}
+		const [firstError = "Registry build preflight failed", ...remainingErrors] =
+			validationResult.errors
+		throw new BuildRegistryError(firstError, remainingErrors)
 	}
 
-	// Normal mode: Create output directory structure
+	const registry = validationResult.registry
+	if (!registry) {
+		throw new BuildRegistryError("Registry validation succeeded but returned no parsed registry")
+	}
+
+	if (options.dryRun) {
+		return createBuildValidationDryRunResult({
+			sourcePath,
+			outPath,
+			registry,
+			validationPassed: true,
+			validationErrors: [],
+			validationWarnings: validationResult.warnings,
+			validationIssues: validationResult.issues,
+		})
+	}
+
 	const componentsDir = join(outPath, "components")
 	await mkdir(componentsDir, { recursive: true })
 
-	// V2: Generate packument and copy files for each component
-	// Use component-level versioning (default to 1.0.0)
+	const copyErrors: string[] = []
 	const DEFAULT_COMPONENT_VERSION = "1.0.0"
 
 	for (const component of registry.components) {
@@ -160,59 +216,51 @@ export async function buildRegistry(
 			},
 		}
 
-		// Write manifest to components/[name].json
 		const packumentPath = join(componentsDir, `${component.name}.json`)
 		await Bun.write(packumentPath, JSON.stringify(packument, null, 2))
 
-		// Copy files (if any - bundles may have no files, only dependencies)
 		for (const rawFile of component.files) {
 			const file = normalizeFile(rawFile, component.type)
 			const sourceFilePath = join(sourcePath, "files", file.path)
-			const destFilePath = join(componentsDir, component.name, file.path)
-			const destFileDir = dirname(destFilePath)
+			const destinationPath = join(componentsDir, component.name, file.path)
+			const destinationDirectory = dirname(destinationPath)
 
 			if (!(await Bun.file(sourceFilePath).exists())) {
-				validationErrors.push(`${component.name}: Source file not found at ${sourceFilePath}`)
+				copyErrors.push(`${component.name}: Source file not found at ${sourceFilePath}`)
 				continue
 			}
 
-			await mkdir(destFileDir, { recursive: true })
-			const sourceFile = Bun.file(sourceFilePath)
-			await Bun.write(destFilePath, sourceFile)
+			await mkdir(destinationDirectory, { recursive: true })
+			await Bun.write(destinationPath, Bun.file(sourceFilePath))
 		}
 	}
 
-	// Fail fast if source files were missing during copy
-	if (validationErrors.length > 0) {
-		throw new BuildRegistryError(
-			`Build failed with ${validationErrors.length} errors`,
-			validationErrors,
-		)
+	if (copyErrors.length > 0) {
+		throw new BuildRegistryError(`Build failed with ${copyErrors.length} errors`, copyErrors)
 	}
 
-	// V2: Generate index.json at the root (no registry version field)
 	const index = {
 		$schema: registry.$schema,
 		name: registry.name,
 		version: registry.version,
 		author: registry.author,
-		// Include version requirements for compatibility checking
-		...(registry.opencode && { opencode: registry.opencode }),
-		...(registry.ocx && { ocx: registry.ocx }),
-		components: registry.components.map((c) => ({
-			name: c.name,
-			type: c.type,
-			description: c.description,
+		...(registry.opencode ? { opencode: registry.opencode } : {}),
+		...(registry.ocx ? { ocx: registry.ocx } : {}),
+		components: registry.components.map((component) => ({
+			name: component.name,
+			type: component.type,
+			description: component.description,
 		})),
 	}
 
 	await Bun.write(join(outPath, "index.json"), JSON.stringify(index, null, 2))
 
-	// Generate .well-known/ocx.json for registry discovery
-	const wellKnownDir = join(outPath, ".well-known")
-	await mkdir(wellKnownDir, { recursive: true })
-	const discovery = { registry: "/index.json" }
-	await Bun.write(join(wellKnownDir, "ocx.json"), JSON.stringify(discovery, null, 2))
+	const wellKnownDirectory = join(outPath, ".well-known")
+	await mkdir(wellKnownDirectory, { recursive: true })
+	await Bun.write(
+		join(wellKnownDirectory, "ocx.json"),
+		JSON.stringify({ registry: "/index.json" }, null, 2),
+	)
 
 	return {
 		componentsCount: registry.components.length,

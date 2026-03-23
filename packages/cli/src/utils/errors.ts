@@ -101,18 +101,33 @@ export class ValidationError extends OCXError {
 	}
 }
 
+export interface ValidationFailureSummary {
+	valid: false
+	totalErrors: number
+	schemaErrors: number
+	sourceFileErrors: number
+	circularDependencyErrors: number
+	duplicateTargetErrors: number
+	pluginLoadabilityErrors: number
+	otherErrors: number
+}
+
+export interface StructuredValidationIssue {
+	kind: string
+	code: string
+	severity: "error" | "warning"
+	message: string
+	rendered: string
+	affectedComponents: string[]
+	affectedEntrypoints: string[]
+}
+
 export interface ValidationFailureDetails {
 	valid: false
 	errors: string[]
-	summary: {
-		valid: false
-		totalErrors: number
-		schemaErrors: number
-		sourceFileErrors: number
-		circularDependencyErrors: number
-		duplicateTargetErrors: number
-		otherErrors: number
-	}
+	warnings?: string[]
+	issues?: StructuredValidationIssue[]
+	summary: ValidationFailureSummary
 }
 
 export class ValidationFailedError extends OCXError {
