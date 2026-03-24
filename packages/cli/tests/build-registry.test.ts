@@ -170,4 +170,108 @@ describe("buildRegistry (programmatic)", () => {
 			result.validation.warnings?.some((warning) => warning.includes("non-deterministic")),
 		).toBe(true)
 	})
+
+	it("fails duplicate targets during build by default", async () => {
+		const sourceDir = join(testDir, "duplicate-targets-default")
+		const outDir = join(testDir, "duplicate-targets-default-dist")
+		await mkdir(sourceDir, { recursive: true })
+		await mkdir(join(sourceDir, "files"), { recursive: true })
+
+		await writeFile(
+			join(sourceDir, "registry.json"),
+			JSON.stringify({
+				$schema: REGISTRY_SCHEMA_V2_URL,
+				name: "Duplicate Targets Default",
+				version: "1.0.0",
+				author: "Test",
+				components: [
+					{
+						name: "component-a",
+						type: "plugin",
+						description: "A",
+						files: [{ path: "a.ts", target: "plugins/shared.ts" }],
+						dependencies: [],
+					},
+					{
+						name: "component-b",
+						type: "plugin",
+						description: "B",
+						files: [{ path: "b.ts", target: "plugins/shared.ts" }],
+						dependencies: [],
+					},
+				],
+			}),
+		)
+
+		await writeFile(join(sourceDir, "files", "a.ts"), "export default { name: 'a' }\n")
+		await writeFile(join(sourceDir, "files", "b.ts"), "export default { name: 'b' }\n")
+
+		const thrown = await buildRegistry({ source: sourceDir, out: outDir }).then(
+			() => null,
+			(error: unknown) => error,
+		)
+
+		expect(thrown).toBeInstanceOf(ValidationFailedError)
+		if (!(thrown instanceof ValidationFailedError)) {
+			throw new Error("Expected ValidationFailedError for duplicate target validation")
+		}
+
+		expect(
+			thrown.details.errors.some((error) => error.includes('Duplicate target "plugins/shared.ts"')),
+		).toBe(true)
+		expect(thrown.details.summary.duplicateTargetErrors).toBe(1)
+		expect(thrown.details.issues?.some((issue) => issue.code === "duplicate_target_detected")).toBe(
+			true,
+		)
+	})
+
+	it("allows duplicate targets when explicitly opted out", async () => {
+		const sourceDir = join(testDir, "duplicate-targets-opt-out")
+		const outDir = join(testDir, "duplicate-targets-opt-out-dist")
+		await mkdir(sourceDir, { recursive: true })
+		await mkdir(join(sourceDir, "files"), { recursive: true })
+
+		await writeFile(
+			join(sourceDir, "registry.json"),
+			JSON.stringify({
+				$schema: REGISTRY_SCHEMA_V2_URL,
+				name: "Duplicate Targets Opt Out",
+				version: "1.0.0",
+				author: "Test",
+				components: [
+					{
+						name: "component-a",
+						type: "plugin",
+						description: "A",
+						files: [{ path: "a.ts", target: "plugins/shared.ts" }],
+						dependencies: [],
+					},
+					{
+						name: "component-b",
+						type: "plugin",
+						description: "B",
+						files: [{ path: "b.ts", target: "plugins/shared.ts" }],
+						dependencies: [],
+					},
+				],
+			}),
+		)
+
+		await writeFile(join(sourceDir, "files", "a.ts"), "export default { name: 'a' }\n")
+		await writeFile(join(sourceDir, "files", "b.ts"), "export default { name: 'b' }\n")
+
+		const result = await buildRegistry({
+			source: sourceDir,
+			out: outDir,
+			skipDuplicateTargets: true,
+		})
+
+		expect("dryRun" in result).toBe(false)
+		if ("dryRun" in result) {
+			throw new Error("Expected non-dry-run build result")
+		}
+
+		expect(result.componentsCount).toBe(2)
+		expect(existsSync(join(outDir, "index.json"))).toBe(true)
+	})
 })

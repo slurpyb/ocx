@@ -181,6 +181,51 @@ describe("ocx build", () => {
 		expect(output).toContain("Built 1 component")
 	})
 
+	it("fails duplicate-target registries even without --show-validation", async () => {
+		const sourceDir = join(testDir, "registry-no-show-validation-duplicate-targets")
+		await mkdir(sourceDir, { recursive: true })
+		await mkdir(join(sourceDir, "files"), { recursive: true })
+
+		await writeFile(
+			join(sourceDir, "registry.json"),
+			JSON.stringify({
+				$schema: REGISTRY_SCHEMA_V2_URL,
+				name: "No Show Validation Duplicate Targets",
+				namespace: "kdco",
+				version: "1.0.0",
+				author: "Test Author",
+				components: [
+					{
+						name: "component-a",
+						type: "plugin",
+						description: "A",
+						files: [{ path: "a.ts", target: "plugins/shared.ts" }],
+						dependencies: [],
+					},
+					{
+						name: "component-b",
+						type: "plugin",
+						description: "B",
+						files: [{ path: "b.ts", target: "plugins/shared.ts" }],
+						dependencies: [],
+					},
+				],
+			}),
+		)
+
+		await writeFile(join(sourceDir, "files", "a.ts"), "export default { name: 'a' }\n")
+		await writeFile(join(sourceDir, "files", "b.ts"), "export default { name: 'b' }\n")
+
+		const { exitCode, output } = await runCLI(
+			["build", "registry-no-show-validation-duplicate-targets", "--out", "dist"],
+			testDir,
+		)
+
+		expect(exitCode).toBe(EXIT_CODES.CONFIG)
+		expect(output).toContain('Duplicate target "plugins/shared.ts"')
+		expect(output).not.toContain("Built")
+	})
+
 	it("should run --show-validation checks even in JSON mode", async () => {
 		const sourceDir = join(testDir, "registry-json-show-validation")
 		await mkdir(sourceDir, { recursive: true })

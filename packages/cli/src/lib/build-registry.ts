@@ -25,6 +25,13 @@ export interface BuildRegistryOptions {
 	out: string
 	/** Dry-run mode: validate and show what would be built */
 	dryRun?: boolean
+	/**
+	 * Skip duplicate target validation.
+	 *
+	 * Defaults to false so build-time validation catches conflicting targets.
+	 * Set true only for registries that intentionally reuse targets.
+	 */
+	skipDuplicateTargets?: boolean
 }
 
 export interface BuildRegistryResult {
@@ -151,7 +158,7 @@ export async function buildRegistry(
 	const { source: sourcePath, out: outPath } = options
 
 	const validationResult = await runCompleteValidation(sourcePath, {
-		skipDuplicateTargets: true,
+		skipDuplicateTargets: options.skipDuplicateTargets === true,
 	})
 
 	if (!validationResult.success) {
