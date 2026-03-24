@@ -4,6 +4,8 @@ import path from "node:path"
 import {
 	buildCliproxyProviderPatch,
 	discoverMergedModels,
+	emitCliproxySkipWarnings,
+	formatCliproxySkipWarning,
 	mergeDiscoveryModels,
 	normalizeDiscoveredModelId,
 	parseCliproxyCacheText,
@@ -507,6 +509,82 @@ describe("cliproxy cache contract", () => {
 })
 
 describe("cliproxy deterministic discovery + resolution", () => {
+	it("keeps a single actionable warning by default when exactly one model is skipped", () => {
+		const logged: string[] = []
+		emitCliproxySkipWarnings(
+			[
+				{
+					modelId: "mistral-large",
+					reason: "unresolved source",
+				},
+			],
+			{
+				env: {},
+				warn: (message) => {
+					logged.push(message)
+				},
+			},
+		)
+
+		expect(logged).toEqual(["[cliproxy] skipped <mistral-large>: unresolved source"])
+	})
+
+	it("logs a summary warning by default when multiple models are skipped", () => {
+		const logged: string[] = []
+		emitCliproxySkipWarnings(
+			[
+				{ modelId: "mistral-large", reason: "unresolved source" },
+				{ modelId: "gpt-999", reason: "auto-derived candidate miss" },
+				{ modelId: "gpt-998", reason: "auto-derived candidate miss" },
+			],
+			{
+				env: {},
+				warn: (message) => {
+					logged.push(message)
+				},
+			},
+		)
+
+		expect(logged).toHaveLength(1)
+		expect(logged[0]).toContain("[cliproxy] skipped 3 discovered models")
+		expect(logged[0]).toContain("auto-derived candidate miss: 2")
+		expect(logged[0]).toContain("unresolved source: 1")
+		expect(logged[0]).toContain("CLIPROXY_VERBOSE=1")
+		expect(logged[0]).not.toContain("<mistral-large>")
+	})
+
+	it("logs per-model warnings in verbose mode", () => {
+		const skipped = [
+			{ modelId: "mistral-large", reason: "unresolved source" },
+			{ modelId: "gpt-999", reason: "auto-derived candidate miss" },
+		]
+		const logged: string[] = []
+
+		emitCliproxySkipWarnings(skipped, {
+			env: { CLIPROXY_VERBOSE: "1" },
+			warn: (message) => {
+				logged.push(message)
+			},
+		})
+
+		expect(logged).toEqual(skipped.map((entry) => formatCliproxySkipWarning(entry)))
+	})
+
+	it("keeps hard failure when all discovered models are skipped", () => {
+		const merged = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({ data: [{ id: "mistral-large", display_name: "Unresolved" }] }),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		expect(() =>
+			resolveCliproxyArtifact({
+				cache: cacheFixture(),
+				config: configBase(),
+				discovered: merged,
+			}),
+		).toThrow("[cliproxy] zero providers/all models skipped")
+	})
+
 	it("canonicalizes one leading models/ prefix exactly", () => {
 		expect(normalizeDiscoveredModelId("models/foo")).toBe("foo")
 		expect(normalizeDiscoveredModelId("models/models/foo")).toBe("models/foo")
@@ -693,10 +771,14 @@ describe("cliproxy deterministic discovery + resolution", () => {
 
 		expect(resolved.records).toHaveLength(1)
 		expect(resolved.records[0].output.modelId).toBe("gpt-5")
-		expect(resolved.skipWarnings).toContain("[cliproxy] skipped <mistral-large>: unresolved source")
-		expect(resolved.skipWarnings).toContain(
-			"[cliproxy] skipped <gpt-999>: auto-derived candidate miss",
-		)
+		expect(resolved.skipped).toContainEqual({
+			modelId: "mistral-large",
+			reason: "unresolved source",
+		})
+		expect(resolved.skipped).toContainEqual({
+			modelId: "gpt-999",
+			reason: "auto-derived candidate miss",
+		})
 	})
 
 	it("skips exact canonical conflicts", () => {
@@ -719,7 +801,10 @@ describe("cliproxy deterministic discovery + resolution", () => {
 
 		expect(resolved.records).toHaveLength(1)
 		expect(resolved.records[0].output.modelId).toBe("claude-sonnet-4-5")
-		expect(resolved.skipWarnings).toContain("[cliproxy] skipped <gpt-5>: canonical conflict")
+		expect(resolved.skipped).toContainEqual({
+			modelId: "gpt-5",
+			reason: "canonical conflict",
+		})
 	})
 
 	it("fails for user-specified source misses and unknown custom providers", () => {
@@ -961,9 +1046,11 @@ describe("cliproxy parity fixture matrix", () => {
 			expect(resolved.records as unknown).toEqual(PARITY_GOLDENS[fixtureCase.name])
 			if (fixtureCase.assertSkipWarningFragment) {
 				const warningFragment = fixtureCase.assertSkipWarningFragment
-				expect(resolved.skipWarnings.some((warning) => warning.includes(warningFragment))).toBe(
-					true,
-				)
+				expect(
+					resolved.skipped
+						.map((entry) => formatCliproxySkipWarning(entry))
+						.some((warning) => warning.includes(warningFragment)),
+				).toBe(true)
 			}
 		})
 	}

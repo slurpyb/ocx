@@ -120,7 +120,12 @@ type ResolvedArtifactModel = {
 
 type ResolutionResult = {
 	records: ResolvedArtifactModel[]
-	skipWarnings: string[]
+	skipped: CliproxySkipRecord[]
+}
+
+export type CliproxySkipRecord = {
+	modelId: string
+	reason: string
 }
 
 type DiscoveryOutcome =
@@ -240,6 +245,7 @@ const CUSTOM_PROVIDER_TABLE: Record<string, CustomProviderPreset> = {
 }
 
 const JSON_SCALAR_TYPES = new Set(["string", "number", "boolean"])
+const CLIPROXY_VERBOSE_ENV_VAR = "CLIPROXY_VERBOSE"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -1305,18 +1311,24 @@ export function resolveCliproxyArtifact(input: {
 	discovered: MergedDiscoveryModel[]
 }): ResolutionResult {
 	const records: ResolvedArtifactModel[] = []
-	const skipWarnings: string[] = []
+	const skipped: CliproxySkipRecord[] = []
 
 	for (const discoveredModel of input.discovered) {
 		if (discoveredModel.canonicalConflict) {
-			skipWarnings.push(`[cliproxy] skipped <${discoveredModel.canonicalId}>: canonical conflict`)
+			skipped.push({
+				modelId: discoveredModel.canonicalId,
+				reason: "canonical conflict",
+			})
 			continue
 		}
 
 		const modelOverride = input.config.models[discoveredModel.canonicalId]
 		const sourceCandidate = resolveSourceCandidate(discoveredModel, modelOverride)
 		if (!sourceCandidate) {
-			skipWarnings.push(`[cliproxy] skipped <${discoveredModel.canonicalId}>: unresolved source`)
+			skipped.push({
+				modelId: discoveredModel.canonicalId,
+				reason: "unresolved source",
+			})
 			continue
 		}
 
@@ -1349,9 +1361,10 @@ export function resolveCliproxyArtifact(input: {
 					`[cliproxy] source target for <${discoveredModel.canonicalId}> does not exist: ${sourceCandidate.candidates[0].key}`,
 				)
 			}
-			skipWarnings.push(
-				`[cliproxy] skipped <${discoveredModel.canonicalId}>: auto-derived candidate miss`,
-			)
+			skipped.push({
+				modelId: discoveredModel.canonicalId,
+				reason: "auto-derived candidate miss",
+			})
 			continue
 		}
 
@@ -1411,7 +1424,10 @@ export function resolveCliproxyArtifact(input: {
 		}
 
 		if (!isValidSafetyCaps(withModelOverride)) {
-			skipWarnings.push(`[cliproxy] skipped <${discoveredModel.canonicalId}>: unsafe preset output`)
+			skipped.push({
+				modelId: discoveredModel.canonicalId,
+				reason: "unsafe preset output",
+			})
 			continue
 		}
 
@@ -1430,8 +1446,57 @@ export function resolveCliproxyArtifact(input: {
 
 	return {
 		records,
-		skipWarnings,
+		skipped,
 	}
+}
+
+export function formatCliproxySkipWarning(skip: CliproxySkipRecord): string {
+	return `[cliproxy] skipped <${skip.modelId}>: ${skip.reason}`
+}
+
+export function summarizeCliproxySkipWarnings(skipped: CliproxySkipRecord[]): string {
+	const reasonCounts = new Map<string, number>()
+	for (const skipRecord of skipped) {
+		reasonCounts.set(skipRecord.reason, (reasonCounts.get(skipRecord.reason) ?? 0) + 1)
+	}
+
+	const reasonSummary = [...reasonCounts.entries()]
+		.sort((left, right) => {
+			const countSort = right[1] - left[1]
+			if (countSort !== 0) return countSort
+			return left[0].localeCompare(right[0])
+		})
+		.map(([reason, count]) => `${reason}: ${count}`)
+		.join(", ")
+
+	const modelWord = skipped.length === 1 ? "model" : "models"
+	return `[cliproxy] skipped ${skipped.length} discovered ${modelWord} (${reasonSummary}). Set ${CLIPROXY_VERBOSE_ENV_VAR}=1 for per-model diagnostics.`
+}
+
+export function emitCliproxySkipWarnings(
+	skipped: CliproxySkipRecord[],
+	options: {
+		env?: Record<string, string | undefined>
+		warn?: (message: string) => void
+	} = {},
+) {
+	if (skipped.length === 0) return
+
+	const env = options.env ?? process.env
+	const warn = options.warn ?? ((message: string) => console.warn(message))
+	if (env[CLIPROXY_VERBOSE_ENV_VAR] === "1") {
+		for (const skipRecord of skipped) {
+			warn(formatCliproxySkipWarning(skipRecord))
+		}
+		return
+	}
+
+	if (skipped.length === 1) {
+		warn(formatCliproxySkipWarning(skipped[0]))
+		return
+	}
+
+	warn(summarizeCliproxySkipWarnings(skipped))
 }
 
 export function buildCliproxyProviderPatch(input: {
@@ -1620,10 +1685,7 @@ export const CliproxyPlugin: Plugin = async () => {
 		config: parsedConfig,
 		discovered,
 	})
-
-	for (const warning of resolved.skipWarnings) {
-		console.warn(warning)
-	}
+	emitCliproxySkipWarnings(resolved.skipped)
 
 	const providerPatch = buildCliproxyProviderPatch({
 		config: parsedConfig,
