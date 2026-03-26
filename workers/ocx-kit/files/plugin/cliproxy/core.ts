@@ -1,9 +1,17 @@
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import os from "node:os"
+import { dirname } from "node:path"
 import type { Hooks, Plugin } from "@opencode-ai/plugin"
 import { type ParseError, parse as parseJsonc } from "jsonc-parser"
 
 type JsonScalar = string | number | boolean | null
+
+type CanonicalCapabilities = {
+	modalities?: string[]
+	modalitiesInput?: string[]
+	modalitiesOutput?: string[]
+	variants?: string[]
+}
 
 type DiscoveryEndpoint = "v1" | "v1beta"
 type DiscoveryFailureKind = "timeout" | "auth" | "malformed_json" | "generic"
@@ -51,29 +59,80 @@ type Cost = {
 	reasoning?: number
 	cacheRead?: number
 	cacheWrite?: number
+	contextOver200k?: {
+		input: number
+		output: number
+		cacheRead?: number
+		cacheWrite?: number
+	}
 }
+
+type InterleavedCapability =
+	| boolean
+	| {
+			field: "reasoning_content" | "reasoning_details"
+	  }
 
 type SafetyCaps = {
 	context?: number
 	output?: number
 }
 
+export type BaseCatalogSource = "models.dev" | "opencode" | "supplemental"
+
 type ParsedCacheModel = {
 	source: SourcePointer
+	baseSource: BaseCatalogSource
 	api: {
 		npm: string
 		id?: string
 	}
 	displayName: string
+	releaseDate?: string
+	attachment?: boolean
 	limits: Limits
 	reasoning: boolean
 	cost: Cost
+	capabilities?: CanonicalCapabilities
 }
 
 type ParsedCache = {
 	models: ParsedCacheModel[]
 	bySource: Map<string, ParsedCacheModel>
 	providerNamespaces: Set<string>
+}
+
+export type BaseCatalogContractVersion = 1
+
+export type BaseCatalogModelV1 = {
+	source: string
+	api: {
+		npm: string
+		id?: string
+	}
+	displayName: string
+	family?: string
+	releaseDate?: string
+	lastUpdated?: string
+	knowledgeCutoff?: string
+	status?: "alpha" | "beta" | "deprecated" | "active"
+	attachment?: boolean
+	temperature?: boolean
+	toolCall?: boolean
+	structuredOutput?: boolean
+	openWeights?: boolean
+	interleaved?: InterleavedCapability
+	options?: Record<string, unknown>
+	headers?: Record<string, string>
+	limits: Limits
+	reasoning: boolean
+	cost?: Partial<Cost>
+	capabilities?: CanonicalCapabilities
+}
+
+export type BaseCatalogV1 = {
+	$cliproxyBaseCatalogContractVersion: BaseCatalogContractVersion
+	models: BaseCatalogModelV1[]
 }
 
 type EndpointItem = {
@@ -90,6 +149,7 @@ type MergedDiscoveryModel = {
 	displayName: string
 	ownerHint?: string
 	canonicalConflict: boolean
+	resolvedFromAliasId?: string
 }
 
 type ResolvedArtifactModel = {
@@ -99,15 +159,19 @@ type ResolvedArtifactModel = {
 		modelId: string
 		effectiveHost: string
 	}
+	baseSource: BaseCatalogSource
 	output: {
 		providerBucketId: string
 		modelId: string
+		resolvedFromAliasId?: string
 	}
 	api: {
 		npm: string
 		id?: string
 	}
 	displayName: string
+	releaseDate?: string
+	attachment?: boolean
 	limits: Limits
 	reasoning: boolean
 	cost: Cost
@@ -116,6 +180,7 @@ type ResolvedArtifactModel = {
 		headers: Record<string, string>
 		params: Record<string, JsonScalar>
 	}
+	capabilities?: CanonicalCapabilities
 }
 
 type ResolutionResult = {
@@ -123,9 +188,105 @@ type ResolutionResult = {
 	skipped: CliproxySkipRecord[]
 }
 
+export type CliproxySkipCode =
+	| "availability-gap"
+	| "exposure-gap"
+	| "canonical conflict"
+	| "unresolved source"
+	| "auto-derived candidate miss"
+	| "unsafe preset output"
+
 export type CliproxySkipRecord = {
+	code?: CliproxySkipCode
 	modelId: string
 	reason: string
+	canonicalId?: string
+	discoveredId?: string
+}
+
+export type CliproxyFailCode =
+	| "invalid-canonical-metadata"
+	| "ambiguous-mapping"
+	| "duplicate-emitted-id"
+	| "missing-required-provider-fields"
+	| "invalid-availability-input"
+	| "transform-parity-mismatch"
+	| "availability-fallback-missing"
+
+export type CliproxyFailRecord = {
+	code: CliproxyFailCode
+	message: string
+	canonicalId?: string
+	discoveredId?: string
+}
+
+type GenerationArtifact = {
+	providerPatch: Record<string, Record<string, unknown>>
+	skipped: CliproxySkipRecord[]
+	failed: CliproxyFailRecord[]
+	availabilitySource: "live" | "snapshot"
+	snapshotPersistenceFailure?: string
+}
+
+class CliproxyGenerationFailure extends Error {
+	constructor(
+		readonly code: CliproxyFailCode,
+		message: string,
+		readonly details?: { canonicalId?: string; discoveredId?: string },
+	) {
+		super(message)
+		this.name = "CliproxyGenerationFailure"
+	}
+}
+
+type PersistedAvailabilityModel = {
+	canonicalId: string
+	ownerHint?: string
+	canonicalConflict?: boolean
+}
+
+type PersistedAvailabilitySnapshot = {
+	$cliproxyAvailabilityContractVersion: 1
+	sourceUrl: string
+	capturedAt: string
+	models: PersistedAvailabilityModel[]
+}
+
+type ResolvedCachePaths = {
+	modelsPath: string
+	availabilitySnapshotPath: string
+	opencodeBaseCatalogPath?: string
+	opencodeBaseCatalogPathIsExplicit: boolean
+}
+
+type CanonicalCatalogModel = {
+	canonicalId: string
+	source: SourcePointer
+	baseSource: BaseCatalogSource
+	api: {
+		npm: string
+		id?: string
+	}
+	displayName: string
+	releaseDate?: string
+	attachment?: boolean
+	limits: Limits
+	reasoning: boolean
+	cost: Cost
+	capabilities?: CanonicalCapabilities
+	customProvider?: CustomProviderPreset
+}
+
+type CanonicalCatalog = {
+	models: CanonicalCatalogModel[]
+	byCanonicalId: Map<string, CanonicalCatalogModel>
+	bySourceKey: Map<string, CanonicalCatalogModel>
+}
+
+type AvailabilitySelection = {
+	availableCanonicalIds: Set<string>
+	aliasByCanonicalId: Map<string, string>
+	skipped: CliproxySkipRecord[]
 }
 
 type DiscoveryOutcome =
@@ -204,8 +365,8 @@ const DEFAULT_HOST_PRESET: HostPreset = {
 
 // Explicit checked-in alias table: exact discovered IDs -> exact canonical source keys.
 const DISCOVERY_ALIAS_TABLE: Record<string, string> = {
-	"vertex-claude": "google-vertex-anthropic/vertex-claude",
 	"gpt-5-latest": "openai/gpt-5",
+	"codex-mini-latest": "openai/codex-mini",
 }
 
 const OWNER_PROVIDER_NAMESPACE_ALIASES: Record<string, string> = {
@@ -244,8 +405,70 @@ const CUSTOM_PROVIDER_TABLE: Record<string, CustomProviderPreset> = {
 	},
 }
 
+const CLIPROXY_BASE_CATALOG_CONTRACT_VERSION: BaseCatalogContractVersion = 1
+const OPENCODE_BASE_CATALOG_ENV_VAR = "OPENCODE_BASE_CATALOG_PATH"
+const OPENCODE_BASE_CATALOG_DEFAULT_FILENAME = "opencode-base-catalog.json"
+
+const SUPPLEMENTAL_BASE_CATALOG_MODELS: BaseCatalogModelV1[] = [
+	{
+		source: "google-antigravity/gemini-2.5-pro",
+		api: {
+			npm: "@ai-sdk/google",
+		},
+		displayName: "Gemini 2.5 Pro (Antigravity)",
+		limits: { context: 200000, output: 64000 },
+		reasoning: true,
+		cost: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+		},
+	},
+]
+
 const JSON_SCALAR_TYPES = new Set(["string", "number", "boolean"])
 const CLIPROXY_VERBOSE_ENV_VAR = "CLIPROXY_VERBOSE"
+const CLIPROXY_AVAILABILITY_CONTRACT_VERSION = 1
+
+const UNQUALIFIED_CANONICAL_MODEL_ID_PROVIDERS = new Set([
+	"anthropic",
+	"openai",
+	"google",
+	"google-vertex-anthropic",
+	"moonshotai",
+])
+
+function failCliproxyGeneration(
+	code: CliproxyFailCode,
+	message: string,
+	details?: { canonicalId?: string; discoveredId?: string },
+): never {
+	throw new CliproxyGenerationFailure(code, message, details)
+}
+
+function toCliproxyFailRecord(error: unknown): CliproxyFailRecord {
+	if (error instanceof CliproxyGenerationFailure) {
+		return {
+			code: error.code,
+			message: error.message,
+			...(error.details?.canonicalId ? { canonicalId: error.details.canonicalId } : {}),
+			...(error.details?.discoveredId ? { discoveredId: error.details.discoveredId } : {}),
+		}
+	}
+
+	if (error instanceof Error) {
+		return {
+			code: "invalid-canonical-metadata",
+			message: error.message,
+		}
+	}
+
+	return {
+		code: "invalid-canonical-metadata",
+		message: "[cliproxy] unknown generation failure",
+	}
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -369,7 +592,11 @@ function parseCostOverride(value: unknown, scope: string): Partial<Cost> {
 	if (!isRecord(value)) {
 		throw new Error(`[cliproxy] ${scope} must be an object`)
 	}
-	expectAllowedKeys(value, ["input", "output", "reasoning", "cacheRead", "cacheWrite"], scope)
+	expectAllowedKeys(
+		value,
+		["input", "output", "reasoning", "cacheRead", "cacheWrite", "contextOver200k"],
+		scope,
+	)
 	const parsed: Partial<Cost> = {}
 	if (value.input !== undefined)
 		parsed.input = expectFiniteNonNegative(value.input, `${scope}.input`)
@@ -381,6 +608,39 @@ function parseCostOverride(value: unknown, scope: string): Partial<Cost> {
 		parsed.cacheRead = expectFiniteNonNegative(value.cacheRead, `${scope}.cacheRead`)
 	if (value.cacheWrite !== undefined)
 		parsed.cacheWrite = expectFiniteNonNegative(value.cacheWrite, `${scope}.cacheWrite`)
+	if (value.contextOver200k !== undefined) {
+		if (!isRecord(value.contextOver200k)) {
+			throw new Error(`[cliproxy] ${scope}.contextOver200k must be an object`)
+		}
+		expectAllowedKeys(
+			value.contextOver200k,
+			["input", "output", "cacheRead", "cacheWrite"],
+			`${scope}.contextOver200k`,
+		)
+		parsed.contextOver200k = {
+			input: expectFiniteNonNegative(value.contextOver200k.input, `${scope}.contextOver200k.input`),
+			output: expectFiniteNonNegative(
+				value.contextOver200k.output,
+				`${scope}.contextOver200k.output`,
+			),
+			...(value.contextOver200k.cacheRead === undefined
+				? {}
+				: {
+						cacheRead: expectFiniteNonNegative(
+							value.contextOver200k.cacheRead,
+							`${scope}.contextOver200k.cacheRead`,
+						),
+					}),
+			...(value.contextOver200k.cacheWrite === undefined
+				? {}
+				: {
+						cacheWrite: expectFiniteNonNegative(
+							value.contextOver200k.cacheWrite,
+							`${scope}.contextOver200k.cacheWrite`,
+						),
+					}),
+		}
+	}
 	return parsed
 }
 
@@ -641,9 +901,99 @@ function parseCacheLimits(value: unknown, scope: string): Limits {
 	}
 }
 
+function parseOptionalCanonicalStringList(value: unknown): string[] | undefined {
+	if (!Array.isArray(value)) return undefined
+
+	const normalized = value
+		.filter((entry): entry is string => typeof entry === "string")
+		.map((entry) => entry.trim())
+		.filter((entry) => entry.length > 0)
+
+	if (normalized.length === 0) return undefined
+
+	return [...new Set(normalized)].sort((left, right) => left.localeCompare(right))
+}
+
+function mergeCanonicalStringLists(...lists: Array<string[] | undefined>): string[] | undefined {
+	const merged = lists.flatMap((list) => list ?? [])
+	if (merged.length === 0) return undefined
+	return [...new Set(merged)].sort((left, right) => left.localeCompare(right))
+}
+
+function parseOptionalCanonicalModalities(value: unknown):
+	| {
+			merged?: string[]
+			input?: string[]
+			output?: string[]
+	  }
+	| undefined {
+	if (Array.isArray(value)) {
+		const merged = parseOptionalCanonicalStringList(value)
+		if (!merged) {
+			return undefined
+		}
+		return { merged }
+	}
+
+	if (!isRecord(value)) {
+		return undefined
+	}
+
+	const inputModalities = parseOptionalCanonicalStringList(value.input)
+	const outputModalities = parseOptionalCanonicalStringList(value.output)
+	const merged = mergeCanonicalStringLists(inputModalities, outputModalities)
+
+	if (!inputModalities && !outputModalities && !merged) {
+		return undefined
+	}
+
+	return {
+		...(merged ? { merged } : {}),
+		...(inputModalities ? { input: inputModalities } : {}),
+		...(outputModalities ? { output: outputModalities } : {}),
+	}
+}
+
+function parseCanonicalCapabilities(
+	value: Record<string, unknown>,
+): CanonicalCapabilities | undefined {
+	const nestedCapabilities = isRecord(value.capabilities) ? value.capabilities : undefined
+
+	const topLevelModalities = parseOptionalCanonicalModalities(value.modalities)
+	const topLevelVariants = parseOptionalCanonicalStringList(value.variants)
+	const nestedModalities = nestedCapabilities
+		? parseOptionalCanonicalModalities(nestedCapabilities.modalities)
+		: undefined
+	const nestedVariants = nestedCapabilities
+		? parseOptionalCanonicalStringList(nestedCapabilities.variants)
+		: undefined
+
+	const modalities = mergeCanonicalStringLists(topLevelModalities?.merged, nestedModalities?.merged)
+	const modalitiesInput = mergeCanonicalStringLists(
+		topLevelModalities?.input,
+		nestedModalities?.input,
+	)
+	const modalitiesOutput = mergeCanonicalStringLists(
+		topLevelModalities?.output,
+		nestedModalities?.output,
+	)
+	const variants = topLevelVariants ?? nestedVariants
+	if (!modalities && !modalitiesInput && !modalitiesOutput && !variants) {
+		return undefined
+	}
+
+	return {
+		...(modalities ? { modalities } : {}),
+		...(modalitiesInput ? { modalitiesInput } : {}),
+		...(modalitiesOutput ? { modalitiesOutput } : {}),
+		...(variants ? { variants } : {}),
+	}
+}
+
 function parseCacheModel(
 	providerNamespace: string,
 	providerDefaults: { npm?: string; api?: string },
+	baseSource: BaseCatalogSource,
 	modelKey: string,
 	value: unknown,
 ): ParsedCacheModel {
@@ -654,6 +1004,14 @@ function parseCacheModel(
 
 	const modelId = expectString(value.id, `${scope}.id`)
 	const displayName = expectString(value.name, `${scope}.name`)
+	const releaseDate =
+		value.release_date === undefined
+			? undefined
+			: expectString(value.release_date, `${scope}.release_date`)
+	const attachment =
+		value.attachment === undefined
+			? undefined
+			: expectBoolean(value.attachment, `${scope}.attachment`)
 	const reasoning = expectBoolean(value.reasoning, `${scope}.reasoning`)
 	const limits = parseCacheLimits(value.limit, `${scope}.limit`)
 	const cost = parseCacheCost(value.cost, `${scope}.cost`)
@@ -680,16 +1038,22 @@ function parseCacheModel(
 		inheritedApi = expectString(providerDefaults.api, `${scope}.provider.api`)
 	}
 
+	const capabilities = parseCanonicalCapabilities(value)
+
 	return {
 		source: buildSourcePointer(providerNamespace, modelId),
+		baseSource,
 		api: {
 			npm: inheritedNpmRaw,
 			id: inheritedApi,
 		},
 		displayName,
+		...(releaseDate ? { releaseDate } : {}),
+		...(attachment === undefined ? {} : { attachment }),
 		limits,
 		reasoning,
 		cost,
+		...(capabilities ? { capabilities } : {}),
 	}
 }
 
@@ -740,7 +1104,13 @@ export function parseCliproxyCacheText(text: string, cachePath: string): ParsedC
 
 		for (const [modelKey, modelValue] of Object.entries(providerValue.models)) {
 			parsedModels.push(
-				parseCacheModel(providerId, { npm: providerNpm, api: providerApi }, modelKey, modelValue),
+				parseCacheModel(
+					providerId,
+					{ npm: providerNpm, api: providerApi },
+					"models.dev",
+					modelKey,
+					modelValue,
+				),
 			)
 		}
 	}
@@ -749,21 +1119,613 @@ export function parseCliproxyCacheText(text: string, cachePath: string): ParsedC
 		throw new Error("[cliproxy] Cache contains zero providers/models")
 	}
 
+	return buildParsedCache(parsedModels)
+}
+
+function cloneParsedCacheModel(model: ParsedCacheModel): ParsedCacheModel {
+	return {
+		source: { ...model.source },
+		baseSource: model.baseSource,
+		api: { ...model.api },
+		displayName: model.displayName,
+		...(model.releaseDate ? { releaseDate: model.releaseDate } : {}),
+		...(model.attachment === undefined ? {} : { attachment: model.attachment }),
+		limits: { ...model.limits },
+		reasoning: model.reasoning,
+		cost: { ...model.cost },
+		...(model.capabilities
+			? {
+					capabilities: {
+						...(model.capabilities.modalities
+							? { modalities: [...model.capabilities.modalities] }
+							: {}),
+						...(model.capabilities.modalitiesInput
+							? { modalitiesInput: [...model.capabilities.modalitiesInput] }
+							: {}),
+						...(model.capabilities.modalitiesOutput
+							? { modalitiesOutput: [...model.capabilities.modalitiesOutput] }
+							: {}),
+						...(model.capabilities.variants ? { variants: [...model.capabilities.variants] } : {}),
+					},
+				}
+			: {}),
+	}
+}
+
+function buildParsedCache(models: ParsedCacheModel[]): ParsedCache {
 	const bySource = new Map<string, ParsedCacheModel>()
 	const providerNamespaces = new Set<string>()
+	const normalizedModels: ParsedCacheModel[] = []
 
-	for (const model of parsedModels) {
+	for (const model of models) {
 		if (bySource.has(model.source.key)) {
 			throw new Error(`[cliproxy] duplicate cache source key: ${model.source.key}`)
 		}
-		bySource.set(model.source.key, model)
-		providerNamespaces.add(model.source.providerNamespace)
+
+		const normalized = cloneParsedCacheModel(model)
+		normalizedModels.push(normalized)
+		bySource.set(normalized.source.key, normalized)
+		providerNamespaces.add(normalized.source.providerNamespace)
+	}
+
+	normalizedModels.sort((left, right) => left.source.key.localeCompare(right.source.key))
+
+	return {
+		models: normalizedModels,
+		bySource,
+		providerNamespaces,
+	}
+}
+
+function parseBaseCatalogModelV1(
+	value: unknown,
+	scope: string,
+	baseSource: BaseCatalogSource,
+): ParsedCacheModel {
+	if (!isRecord(value)) {
+		throw new Error(`[cliproxy] ${scope} must be an object`)
+	}
+
+	expectAllowedKeys(
+		value,
+		[
+			"source",
+			"api",
+			"displayName",
+			"family",
+			"releaseDate",
+			"lastUpdated",
+			"knowledgeCutoff",
+			"status",
+			"attachment",
+			"temperature",
+			"toolCall",
+			"structuredOutput",
+			"openWeights",
+			"interleaved",
+			"options",
+			"headers",
+			"limits",
+			"reasoning",
+			"cost",
+			"capabilities",
+		],
+		scope,
+	)
+
+	const source = parseCanonicalSourceString(expectString(value.source, `${scope}.source`), scope)
+
+	if (!isRecord(value.api)) {
+		throw new Error(`[cliproxy] ${scope}.api must be an object`)
+	}
+	expectAllowedKeys(value.api, ["npm", "id"], `${scope}.api`)
+	const npm = expectString(value.api.npm, `${scope}.api.npm`).trim()
+	if (npm.length === 0) {
+		throw new Error(`[cliproxy] ${scope}.api.npm must be a non-empty string`)
+	}
+	const apiId =
+		value.api.id === undefined ? undefined : expectString(value.api.id, `${scope}.api.id`).trim()
+
+	const displayName = expectString(value.displayName, `${scope}.displayName`)
+	const releaseDate =
+		value.releaseDate === undefined
+			? undefined
+			: expectString(value.releaseDate, `${scope}.releaseDate`)
+	const attachment =
+		value.attachment === undefined
+			? undefined
+			: expectBoolean(value.attachment, `${scope}.attachment`)
+	const reasoning = expectBoolean(value.reasoning, `${scope}.reasoning`)
+	const limits = parseCacheLimits(value.limits, `${scope}.limits`)
+	const cost = normalizeCost(
+		value.cost === undefined ? undefined : parseCostOverride(value.cost, `${scope}.cost`),
+	)
+	const capabilities = parseCanonicalCapabilities(value)
+
+	return {
+		source,
+		baseSource,
+		api: {
+			npm,
+			...(apiId ? { id: apiId } : {}),
+		},
+		displayName,
+		...(releaseDate ? { releaseDate } : {}),
+		...(attachment === undefined ? {} : { attachment }),
+		limits,
+		reasoning,
+		cost,
+		...(capabilities ? { capabilities } : {}),
+	}
+}
+
+export function parseBaseCatalogText(
+	text: string,
+	catalogPath: string,
+	options: {
+		baseSource?: BaseCatalogSource
+	} = {},
+): ParsedCache {
+	let raw: unknown
+	try {
+		raw = JSON.parse(text)
+	} catch {
+		throw new Error(`[cliproxy] Malformed base catalog JSON: ${catalogPath}`)
+	}
+
+	if (!isRecord(raw)) {
+		throw new Error(`[cliproxy] Base catalog root must be a JSON object: ${catalogPath}`)
+	}
+
+	const rootCandidate = isRecord(raw.baseCatalog) ? raw.baseCatalog : raw
+	const marker = rootCandidate.$cliproxyBaseCatalogContractVersion
+	if (marker !== CLIPROXY_BASE_CATALOG_CONTRACT_VERSION) {
+		throw new Error("[cliproxy] Unsupported $cliproxyBaseCatalogContractVersion marker")
+	}
+
+	if (!Array.isArray(rootCandidate.models)) {
+		throw new Error(`[cliproxy] Base catalog models must be an array: ${catalogPath}`)
+	}
+
+	const baseSource = options.baseSource ?? "opencode"
+
+	const parsedModels = rootCandidate.models.map((entry, index) =>
+		parseBaseCatalogModelV1(entry, `base catalog models[${index}]`, baseSource),
+	)
+
+	return buildParsedCache(parsedModels)
+}
+
+function buildSupplementalBaseCatalog(): ParsedCache {
+	const parsedModels = SUPPLEMENTAL_BASE_CATALOG_MODELS.map((entry, index) =>
+		parseBaseCatalogModelV1(entry, `supplemental base models[${index}]`, "supplemental"),
+	)
+	return buildParsedCache(parsedModels)
+}
+
+export function mergeBaseCatalogSources(input: {
+	opencodeBase?: ParsedCache
+	modelsDevBase: ParsedCache
+	supplementalBase?: ParsedCache
+}): ParsedCache {
+	const mergedBySource = new Map<string, ParsedCacheModel>()
+
+	const applyLayer = (models: ParsedCacheModel[]) => {
+		for (const model of models) {
+			mergedBySource.set(model.source.key, cloneParsedCacheModel(model))
+		}
+	}
+
+	applyLayer(input.supplementalBase?.models ?? [])
+	applyLayer(input.modelsDevBase.models)
+	applyLayer(input.opencodeBase?.models ?? [])
+
+	return buildParsedCache([...mergedBySource.values()])
+}
+
+function deriveCanonicalModelId(source: SourcePointer): string {
+	if (UNQUALIFIED_CANONICAL_MODEL_ID_PROVIDERS.has(source.providerNamespace)) {
+		return source.modelId
+	}
+	return source.key
+}
+
+function buildCanonicalCatalog(cache: ParsedCache): CanonicalCatalog {
+	const models: CanonicalCatalogModel[] = []
+
+	for (const cacheModel of cache.models) {
+		if (cacheModel.api.npm.trim().length === 0) {
+			failCliproxyGeneration(
+				"missing-required-provider-fields",
+				`[cliproxy] missing required provider field api.npm for ${cacheModel.source.key}`,
+				{ canonicalId: cacheModel.source.key },
+			)
+		}
+
+		models.push({
+			canonicalId: deriveCanonicalModelId(cacheModel.source),
+			source: cacheModel.source,
+			baseSource: cacheModel.baseSource,
+			api: { ...cacheModel.api },
+			displayName: cacheModel.displayName,
+			...(cacheModel.releaseDate ? { releaseDate: cacheModel.releaseDate } : {}),
+			...(cacheModel.attachment === undefined ? {} : { attachment: cacheModel.attachment }),
+			limits: { ...cacheModel.limits },
+			reasoning: cacheModel.reasoning,
+			cost: { ...cacheModel.cost },
+			...(cacheModel.capabilities
+				? {
+						capabilities: {
+							...(cacheModel.capabilities.modalities
+								? { modalities: [...cacheModel.capabilities.modalities] }
+								: {}),
+							...(cacheModel.capabilities.modalitiesInput
+								? { modalitiesInput: [...cacheModel.capabilities.modalitiesInput] }
+								: {}),
+							...(cacheModel.capabilities.modalitiesOutput
+								? { modalitiesOutput: [...cacheModel.capabilities.modalitiesOutput] }
+								: {}),
+							...(cacheModel.capabilities.variants
+								? { variants: [...cacheModel.capabilities.variants] }
+								: {}),
+						},
+					}
+				: {}),
+		})
+	}
+
+	for (const [providerNamespace, providerPreset] of Object.entries(CUSTOM_PROVIDER_TABLE)) {
+		for (const [modelId, customModel] of Object.entries(providerPreset.models)) {
+			const source = buildSourcePointer(providerNamespace, modelId)
+			if (cache.bySource.has(source.key)) {
+				continue
+			}
+			models.push({
+				canonicalId: deriveCanonicalModelId(source),
+				source,
+				baseSource: "supplemental",
+				api: {
+					npm: providerPreset.api.npm,
+					id: customModel.apiId ?? providerPreset.api.id,
+				},
+				displayName: customModel.displayName,
+				limits: { ...customModel.limits },
+				reasoning: customModel.reasoning,
+				cost: normalizeCost(customModel.cost),
+				customProvider: providerPreset,
+			})
+		}
+	}
+
+	const byCanonicalId = new Map<string, CanonicalCatalogModel>()
+	const bySourceKey = new Map<string, CanonicalCatalogModel>()
+
+	for (const model of models) {
+		if (model.canonicalId.length === 0) {
+			failCliproxyGeneration(
+				"invalid-canonical-metadata",
+				`[cliproxy] canonical model id cannot be empty for ${model.source.key}`,
+				{ canonicalId: model.source.key },
+			)
+		}
+
+		const existingCanonical = byCanonicalId.get(model.canonicalId)
+		if (existingCanonical && existingCanonical.source.key !== model.source.key) {
+			failCliproxyGeneration(
+				"duplicate-emitted-id",
+				`[cliproxy] duplicate canonical model id emitted: ${model.canonicalId}`,
+				{ canonicalId: model.canonicalId },
+			)
+		}
+
+		if (bySourceKey.has(model.source.key)) {
+			failCliproxyGeneration(
+				"invalid-canonical-metadata",
+				`[cliproxy] duplicate canonical source key in catalog: ${model.source.key}`,
+				{ canonicalId: model.source.key },
+			)
+		}
+
+		byCanonicalId.set(model.canonicalId, model)
+		bySourceKey.set(model.source.key, model)
+	}
+
+	for (const [aliasId, sourceKey] of Object.entries(DISCOVERY_ALIAS_TABLE)) {
+		if (aliasId.trim().length === 0 || sourceKey.trim().length === 0) {
+			failCliproxyGeneration(
+				"transform-parity-mismatch",
+				`[cliproxy] alias table contains empty value: ${aliasId} -> ${sourceKey}`,
+			)
+		}
+		if (!bySourceKey.has(sourceKey)) continue
+	}
+
+	models.sort((left, right) => left.canonicalId.localeCompare(right.canonicalId))
+	return {
+		models,
+		byCanonicalId,
+		bySourceKey,
+	}
+}
+
+export function parseCliproxyAvailabilitySnapshotText(
+	text: string,
+	snapshotPath: string,
+): MergedDiscoveryModel[] {
+	let parsed: unknown
+	try {
+		parsed = JSON.parse(text)
+	} catch {
+		failCliproxyGeneration(
+			"invalid-availability-input",
+			`[cliproxy] malformed availability snapshot JSON: ${snapshotPath}`,
+		)
+	}
+
+	if (!isRecord(parsed)) {
+		failCliproxyGeneration(
+			"invalid-availability-input",
+			`[cliproxy] availability snapshot root must be an object: ${snapshotPath}`,
+		)
+	}
+
+	const version = parsed.$cliproxyAvailabilityContractVersion
+	if (version !== CLIPROXY_AVAILABILITY_CONTRACT_VERSION) {
+		failCliproxyGeneration(
+			"invalid-availability-input",
+			`[cliproxy] unsupported availability snapshot contract version at ${snapshotPath}`,
+		)
+	}
+
+	if (typeof parsed.sourceUrl !== "string" || parsed.sourceUrl.trim().length === 0) {
+		failCliproxyGeneration(
+			"invalid-availability-input",
+			`[cliproxy] availability snapshot sourceUrl must be a non-empty string: ${snapshotPath}`,
+		)
+	}
+
+	if (typeof parsed.capturedAt !== "string" || parsed.capturedAt.trim().length === 0) {
+		failCliproxyGeneration(
+			"invalid-availability-input",
+			`[cliproxy] availability snapshot capturedAt must be a non-empty string: ${snapshotPath}`,
+		)
+	}
+
+	if (!Array.isArray(parsed.models)) {
+		failCliproxyGeneration(
+			"invalid-availability-input",
+			`[cliproxy] availability snapshot models must be an array: ${snapshotPath}`,
+		)
+	}
+
+	const merged: MergedDiscoveryModel[] = []
+	for (const entry of parsed.models) {
+		if (!isRecord(entry)) {
+			failCliproxyGeneration(
+				"invalid-availability-input",
+				`[cliproxy] availability snapshot model entry must be an object: ${snapshotPath}`,
+			)
+		}
+
+		const canonicalId =
+			typeof entry.canonicalId === "string" ? normalizeDiscoveredModelId(entry.canonicalId) : ""
+		if (canonicalId.length === 0) {
+			failCliproxyGeneration(
+				"invalid-availability-input",
+				`[cliproxy] availability snapshot model canonicalId must be non-empty: ${snapshotPath}`,
+			)
+		}
+
+		const ownerHint =
+			typeof entry.ownerHint === "string" && entry.ownerHint.trim().length > 0
+				? entry.ownerHint.trim()
+				: undefined
+
+		if (entry.canonicalConflict !== undefined && typeof entry.canonicalConflict !== "boolean") {
+			failCliproxyGeneration(
+				"invalid-availability-input",
+				`[cliproxy] availability snapshot canonicalConflict must be a boolean: ${snapshotPath}`,
+			)
+		}
+
+		merged.push({
+			canonicalId,
+			displayName: canonicalId,
+			ownerHint,
+			canonicalConflict: entry.canonicalConflict === true,
+		})
+	}
+
+	merged.sort((left, right) => left.canonicalId.localeCompare(right.canonicalId))
+	return merged
+}
+
+function serializeCliproxyAvailabilitySnapshot(input: {
+	url: string
+	models: MergedDiscoveryModel[]
+}): PersistedAvailabilitySnapshot {
+	const models: PersistedAvailabilityModel[] = input.models
+		.map((entry) => ({
+			canonicalId: entry.canonicalId,
+			...(entry.ownerHint ? { ownerHint: entry.ownerHint } : {}),
+			...(entry.canonicalConflict ? { canonicalConflict: true } : {}),
+		}))
+		.sort((left, right) => left.canonicalId.localeCompare(right.canonicalId))
+
+	return {
+		$cliproxyAvailabilityContractVersion: CLIPROXY_AVAILABILITY_CONTRACT_VERSION,
+		sourceUrl: input.url,
+		capturedAt: new Date().toISOString(),
+		models,
+	}
+}
+
+function loadAvailabilitySnapshotFromDisk(
+	snapshotPath: string,
+): MergedDiscoveryModel[] | undefined {
+	if (!existsSync(snapshotPath)) {
+		return undefined
+	}
+
+	let text: string
+	try {
+		text = readFileSync(snapshotPath, "utf-8")
+	} catch {
+		failCliproxyGeneration(
+			"invalid-availability-input",
+			`[cliproxy] failed to read availability snapshot: ${snapshotPath}`,
+		)
+	}
+
+	return parseCliproxyAvailabilitySnapshotText(text, snapshotPath)
+}
+
+function persistAvailabilitySnapshotToDisk(
+	snapshotPath: string,
+	input: { url: string; models: MergedDiscoveryModel[] },
+) {
+	const snapshot = serializeCliproxyAvailabilitySnapshot(input)
+	writeFileSync(snapshotPath, `${JSON.stringify(snapshot, null, "\t")}\n`, "utf-8")
+}
+
+type AvailabilityCandidate = {
+	canonicalId: string
+	fromAliasTable: boolean
+}
+
+function resolveAvailabilityCandidates(
+	availabilityModel: MergedDiscoveryModel,
+	catalog: CanonicalCatalog,
+): AvailabilityCandidate[] {
+	const candidatesByCanonicalId = new Map<string, AvailabilityCandidate>()
+
+	const upsertCandidate = (canonicalId: string, options?: { fromAliasTable?: boolean }) => {
+		const existing = candidatesByCanonicalId.get(canonicalId)
+		if (existing) {
+			if (options?.fromAliasTable) {
+				existing.fromAliasTable = true
+			}
+			return
+		}
+
+		candidatesByCanonicalId.set(canonicalId, {
+			canonicalId,
+			fromAliasTable: options?.fromAliasTable === true,
+		})
+	}
+
+	const direct = catalog.byCanonicalId.get(availabilityModel.canonicalId)
+	if (direct) {
+		upsertCandidate(direct.canonicalId)
+		return [...candidatesByCanonicalId.values()]
+	}
+
+	const aliasTarget = DISCOVERY_ALIAS_TABLE[availabilityModel.canonicalId]
+	if (aliasTarget) {
+		const aliasModel = catalog.bySourceKey.get(aliasTarget)
+		if (aliasModel) {
+			upsertCandidate(aliasModel.canonicalId, { fromAliasTable: true })
+		}
+	}
+
+	const providerQualifiedSource = parseCanonicalSourceCandidate(availabilityModel.canonicalId)
+	if (providerQualifiedSource) {
+		const sourceModel = catalog.bySourceKey.get(providerQualifiedSource.key)
+		if (sourceModel) {
+			upsertCandidate(sourceModel.canonicalId)
+		}
+	}
+
+	const ownerHintSource = inferOwnerHintSource(
+		availabilityModel.canonicalId,
+		availabilityModel.ownerHint,
+	)
+	if (ownerHintSource) {
+		const ownerHintModel = catalog.bySourceKey.get(ownerHintSource.key)
+		if (ownerHintModel) {
+			upsertCandidate(ownerHintModel.canonicalId)
+		}
+	}
+
+	const familyInferenceSource = inferDefaultFamilySource(availabilityModel.canonicalId)
+	if (familyInferenceSource) {
+		const inferredModel = catalog.bySourceKey.get(familyInferenceSource.key)
+		if (inferredModel) {
+			upsertCandidate(inferredModel.canonicalId)
+		}
+	}
+
+	return [...candidatesByCanonicalId.values()].sort((left, right) =>
+		left.canonicalId.localeCompare(right.canonicalId),
+	)
+}
+
+function reconcileAvailabilitySelection(input: {
+	catalog: CanonicalCatalog
+	availabilityModels: MergedDiscoveryModel[]
+}): AvailabilitySelection {
+	const availableCanonicalIds = new Set<string>()
+	const aliasByCanonicalId = new Map<string, string>()
+	const directCanonicalHits = new Set<string>()
+	const skipped: CliproxySkipRecord[] = []
+
+	for (const availabilityModel of input.availabilityModels) {
+		if (availabilityModel.canonicalConflict) {
+			failCliproxyGeneration(
+				"ambiguous-mapping",
+				`[cliproxy] availability mapping is ambiguous for ${availabilityModel.canonicalId}`,
+				{ discoveredId: availabilityModel.canonicalId },
+			)
+		}
+
+		const candidates = resolveAvailabilityCandidates(availabilityModel, input.catalog)
+		if (candidates.length === 0) {
+			skipped.push({
+				code: "exposure-gap",
+				modelId: availabilityModel.canonicalId,
+				discoveredId: availabilityModel.canonicalId,
+				reason: "exposure gap",
+			})
+			continue
+		}
+
+		if (candidates.length > 1) {
+			failCliproxyGeneration(
+				"ambiguous-mapping",
+				`[cliproxy] ambiguous availability mapping for ${availabilityModel.canonicalId}: ${candidates
+					.map((candidate) => candidate.canonicalId)
+					.join(", ")}`,
+				{ discoveredId: availabilityModel.canonicalId },
+			)
+		}
+
+		const selectedCandidate = candidates[0]
+		const selectedCanonicalId = selectedCandidate.canonicalId
+		availableCanonicalIds.add(selectedCanonicalId)
+
+		if (selectedCanonicalId === availabilityModel.canonicalId) {
+			directCanonicalHits.add(selectedCanonicalId)
+			aliasByCanonicalId.delete(selectedCanonicalId)
+			continue
+		}
+
+		if (directCanonicalHits.has(selectedCanonicalId)) {
+			continue
+		}
+
+		if (!selectedCandidate.fromAliasTable) {
+			continue
+		}
+
+		if (!aliasByCanonicalId.has(selectedCanonicalId)) {
+			aliasByCanonicalId.set(selectedCanonicalId, availabilityModel.canonicalId)
+		}
 	}
 
 	return {
-		models: parsedModels,
-		bySource,
-		providerNamespaces,
+		availableCanonicalIds,
+		aliasByCanonicalId,
+		skipped,
 	}
 }
 
@@ -1150,6 +2112,7 @@ function inferDefaultFamilySource(canonicalId: string): SourcePointer | undefine
 
 	if (
 		canonicalId.startsWith("gpt") ||
+		canonicalId.startsWith("codex") ||
 		canonicalId.startsWith("o") ||
 		canonicalId.startsWith("text-embedding") ||
 		canonicalId.startsWith("whisper")
@@ -1263,7 +2226,25 @@ function normalizeCost(input: Partial<Cost> | undefined): Cost {
 		...(input?.reasoning !== undefined ? { reasoning: input.reasoning } : {}),
 		cacheRead: input?.cacheRead ?? 0,
 		cacheWrite: input?.cacheWrite ?? 0,
+		...(input?.contextOver200k
+			? {
+					contextOver200k: {
+						input: input.contextOver200k.input,
+						output: input.contextOver200k.output,
+						...(input.contextOver200k.cacheRead === undefined
+							? {}
+							: { cacheRead: input.contextOver200k.cacheRead }),
+						...(input.contextOver200k.cacheWrite === undefined
+							? {}
+							: { cacheWrite: input.contextOver200k.cacheWrite }),
+					},
+				}
+			: {}),
 	}
+}
+
+function resolveCustomProviderOverlay(providerNamespace: string): CustomProviderPreset | undefined {
+	return CUSTOM_PROVIDER_TABLE[providerNamespace]
 }
 
 function resolveSourceTarget(
@@ -1272,11 +2253,18 @@ function resolveSourceTarget(
 ): ResolvedSourceTarget | MissingSourceTarget {
 	const selectedFromCache = cache.bySource.get(candidate.key)
 	if (selectedFromCache) {
+		const customProvider = resolveCustomProviderOverlay(candidate.providerNamespace)
+		if (customProvider) {
+			return {
+				selected: selectedFromCache,
+				customProvider,
+			}
+		}
 		return { selected: selectedFromCache }
 	}
 
 	if (!cache.providerNamespaces.has(candidate.providerNamespace)) {
-		const customProvider = CUSTOM_PROVIDER_TABLE[candidate.providerNamespace]
+		const customProvider = resolveCustomProviderOverlay(candidate.providerNamespace)
 		if (!customProvider) {
 			return { missingReason: "unknown-provider" }
 		}
@@ -1289,6 +2277,7 @@ function resolveSourceTarget(
 		return {
 			selected: {
 				source: candidate,
+				baseSource: "supplemental",
 				api: {
 					npm: customProvider.api.npm,
 					id: customModel.apiId ?? customProvider.api.id,
@@ -1305,13 +2294,58 @@ function resolveSourceTarget(
 	return { missingReason: "missing-target" }
 }
 
+function buildResolvedSourceTargetFromCanonical(
+	canonicalModel: CanonicalCatalogModel,
+): ResolvedSourceTarget {
+	const selected: ParsedCacheModel = {
+		source: { ...canonicalModel.source },
+		baseSource: canonicalModel.baseSource,
+		api: { ...canonicalModel.api },
+		displayName: canonicalModel.displayName,
+		...(canonicalModel.releaseDate ? { releaseDate: canonicalModel.releaseDate } : {}),
+		...(canonicalModel.attachment === undefined ? {} : { attachment: canonicalModel.attachment }),
+		limits: { ...canonicalModel.limits },
+		reasoning: canonicalModel.reasoning,
+		cost: { ...canonicalModel.cost },
+		...(canonicalModel.capabilities
+			? {
+					capabilities: {
+						...(canonicalModel.capabilities.modalities
+							? { modalities: [...canonicalModel.capabilities.modalities] }
+							: {}),
+						...(canonicalModel.capabilities.modalitiesInput
+							? { modalitiesInput: [...canonicalModel.capabilities.modalitiesInput] }
+							: {}),
+						...(canonicalModel.capabilities.modalitiesOutput
+							? { modalitiesOutput: [...canonicalModel.capabilities.modalitiesOutput] }
+							: {}),
+						...(canonicalModel.capabilities.variants
+							? { variants: [...canonicalModel.capabilities.variants] }
+							: {}),
+					},
+				}
+			: {}),
+	}
+
+	const customProvider =
+		canonicalModel.customProvider ??
+		resolveCustomProviderOverlay(canonicalModel.source.providerNamespace)
+
+	return {
+		selected,
+		...(customProvider ? { customProvider } : {}),
+	}
+}
+
 export function resolveCliproxyArtifact(input: {
 	cache: ParsedCache
 	config: ParsedCliproxyConfig
 	discovered: MergedDiscoveryModel[]
+	catalogModelByCanonicalId?: Map<string, CanonicalCatalogModel>
 }): ResolutionResult {
 	const records: ResolvedArtifactModel[] = []
 	const skipped: CliproxySkipRecord[] = []
+	const emittedModelIds = new Set<string>()
 
 	for (const discoveredModel of input.discovered) {
 		if (discoveredModel.canonicalConflict) {
@@ -1323,42 +2357,56 @@ export function resolveCliproxyArtifact(input: {
 		}
 
 		const modelOverride = input.config.models[discoveredModel.canonicalId]
-		const sourceCandidate = resolveSourceCandidate(discoveredModel, modelOverride)
-		if (!sourceCandidate) {
-			skipped.push({
-				modelId: discoveredModel.canonicalId,
-				reason: "unresolved source",
-			})
-			continue
-		}
-
+		let sourceCandidate: SourceCandidate | undefined
 		let sourceTarget: ResolvedSourceTarget | MissingSourceTarget | undefined
-		let missingReasonFromFirstCandidate: MissingSourceTarget["missingReason"] | undefined
-		for (let index = 0; index < sourceCandidate.candidates.length; index += 1) {
-			const nextCandidate = sourceCandidate.candidates[index]
-			const nextResolution = resolveSourceTarget(input.cache, nextCandidate)
-			if (!("missingReason" in nextResolution)) {
-				sourceTarget = nextResolution
-				break
-			}
-			if (index === 0) {
-				missingReasonFromFirstCandidate = nextResolution.missingReason
+
+		if (!modelOverride?.source) {
+			const canonicalModel = input.catalogModelByCanonicalId?.get(discoveredModel.canonicalId)
+			if (canonicalModel) {
+				sourceTarget = buildResolvedSourceTargetFromCanonical(canonicalModel)
 			}
 		}
 
 		if (!sourceTarget) {
-			sourceTarget = { missingReason: missingReasonFromFirstCandidate ?? "missing-target" }
+			sourceCandidate = modelOverride?.source
+				? resolveSourceCandidate(discoveredModel, modelOverride)
+				: resolveSourceCandidate(discoveredModel, modelOverride)
+
+			if (!sourceCandidate) {
+				skipped.push({
+					modelId: discoveredModel.canonicalId,
+					reason: "unresolved source",
+				})
+				continue
+			}
+
+			let missingReasonFromFirstCandidate: MissingSourceTarget["missingReason"] | undefined
+			for (let index = 0; index < sourceCandidate.candidates.length; index += 1) {
+				const nextCandidate = sourceCandidate.candidates[index]
+				const nextResolution = resolveSourceTarget(input.cache, nextCandidate)
+				if (!("missingReason" in nextResolution)) {
+					sourceTarget = nextResolution
+					break
+				}
+				if (index === 0) {
+					missingReasonFromFirstCandidate = nextResolution.missingReason
+				}
+			}
+
+			if (!sourceTarget) {
+				sourceTarget = { missingReason: missingReasonFromFirstCandidate ?? "missing-target" }
+			}
 		}
 
 		if ("missingReason" in sourceTarget) {
-			if (sourceCandidate.fromUserSource) {
+			if (sourceCandidate?.fromUserSource) {
 				if (sourceTarget.missingReason === "unknown-provider") {
 					throw new Error(
-						`[cliproxy] source target for <${discoveredModel.canonicalId}> references unsupported provider namespace: ${sourceCandidate.candidates[0].providerNamespace}`,
+						`[cliproxy] source target for <${discoveredModel.canonicalId}> references unsupported provider namespace: ${sourceCandidate.candidates[0]?.providerNamespace ?? "unknown"}`,
 					)
 				}
 				throw new Error(
-					`[cliproxy] source target for <${discoveredModel.canonicalId}> does not exist: ${sourceCandidate.candidates[0].key}`,
+					`[cliproxy] source target for <${discoveredModel.canonicalId}> does not exist: ${sourceCandidate.candidates[0]?.key ?? "unknown"}`,
 				)
 			}
 			skipped.push({
@@ -1369,6 +2417,14 @@ export function resolveCliproxyArtifact(input: {
 		}
 
 		const selected = sourceTarget.selected
+		if (selected.api.npm.trim().length === 0) {
+			failCliproxyGeneration(
+				"missing-required-provider-fields",
+				`[cliproxy] missing required provider field api.npm for <${discoveredModel.canonicalId}>`,
+				{ canonicalId: discoveredModel.canonicalId },
+			)
+		}
+
 		const customProvider = sourceTarget.customProvider
 		const effectiveHost = customProvider?.effectiveHost ?? selected.source.providerNamespace
 		const preset = resolveHostPreset(selected.source.providerNamespace, effectiveHost)
@@ -1392,15 +2448,21 @@ export function resolveCliproxyArtifact(input: {
 				modelId: selected.source.modelId,
 				effectiveHost,
 			},
+			baseSource: selected.baseSource,
 			output: {
 				providerBucketId: `cliproxy-${effectiveHost}`,
 				modelId: discoveredModel.canonicalId,
+				...(discoveredModel.resolvedFromAliasId
+					? { resolvedFromAliasId: discoveredModel.resolvedFromAliasId }
+					: {}),
 			},
 			api: {
 				npm: selected.api.npm,
 				id: selected.api.id,
 			},
 			displayName: discoveredModel.displayName,
+			...(selected.releaseDate ? { releaseDate: selected.releaseDate } : {}),
+			...(selected.attachment === undefined ? {} : { attachment: selected.attachment }),
 			limits: { ...selected.limits },
 			reasoning: selected.reasoning,
 			cost: { ...selected.cost },
@@ -1408,6 +2470,7 @@ export function resolveCliproxyArtifact(input: {
 				headers: { ...preset.requiredHeaders },
 				params: { ...preset.requiredParams },
 			},
+			...(selected.capabilities ? { capabilities: { ...selected.capabilities } } : {}),
 		}
 
 		const withCustomPatch = applyCustomProviderPatch(baseRecord, customProvider)
@@ -1424,12 +2487,22 @@ export function resolveCliproxyArtifact(input: {
 		}
 
 		if (!isValidSafetyCaps(withModelOverride)) {
-			skipped.push({
-				modelId: discoveredModel.canonicalId,
-				reason: "unsafe preset output",
-			})
-			continue
+			failCliproxyGeneration(
+				"invalid-canonical-metadata",
+				`[cliproxy] safetyCaps exceed limits for <${discoveredModel.canonicalId}>`,
+				{ canonicalId: discoveredModel.canonicalId },
+			)
 		}
+
+		const emittedKey = `${withModelOverride.output.providerBucketId}/${withModelOverride.output.modelId}`
+		if (emittedModelIds.has(emittedKey)) {
+			failCliproxyGeneration(
+				"duplicate-emitted-id",
+				`[cliproxy] duplicate emitted model id: ${emittedKey}`,
+				{ canonicalId: discoveredModel.canonicalId },
+			)
+		}
+		emittedModelIds.add(emittedKey)
 
 		records.push(withModelOverride)
 	}
@@ -1499,6 +2572,34 @@ export function emitCliproxySkipWarnings(
 	warn(summarizeCliproxySkipWarnings(skipped))
 }
 
+function deriveRuntimeModalities(
+	capabilities: CanonicalCapabilities | undefined,
+): { input: string[]; output: string[] } | undefined {
+	if (!capabilities) {
+		return undefined
+	}
+
+	const mergedModalities = capabilities.modalities
+	const inputModalities =
+		capabilities.modalitiesInput ?? mergedModalities ?? capabilities.modalitiesOutput
+	const outputModalities =
+		capabilities.modalitiesOutput ??
+		(mergedModalities
+			? mergedModalities.includes("text")
+				? ["text"]
+				: mergedModalities
+			: capabilities.modalitiesInput)
+
+	if (!inputModalities || !outputModalities) {
+		return undefined
+	}
+
+	return {
+		input: [...inputModalities],
+		output: [...outputModalities],
+	}
+}
+
 export function buildCliproxyProviderPatch(input: {
 	config: ParsedCliproxyConfig
 	records: ResolvedArtifactModel[]
@@ -1556,10 +2657,27 @@ export function buildCliproxyProviderPatch(input: {
 		const modelName = duplicateNames?.has(record.displayName)
 			? `${record.displayName} [${record.output.modelId}]`
 			: record.displayName
+		const runtimeModalities = deriveRuntimeModalities(record.capabilities)
 
 		const modelPayload: Record<string, unknown> = {
 			id: record.source.modelId,
 			name: modelName,
+			...(record.releaseDate ? { release_date: record.releaseDate } : {}),
+			...(record.attachment === undefined ? {} : { attachment: record.attachment }),
+			...(runtimeModalities ? { modalities: runtimeModalities } : {}),
+			metadata: {
+				canonicalId: record.output.modelId,
+				baseCatalogSource: record.baseSource,
+				sourceProvider: record.source.providerNamespace,
+				sourceModelId: record.source.modelId,
+				...(record.capabilities?.modalities
+					? { modalities: [...record.capabilities.modalities] }
+					: {}),
+				...(record.capabilities?.variants ? { variants: [...record.capabilities.variants] } : {}),
+				...(record.output.resolvedFromAliasId
+					? { resolvedFromAliasId: record.output.resolvedFromAliasId }
+					: {}),
+			},
 			reasoning: record.reasoning,
 			limit: {
 				context: record.limits.context,
@@ -1642,34 +2760,270 @@ export function resolveCliproxyConfigSearchPaths(input: {
 	return paths
 }
 
-function resolveCachePath(): string {
-	if (process.env.OPENCODE_MODELS_PATH) {
-		return process.env.OPENCODE_MODELS_PATH
+export function resolveOptionalOpencodeBaseCatalogPath(input: {
+	modelsPath: string
+	env: Record<string, string | undefined>
+	pathExists?: (path: string) => boolean
+}): { path?: string; isExplicit: boolean } {
+	const explicitPath = input.env[OPENCODE_BASE_CATALOG_ENV_VAR]?.trim()
+	if (explicitPath && explicitPath.length > 0) {
+		return {
+			path: explicitPath,
+			isExplicit: true,
+		}
 	}
 
-	const home = os.homedir()
-	const candidates = [
-		`${process.env.XDG_CACHE_HOME || `${home}/.cache`}/opencode/models.json`,
-		`${home}/Library/Caches/opencode/models.json`,
-	]
-
-	for (const candidate of candidates) {
-		if (!existsSync(candidate)) continue
-		return candidate
+	const sidecarPath = `${dirname(input.modelsPath)}/${OPENCODE_BASE_CATALOG_DEFAULT_FILENAME}`
+	if ((input.pathExists ?? existsSync)(sidecarPath)) {
+		return {
+			path: sidecarPath,
+			isExplicit: false,
+		}
 	}
 
-	throw new Error("[cliproxy] models.dev cache file not found")
+	return { isExplicit: false }
 }
 
-function loadCacheFromDisk(): ParsedCache {
-	const cachePath = resolveCachePath()
+function loadOptionalOpencodeBaseCatalog(input: {
+	path: string | undefined
+	isExplicitPath: boolean
+}): ParsedCache | undefined {
+	const path = input.path
+	if (!path) {
+		return undefined
+	}
+
+	if (!existsSync(path)) {
+		if (input.isExplicitPath) {
+			throw new Error(`[cliproxy] opencode base catalog file not found: ${path}`)
+		}
+		return undefined
+	}
+
 	let text: string
 	try {
-		text = readFileSync(cachePath, "utf-8")
+		text = readFileSync(path, "utf-8")
 	} catch {
-		throw new Error(`[cliproxy] Failed to read cache file: ${cachePath}`)
+		throw new Error(`[cliproxy] Failed to read opencode base catalog file: ${path}`)
 	}
-	return parseCliproxyCacheText(text, cachePath)
+
+	return parseBaseCatalogText(text, path)
+}
+
+function resolveCachePaths(): ResolvedCachePaths {
+	let modelsPath: string | undefined
+
+	if (process.env.OPENCODE_MODELS_PATH) {
+		modelsPath = process.env.OPENCODE_MODELS_PATH
+	}
+
+	if (!modelsPath) {
+		const home = os.homedir()
+		const candidates = [
+			`${process.env.XDG_CACHE_HOME || `${home}/.cache`}/opencode/models.json`,
+			`${home}/Library/Caches/opencode/models.json`,
+		]
+
+		for (const candidate of candidates) {
+			if (!existsSync(candidate)) continue
+			modelsPath = candidate
+			break
+		}
+	}
+
+	if (!modelsPath) {
+		throw new Error("[cliproxy] models.dev cache file not found")
+	}
+
+	const resolvedOpencodeBaseCatalog = resolveOptionalOpencodeBaseCatalogPath({
+		modelsPath,
+		env: process.env,
+	})
+
+	return {
+		modelsPath,
+		availabilitySnapshotPath: `${dirname(modelsPath)}/cliproxy-availability.json`,
+		opencodeBaseCatalogPathIsExplicit: resolvedOpencodeBaseCatalog.isExplicit,
+		...(resolvedOpencodeBaseCatalog.path
+			? { opencodeBaseCatalogPath: resolvedOpencodeBaseCatalog.path }
+			: {}),
+	}
+}
+
+function loadCacheFromDisk(): { cache: ParsedCache; paths: ResolvedCachePaths } {
+	const paths = resolveCachePaths()
+	let modelsDevText: string
+	try {
+		modelsDevText = readFileSync(paths.modelsPath, "utf-8")
+	} catch {
+		throw new Error(`[cliproxy] Failed to read cache file: ${paths.modelsPath}`)
+	}
+
+	const modelsDevBase = parseCliproxyCacheText(modelsDevText, paths.modelsPath)
+	const opencodeBase = loadOptionalOpencodeBaseCatalog({
+		path: paths.opencodeBaseCatalogPath,
+		isExplicitPath: paths.opencodeBaseCatalogPathIsExplicit,
+	})
+	const supplementalBase = buildSupplementalBaseCatalog()
+
+	return {
+		cache: mergeBaseCatalogSources({
+			opencodeBase,
+			modelsDevBase,
+			supplementalBase,
+		}),
+		paths,
+	}
+}
+
+export async function resolveCliproxyAvailabilityWithFallback(input: {
+	config: ParsedCliproxyConfig
+	snapshotPath: string
+	discover?: (url: string, apiKey: string) => Promise<MergedDiscoveryModel[]>
+	readSnapshot?: (snapshotPath: string) => MergedDiscoveryModel[] | undefined
+}): Promise<{ source: "live" | "snapshot"; models: MergedDiscoveryModel[] }> {
+	const discover = input.discover ?? discoverMergedModels
+	const readSnapshot = input.readSnapshot ?? loadAvailabilitySnapshotFromDisk
+
+	let liveFailureMessage: string | undefined
+	try {
+		const liveModels = await discover(input.config.url, input.config.apiKey)
+		return {
+			source: "live",
+			models: liveModels,
+		}
+	} catch (error) {
+		liveFailureMessage = error instanceof Error ? error.message : "unknown discovery failure"
+	}
+
+	const snapshotModels = readSnapshot(input.snapshotPath)
+	if (snapshotModels) {
+		return {
+			source: "snapshot",
+			models: snapshotModels,
+		}
+	}
+
+	failCliproxyGeneration(
+		"availability-fallback-missing",
+		`[cliproxy] live availability incomplete and fallback snapshot missing: ${input.snapshotPath} (${liveFailureMessage ?? "unknown"})`,
+	)
+}
+
+export async function buildCliproxyGenerationArtifactWithAvailability(input: {
+	cache: ParsedCache
+	config: ParsedCliproxyConfig
+	snapshotPath: string
+	discover?: (url: string, apiKey: string) => Promise<MergedDiscoveryModel[]>
+	readSnapshot?: (snapshotPath: string) => MergedDiscoveryModel[] | undefined
+	persistSnapshot?: (
+		snapshotPath: string,
+		payload: { url: string; models: MergedDiscoveryModel[] },
+	) => void
+}): Promise<GenerationArtifact> {
+	const availability = await resolveCliproxyAvailabilityWithFallback({
+		config: input.config,
+		snapshotPath: input.snapshotPath,
+		discover: input.discover,
+		readSnapshot: input.readSnapshot,
+	})
+
+	const artifact = buildCliproxyGenerationArtifact({
+		cache: input.cache,
+		config: input.config,
+		availabilityModels: availability.models,
+		availabilitySource: availability.source,
+	})
+
+	if (availability.source !== "live" || artifact.failed.length > 0) {
+		return artifact
+	}
+
+	const persistSnapshot = input.persistSnapshot ?? persistAvailabilitySnapshotToDisk
+	try {
+		persistSnapshot(input.snapshotPath, {
+			url: input.config.url,
+			models: availability.models,
+		})
+		return artifact
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "unknown snapshot persistence failure"
+		return {
+			...artifact,
+			snapshotPersistenceFailure: `[cliproxy] live availability snapshot persistence failed: ${message}`,
+		}
+	}
+}
+
+export function buildCliproxyGenerationArtifact(input: {
+	cache: ParsedCache
+	config: ParsedCliproxyConfig
+	availabilityModels: MergedDiscoveryModel[]
+	availabilitySource: "live" | "snapshot"
+}): GenerationArtifact {
+	try {
+		const canonicalCatalog = buildCanonicalCatalog(input.cache)
+		const availabilitySelection = reconcileAvailabilitySelection({
+			catalog: canonicalCatalog,
+			availabilityModels: input.availabilityModels,
+		})
+
+		const catalogModelByCanonicalId = new Map<string, CanonicalCatalogModel>()
+		const discoveredForResolution: MergedDiscoveryModel[] = []
+		const skipped: CliproxySkipRecord[] = [...availabilitySelection.skipped]
+
+		for (const canonicalModel of canonicalCatalog.models) {
+			if (!availabilitySelection.availableCanonicalIds.has(canonicalModel.canonicalId)) {
+				skipped.push({
+					code: "availability-gap",
+					modelId: canonicalModel.canonicalId,
+					canonicalId: canonicalModel.canonicalId,
+					reason: "availability gap",
+				})
+				continue
+			}
+
+			catalogModelByCanonicalId.set(canonicalModel.canonicalId, canonicalModel)
+			discoveredForResolution.push({
+				canonicalId: canonicalModel.canonicalId,
+				displayName: canonicalModel.displayName,
+				canonicalConflict: false,
+				...(availabilitySelection.aliasByCanonicalId.has(canonicalModel.canonicalId)
+					? {
+							resolvedFromAliasId: availabilitySelection.aliasByCanonicalId.get(
+								canonicalModel.canonicalId,
+							),
+						}
+					: {}),
+			})
+		}
+
+		const resolved = resolveCliproxyArtifact({
+			cache: input.cache,
+			config: input.config,
+			discovered: discoveredForResolution,
+			catalogModelByCanonicalId,
+		})
+
+		const providerPatch = buildCliproxyProviderPatch({
+			config: input.config,
+			records: resolved.records,
+		})
+
+		return {
+			providerPatch,
+			skipped: [...skipped, ...resolved.skipped],
+			failed: [],
+			availabilitySource: input.availabilitySource,
+		}
+	} catch (error) {
+		return {
+			providerPatch: {},
+			skipped: [],
+			failed: [toCliproxyFailRecord(error)],
+			availabilitySource: input.availabilitySource,
+		}
+	}
 }
 
 export const CliproxyPlugin: Plugin = async () => {
@@ -1678,24 +3032,27 @@ export const CliproxyPlugin: Plugin = async () => {
 		return {}
 	}
 
-	const parsedCache = loadCacheFromDisk()
-	const discovered = await discoverMergedModels(parsedConfig.url, parsedConfig.apiKey)
-	const resolved = resolveCliproxyArtifact({
-		cache: parsedCache,
+	const loadedCache = loadCacheFromDisk()
+	const artifact = await buildCliproxyGenerationArtifactWithAvailability({
+		cache: loadedCache.cache,
 		config: parsedConfig,
-		discovered,
+		snapshotPath: loadedCache.paths.availabilitySnapshotPath,
 	})
-	emitCliproxySkipWarnings(resolved.skipped)
 
-	const providerPatch = buildCliproxyProviderPatch({
-		config: parsedConfig,
-		records: resolved.records,
-	})
+	if (artifact.failed.length > 0) {
+		throw new Error(artifact.failed[0].message)
+	}
+
+	if (artifact.snapshotPersistenceFailure) {
+		console.warn(artifact.snapshotPersistenceFailure)
+	}
+
+	emitCliproxySkipWarnings(artifact.skipped)
 
 	const hooks: Hooks = {
 		config: async (cfg) => {
 			cfg.provider = cfg.provider || {}
-			for (const [providerId, providerValue] of Object.entries(providerPatch)) {
+			for (const [providerId, providerValue] of Object.entries(artifact.providerPatch)) {
 				cfg.provider[providerId] = providerValue
 			}
 		},

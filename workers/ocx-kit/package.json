@@ -6,7 +6,8 @@
 		"deploy": "bun run build && wrangler deploy",
 		"dev": "bun run build && wrangler dev",
 		"test": "bun test",
-		"cliproxy-parity-generate": "bun files/plugin/cliproxy-parity-generate.ts"
+		"cliproxy-parity-generate": "bun files/plugin/cliproxy-parity-generate.ts",
+		"cliproxy-base-catalog-generate": "bun files/plugin/cliproxy-base-catalog-generate.ts"
 	},
 	"devDependencies": {
 		"ocx": "workspace:*",

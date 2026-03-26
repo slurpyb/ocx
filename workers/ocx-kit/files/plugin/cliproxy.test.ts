@@ -2,19 +2,26 @@ import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 import {
+	buildCliproxyGenerationArtifact,
+	buildCliproxyGenerationArtifactWithAvailability,
 	buildCliproxyProviderPatch,
 	discoverMergedModels,
 	emitCliproxySkipWarnings,
 	formatCliproxySkipWarning,
+	mergeBaseCatalogSources,
 	mergeDiscoveryModels,
 	normalizeDiscoveredModelId,
+	parseBaseCatalogText,
+	parseCliproxyAvailabilitySnapshotText,
 	parseCliproxyCacheText,
 	parseCliproxyConfigObject,
 	parseCliproxyConfigText,
 	parseV1BetaDiscoveryPayload,
 	parseV1DiscoveryPayload,
 	resolveCliproxyArtifact,
+	resolveCliproxyAvailabilityWithFallback,
 	resolveCliproxyConfigSearchPaths,
+	resolveOptionalOpencodeBaseCatalogPath,
 } from "./cliproxy/core"
 
 import {
@@ -68,6 +75,13 @@ function cacheFixture() {
 						reasoning: true,
 						limit: { context: 400000, output: 128000 },
 						cost: { input: 1, output: 2 },
+					},
+					"codex-mini": {
+						id: "codex-mini",
+						name: "Codex Mini",
+						reasoning: true,
+						limit: { context: 200000, output: 100000 },
+						cost: { input: 0.5, output: 1 },
 					},
 				},
 			},
@@ -372,6 +386,36 @@ describe("cliproxy config search path precedence", () => {
 	})
 })
 
+describe("cliproxy opencode base catalog path resolution", () => {
+	it("prefers explicit OPENCODE_BASE_CATALOG_PATH over sidecar detection", () => {
+		const resolved = resolveOptionalOpencodeBaseCatalogPath({
+			modelsPath: "/tmp/opencode/models.json",
+			env: {
+				OPENCODE_BASE_CATALOG_PATH: " /tmp/custom/base-catalog.json ",
+			},
+			pathExists: () => true,
+		})
+
+		expect(resolved).toEqual({
+			path: "/tmp/custom/base-catalog.json",
+			isExplicit: true,
+		})
+	})
+
+	it("falls back to models sibling sidecar when explicit env var is unset", () => {
+		const resolved = resolveOptionalOpencodeBaseCatalogPath({
+			modelsPath: "/tmp/opencode/models.json",
+			env: {},
+			pathExists: (filePath: string) => filePath === "/tmp/opencode/opencode-base-catalog.json",
+		})
+
+		expect(resolved).toEqual({
+			path: "/tmp/opencode/opencode-base-catalog.json",
+			isExplicit: false,
+		})
+	})
+})
+
 describe("cliproxy cache contract", () => {
 	it("supports marker=1 and validates models", () => {
 		const parsed = cacheFixture()
@@ -505,6 +549,314 @@ describe("cliproxy cache contract", () => {
 			"fixture-cache.json",
 		)
 		expect(parsed.models).toHaveLength(1)
+	})
+
+	it("parses object-shaped modalities by merging input/output lists", () => {
+		const parsed = parseCliproxyCacheText(
+			JSON.stringify({
+				$cliproxyCacheContractVersion: 1,
+				openai: {
+					id: "openai",
+					name: "OpenAI",
+					npm: "@ai-sdk/openai",
+					models: {
+						"gpt-5": {
+							id: "gpt-5",
+							name: "GPT-5",
+							reasoning: true,
+							limit: { context: 400000, output: 128000 },
+							modalities: {
+								input: ["text", "audio", "text"],
+								output: ["image", "audio"],
+							},
+						},
+					},
+				},
+			}),
+			"object-modalities-cache.json",
+		)
+
+		expect(parsed.bySource.get("openai/gpt-5")?.capabilities).toEqual({
+			modalities: ["audio", "image", "text"],
+			modalitiesInput: ["audio", "text"],
+			modalitiesOutput: ["audio", "image"],
+		})
+	})
+})
+
+describe("cliproxy base catalog layering", () => {
+	it("merges opencode + models.dev + supplemental sources per entry", () => {
+		const modelsDevBase = parseCliproxyCacheText(
+			JSON.stringify({
+				$cliproxyCacheContractVersion: 1,
+				openai: {
+					id: "openai",
+					name: "OpenAI",
+					npm: "@ai-sdk/openai",
+					models: {
+						"gpt-5": {
+							id: "gpt-5",
+							name: "GPT-5 (models.dev)",
+							reasoning: true,
+							limit: { context: 200000, output: 64000 },
+						},
+					},
+				},
+				anthropic: {
+					id: "anthropic",
+					name: "Anthropic",
+					npm: "@ai-sdk/anthropic",
+					models: {
+						"claude-sonnet-4-5": {
+							id: "claude-sonnet-4-5",
+							name: "Claude Sonnet 4.5",
+							reasoning: true,
+							limit: { context: 200000, output: 64000 },
+						},
+					},
+				},
+			}),
+			"models.dev-cache.json",
+		)
+
+		const opencodeBase = parseBaseCatalogText(
+			JSON.stringify({
+				$cliproxyBaseCatalogContractVersion: 1,
+				models: [
+					{
+						source: "openai/gpt-5",
+						api: { npm: "@ai-sdk/openai" },
+						displayName: "GPT-5 (opencode)",
+						reasoning: true,
+						limits: { context: 400000, output: 128000 },
+						cost: { input: 1, output: 2 },
+					},
+				],
+			}),
+			"opencode-base-catalog.json",
+		)
+
+		const supplementalBase = parseBaseCatalogText(
+			JSON.stringify({
+				$cliproxyBaseCatalogContractVersion: 1,
+				models: [
+					{
+						source: "google-antigravity/gemini-2.5-pro",
+						api: { npm: "@ai-sdk/google" },
+						displayName: "Gemini 2.5 Pro (supplemental)",
+						reasoning: true,
+						limits: { context: 200000, output: 64000 },
+					},
+				],
+			}),
+			"supplemental-base-catalog.json",
+			{ baseSource: "supplemental" },
+		)
+
+		const merged = mergeBaseCatalogSources({
+			opencodeBase,
+			modelsDevBase,
+			supplementalBase,
+		})
+
+		expect(merged.models.map((model) => model.source.key)).toEqual([
+			"anthropic/claude-sonnet-4-5",
+			"google-antigravity/gemini-2.5-pro",
+			"openai/gpt-5",
+		])
+		expect(merged.bySource.get("openai/gpt-5")?.displayName).toBe("GPT-5 (opencode)")
+		expect(merged.bySource.get("openai/gpt-5")?.baseSource).toBe("opencode")
+		expect(merged.bySource.get("anthropic/claude-sonnet-4-5")?.displayName).toBe(
+			"Claude Sonnet 4.5",
+		)
+		expect(merged.bySource.get("anthropic/claude-sonnet-4-5")?.baseSource).toBe("models.dev")
+		expect(merged.bySource.get("google-antigravity/gemini-2.5-pro")?.displayName).toBe(
+			"Gemini 2.5 Pro (supplemental)",
+		)
+		expect(merged.bySource.get("google-antigravity/gemini-2.5-pro")?.baseSource).toBe(
+			"supplemental",
+		)
+	})
+
+	it("requires marker=1 for opencode-derived base catalogs", () => {
+		expect(() =>
+			parseBaseCatalogText(
+				JSON.stringify({
+					$cliproxyBaseCatalogContractVersion: 2,
+					models: [],
+				}),
+				"opencode-base-catalog.json",
+			),
+		).toThrow("Unsupported $cliproxyBaseCatalogContractVersion")
+	})
+
+	it("accepts opencode-style envelope shape with baseCatalog payload", () => {
+		const parsed = parseBaseCatalogText(
+			JSON.stringify({
+				generatedAt: "2026-03-25T00:00:00.000Z",
+				baseCatalog: {
+					$cliproxyBaseCatalogContractVersion: 1,
+					models: [
+						{
+							source: "openai/gpt-5",
+							api: { npm: "@ai-sdk/openai" },
+							displayName: "GPT-5 (opencode envelope)",
+							reasoning: true,
+							limits: { context: 400000, output: 128000 },
+						},
+					],
+				},
+			}),
+			"opencode-base-catalog-envelope.json",
+		)
+
+		expect(parsed.models).toHaveLength(1)
+		expect(parsed.bySource.get("openai/gpt-5")?.displayName).toBe("GPT-5 (opencode envelope)")
+	})
+
+	it("treats an empty opencode base catalog as a valid no-op layer", () => {
+		const parsed = parseBaseCatalogText(
+			JSON.stringify({
+				$cliproxyBaseCatalogContractVersion: 1,
+				models: [],
+			}),
+			"opencode-empty-base-catalog.json",
+		)
+
+		expect(parsed.models).toEqual([])
+
+		const merged = mergeBaseCatalogSources({
+			opencodeBase: parsed,
+			modelsDevBase: cacheFixture(),
+		})
+
+		expect(merged.bySource.get("openai/gpt-5")?.source.key).toBe("openai/gpt-5")
+		expect(merged.models.length).toBe(cacheFixture().models.length)
+	})
+
+	it("keeps models.dev sibling models when opencode overrides one model in the same provider", () => {
+		const modelsDevBase = parseCliproxyCacheText(
+			JSON.stringify({
+				$cliproxyCacheContractVersion: 1,
+				openai: {
+					id: "openai",
+					name: "OpenAI",
+					npm: "@ai-sdk/openai",
+					models: {
+						"gpt-5": {
+							id: "gpt-5",
+							name: "GPT-5 (models.dev)",
+							reasoning: true,
+							limit: { context: 200000, output: 64000 },
+						},
+						"codex-mini": {
+							id: "codex-mini",
+							name: "Codex Mini (models.dev)",
+							reasoning: true,
+							limit: { context: 120000, output: 32000 },
+						},
+					},
+				},
+			}),
+			"models.dev-cache-fill-sibling.json",
+		)
+
+		const opencodeBase = parseBaseCatalogText(
+			JSON.stringify({
+				$cliproxyBaseCatalogContractVersion: 1,
+				models: [
+					{
+						source: "openai/gpt-5",
+						api: { npm: "@ai-sdk/openai" },
+						displayName: "GPT-5 (opencode override)",
+						reasoning: true,
+						limits: { context: 400000, output: 128000 },
+					},
+				],
+			}),
+			"opencode-base-catalog-fill-sibling.json",
+		)
+
+		const merged = mergeBaseCatalogSources({
+			opencodeBase,
+			modelsDevBase,
+		})
+
+		expect(merged.models.map((model) => model.source.key)).toEqual([
+			"openai/codex-mini",
+			"openai/gpt-5",
+		])
+		expect(merged.bySource.get("openai/gpt-5")?.displayName).toBe("GPT-5 (opencode override)")
+		expect(merged.bySource.get("openai/codex-mini")?.displayName).toBe("Codex Mini (models.dev)")
+	})
+
+	it("applies duplicate source-key precedence as supplemental < models.dev < opencode", () => {
+		const supplementalBase = parseBaseCatalogText(
+			JSON.stringify({
+				$cliproxyBaseCatalogContractVersion: 1,
+				models: [
+					{
+						source: "openai/gpt-5",
+						api: { npm: "@ai-sdk/openai-compatible" },
+						displayName: "GPT-5 (supplemental)",
+						reasoning: false,
+						limits: { context: 100000, output: 16000 },
+					},
+				],
+			}),
+			"supplemental-base-catalog-precedence.json",
+			{ baseSource: "supplemental" },
+		)
+
+		const modelsDevBase = parseCliproxyCacheText(
+			JSON.stringify({
+				$cliproxyCacheContractVersion: 1,
+				openai: {
+					id: "openai",
+					name: "OpenAI",
+					npm: "@ai-sdk/openai",
+					models: {
+						"gpt-5": {
+							id: "gpt-5",
+							name: "GPT-5 (models.dev)",
+							reasoning: true,
+							limit: { context: 200000, output: 64000 },
+						},
+					},
+				},
+			}),
+			"models.dev-cache-precedence.json",
+		)
+
+		const opencodeBase = parseBaseCatalogText(
+			JSON.stringify({
+				$cliproxyBaseCatalogContractVersion: 1,
+				models: [
+					{
+						source: "openai/gpt-5",
+						api: { npm: "@ai-sdk/openai" },
+						displayName: "GPT-5 (opencode)",
+						reasoning: true,
+						limits: { context: 400000, output: 128000 },
+					},
+				],
+			}),
+			"opencode-base-catalog-precedence.json",
+		)
+
+		const merged = mergeBaseCatalogSources({
+			opencodeBase,
+			modelsDevBase,
+			supplementalBase,
+		})
+
+		expect(merged.models.map((model) => model.source.key)).toEqual(["openai/gpt-5"])
+		expect(merged.bySource.get("openai/gpt-5")).toMatchObject({
+			displayName: "GPT-5 (opencode)",
+			reasoning: true,
+			api: { npm: "@ai-sdk/openai" },
+			limits: { context: 400000, output: 128000 },
+		})
 	})
 })
 
@@ -729,6 +1081,7 @@ describe("cliproxy deterministic discovery + resolution", () => {
 			parseV1DiscoveryPayload({
 				data: [
 					{ id: "gpt-5-latest", display_name: "Alias GPT" },
+					{ id: "codex-mini-latest", display_name: "Alias Codex" },
 					{ id: "claude-sonnet-4-5", display_name: "Claude" },
 					{ id: "gemini-2.5-pro", display_name: "Gemini" },
 					{ id: "kimi-k2", display_name: "Kimi" },
@@ -747,6 +1100,7 @@ describe("cliproxy deterministic discovery + resolution", () => {
 			"anthropic/claude-sonnet-4-5",
 			"google/gemini-2.5-pro",
 			"moonshotai/kimi-k2",
+			"openai/codex-mini",
 			"openai/gpt-5",
 		])
 	})
@@ -924,7 +1278,6 @@ describe("cliproxy deterministic discovery + resolution", () => {
 					{ id: "claude-sonnet-4-5", display_name: "Claude" },
 					{ id: "gpt-5", display_name: "GPT" },
 					{ id: "gemini-2.5-pro", display_name: "Gemini" },
-					{ id: "vertex-claude", display_name: "Vertex" },
 					{ id: "github-copilot/gpt-4.1-mini", display_name: "Copilot" },
 					{ id: "kimi-k2", display_name: "Kimi" },
 					{ id: "google-antigravity/gemini-2.5-pro", display_name: "Anti" },
@@ -945,7 +1298,6 @@ describe("cliproxy deterministic discovery + resolution", () => {
 			"cliproxy-github-copilot",
 			"cliproxy-google",
 			"cliproxy-google-antigravity",
-			"cliproxy-google-vertex-anthropic",
 			"cliproxy-moonshotai",
 			"cliproxy-openai",
 		])
@@ -1019,6 +1371,773 @@ describe("cliproxy deterministic discovery + resolution", () => {
 		expect(openaiModels["gpt-5"].name).toBe("GPT 5 [gpt-5]")
 		expect(openaiModels["gpt-5.1"].name).toBe("GPT 5 [gpt-5.1]")
 		expect(openaiModels["gpt-4.1"].name).toBe("GPT 4.1")
+	})
+})
+
+describe("cliproxy canonical artifact pipeline", () => {
+	it("falls back to persisted snapshot when live discovery is incomplete", async () => {
+		const snapshotModels = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({
+				data: [{ id: "gpt-5-latest", display_name: "GPT 5 Latest" }],
+			}),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const availability = await resolveCliproxyAvailabilityWithFallback({
+			config: configBase(),
+			snapshotPath: "/tmp/cliproxy-availability.json",
+			discover: async () => {
+				throw new Error("discovery partial failure")
+			},
+			readSnapshot: () => snapshotModels,
+		})
+
+		expect(availability.source).toBe("snapshot")
+		expect(availability.models).toEqual(snapshotModels)
+	})
+
+	it("persists live snapshot only after canonical reconciliation/build validation succeeds", async () => {
+		const duplicateCache = parseCliproxyCacheText(
+			JSON.stringify({
+				$cliproxyCacheContractVersion: 1,
+				openai: {
+					id: "openai",
+					name: "OpenAI",
+					npm: "@ai-sdk/openai",
+					models: {
+						shared: {
+							id: "shared",
+							name: "Shared OpenAI",
+							reasoning: true,
+							limit: { context: 128000, output: 32000 },
+						},
+					},
+				},
+				anthropic: {
+					id: "anthropic",
+					name: "Anthropic",
+					npm: "@ai-sdk/anthropic",
+					models: {
+						shared: {
+							id: "shared",
+							name: "Shared Anthropic",
+							reasoning: true,
+							limit: { context: 128000, output: 32000 },
+						},
+					},
+				},
+			}),
+			"duplicate-cache.json",
+		)
+
+		const availability = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({ data: [{ id: "shared", display_name: "Shared" }] }),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		let persistedCount = 0
+		const artifact = await buildCliproxyGenerationArtifactWithAvailability({
+			cache: duplicateCache,
+			config: configBase(),
+			snapshotPath: "/tmp/cliproxy-availability.json",
+			discover: async () => availability,
+			persistSnapshot: () => {
+				persistedCount += 1
+			},
+		})
+
+		expect(artifact.availabilitySource).toBe("live")
+		expect(artifact.failed).toEqual([
+			{
+				code: "duplicate-emitted-id",
+				message: "[cliproxy] duplicate canonical model id emitted: shared",
+				canonicalId: "shared",
+			},
+		])
+		expect(persistedCount).toBe(0)
+	})
+
+	it("keeps live artifact usable when snapshot persistence fails", async () => {
+		const availability = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({ data: [{ id: "gpt-5", display_name: "GPT 5" }] }),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const artifact = await buildCliproxyGenerationArtifactWithAvailability({
+			cache: cacheFixture(),
+			config: configBase(),
+			snapshotPath: "/tmp/cliproxy-availability.json",
+			discover: async () => availability,
+			persistSnapshot: () => {
+				throw new Error("disk full")
+			},
+		})
+
+		expect(artifact.availabilitySource).toBe("live")
+		expect(artifact.failed).toEqual([])
+		expect(artifact.providerPatch["cliproxy-openai"]).toBeDefined()
+		expect(artifact.snapshotPersistenceFailure).toContain("disk full")
+	})
+
+	it("fails loudly for structurally invalid persisted availability snapshot", () => {
+		expect(() =>
+			parseCliproxyAvailabilitySnapshotText(
+				JSON.stringify({
+					$cliproxyAvailabilityContractVersion: 1,
+					sourceUrl: "http://localhost:8317",
+					capturedAt: "2026-03-24T00:00:00.000Z",
+					models: {},
+				}),
+				"cliproxy-availability.json",
+			),
+		).toThrow("availability snapshot models must be an array")
+	})
+
+	it("uses merged opencode base values directly in generation and emits base-source provenance", () => {
+		const modelsDevBase = cacheFixture()
+
+		const opencodeBase = parseBaseCatalogText(
+			JSON.stringify({
+				$cliproxyBaseCatalogContractVersion: 1,
+				models: [
+					{
+						source: "openai/gpt-5",
+						api: { npm: "@ai-sdk/openai" },
+						displayName: "GPT-5 (opencode)",
+						reasoning: true,
+						limits: { context: 400000, output: 128000 },
+					},
+				],
+			}),
+			"opencode-provenance-base-catalog.json",
+		)
+
+		const mergedBase = mergeBaseCatalogSources({
+			modelsDevBase,
+			opencodeBase,
+		})
+
+		const availability = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({ data: [{ id: "gpt-5", display_name: "GPT 5" }] }),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const artifact = buildCliproxyGenerationArtifact({
+			cache: mergedBase,
+			config: configBase(),
+			availabilityModels: availability,
+			availabilitySource: "live",
+		})
+
+		expect(artifact.failed).toEqual([])
+		const openaiModels = artifact.providerPatch["cliproxy-openai"].models as Record<
+			string,
+			Record<string, unknown>
+		>
+		expect(openaiModels["gpt-5"].limit).toEqual({ context: 400000, output: 128000 })
+		expect(openaiModels["gpt-5"].metadata).toEqual({
+			canonicalId: "gpt-5",
+			baseCatalogSource: "opencode",
+			sourceProvider: "openai",
+			sourceModelId: "gpt-5",
+		})
+	})
+
+	it("preserves custom-provider overlay on canonical reconciliation paths", () => {
+		const supplementalBase = parseBaseCatalogText(
+			JSON.stringify({
+				$cliproxyBaseCatalogContractVersion: 1,
+				models: [
+					{
+						source: "google-antigravity/gemini-2.5-pro",
+						api: { npm: "@ai-sdk/google" },
+						displayName: "Gemini 2.5 Pro (supplemental canonical)",
+						reasoning: true,
+						limits: { context: 200000, output: 64000 },
+					},
+				],
+			}),
+			"supplemental-canonical-overlay.json",
+			{ baseSource: "supplemental" },
+		)
+
+		const mergedBase = mergeBaseCatalogSources({
+			modelsDevBase: cacheFixture(),
+			supplementalBase,
+		})
+
+		const availability = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({
+				data: [{ id: "google-antigravity/gemini-2.5-pro", display_name: "Antigravity Canonical" }],
+			}),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const artifact = buildCliproxyGenerationArtifact({
+			cache: mergedBase,
+			config: configBase(),
+			availabilityModels: availability,
+			availabilitySource: "live",
+		})
+
+		expect(artifact.failed).toEqual([])
+		const provider = artifact.providerPatch["cliproxy-google-antigravity"]
+		expect((provider.options as Record<string, unknown>).baseURL).toBe(
+			"http://localhost:8317/v1beta",
+		)
+
+		const model = (provider.models as Record<string, Record<string, unknown>>)[
+			"google-antigravity/gemini-2.5-pro"
+		]
+		expect(model.limit).toEqual({ context: 400000, output: 64000 })
+		expect(model.safetyCaps).toEqual({ context: 400000, output: 64000 })
+	})
+
+	it("builds deterministic machine-readable provider patch with canonical metadata", () => {
+		const availability = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({
+				data: [
+					{ id: "gpt-5-latest", display_name: "GPT 5 Latest" },
+					{ id: "codex-mini-latest", display_name: "Codex Mini Latest" },
+					{ id: "claude-sonnet-4-5", display_name: "Claude Sonnet" },
+					{ id: "ghost-model", display_name: "Ghost" },
+				],
+			}),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const artifact = buildCliproxyGenerationArtifact({
+			cache: cacheFixture(),
+			config: configBase(),
+			availabilityModels: availability,
+			availabilitySource: "snapshot",
+		})
+
+		expect(artifact.failed).toEqual([])
+		expect(artifact.availabilitySource).toBe("snapshot")
+
+		const openaiModels = artifact.providerPatch["cliproxy-openai"].models as Record<
+			string,
+			Record<string, unknown>
+		>
+		expect(openaiModels["gpt-5"].metadata).toEqual({
+			canonicalId: "gpt-5",
+			baseCatalogSource: "models.dev",
+			sourceProvider: "openai",
+			sourceModelId: "gpt-5",
+			resolvedFromAliasId: "gpt-5-latest",
+		})
+		expect(openaiModels["codex-mini"].metadata).toEqual({
+			canonicalId: "codex-mini",
+			baseCatalogSource: "models.dev",
+			sourceProvider: "openai",
+			sourceModelId: "codex-mini",
+			resolvedFromAliasId: "codex-mini-latest",
+		})
+
+		const anthropicModels = artifact.providerPatch["cliproxy-anthropic"].models as Record<
+			string,
+			Record<string, unknown>
+		>
+		expect(anthropicModels["claude-sonnet-4-5"].metadata).toEqual({
+			canonicalId: "claude-sonnet-4-5",
+			baseCatalogSource: "models.dev",
+			sourceProvider: "anthropic",
+			sourceModelId: "claude-sonnet-4-5",
+		})
+
+		expect(artifact.skipped).toContainEqual({
+			code: "exposure-gap",
+			modelId: "ghost-model",
+			discoveredId: "ghost-model",
+			reason: "exposure gap",
+		})
+		expect(artifact.skipped).toContainEqual({
+			code: "availability-gap",
+			modelId: "github-copilot/gpt-4.1-mini",
+			canonicalId: "github-copilot/gpt-4.1-mini",
+			reason: "availability gap",
+		})
+	})
+
+	it("emits capabilities metadata parity for modalities and variants", () => {
+		const cacheWithCapabilities = parseCliproxyCacheText(
+			JSON.stringify({
+				$cliproxyCacheContractVersion: 1,
+				openai: {
+					id: "openai",
+					name: "OpenAI",
+					npm: "@ai-sdk/openai",
+					models: {
+						"gpt-5": {
+							id: "gpt-5",
+							name: "GPT-5",
+							reasoning: true,
+							limit: { context: 400000, output: 128000 },
+							capabilities: {
+								modalities: ["audio", "text", "text"],
+								variants: ["preview", "stable"],
+							},
+						},
+						"codex-mini": {
+							id: "codex-mini",
+							name: "Codex Mini",
+							reasoning: true,
+							limit: { context: 200000, output: 100000 },
+						},
+					},
+				},
+				"google-vertex-anthropic": {
+					id: "google-vertex-anthropic",
+					name: "Google Vertex Anthropic",
+					npm: "@ai-sdk/google-vertex/anthropic",
+					models: {
+						"vertex-claude": {
+							id: "vertex-claude",
+							name: "Vertex Claude",
+							reasoning: true,
+							limit: { context: 200000, output: 64000 },
+						},
+					},
+				},
+			}),
+			"capabilities-cache.json",
+		)
+
+		const availability = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({ data: [{ id: "gpt-5", display_name: "GPT 5" }] }),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const artifact = buildCliproxyGenerationArtifact({
+			cache: cacheWithCapabilities,
+			config: configBase(),
+			availabilityModels: availability,
+			availabilitySource: "live",
+		})
+
+		expect(artifact.failed).toEqual([])
+		const openaiModels = artifact.providerPatch["cliproxy-openai"].models as Record<
+			string,
+			Record<string, unknown>
+		>
+		expect(openaiModels["gpt-5"].metadata).toEqual({
+			canonicalId: "gpt-5",
+			baseCatalogSource: "models.dev",
+			sourceProvider: "openai",
+			sourceModelId: "gpt-5",
+			modalities: ["audio", "text"],
+			variants: ["preview", "stable"],
+		})
+	})
+
+	it("emits top-level runtime attachment/modalities fields for image-capable models", () => {
+		const cacheWithRuntimeCapabilities = parseCliproxyCacheText(
+			JSON.stringify({
+				$cliproxyCacheContractVersion: 1,
+				openai: {
+					id: "openai",
+					name: "OpenAI",
+					npm: "@ai-sdk/openai",
+					models: {
+						"gpt-5.4": {
+							id: "gpt-5.4",
+							name: "GPT-5.4",
+							attachment: true,
+							reasoning: true,
+							limit: { context: 1050000, input: 922000, output: 128000 },
+							modalities: {
+								input: ["text", "image", "pdf"],
+								output: ["text"],
+							},
+						},
+					},
+				},
+			}),
+			"runtime-modalities-cache.json",
+		)
+
+		const availability = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({ data: [{ id: "gpt-5.4", display_name: "GPT 5.4" }] }),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const artifact = buildCliproxyGenerationArtifact({
+			cache: cacheWithRuntimeCapabilities,
+			config: configBase(),
+			availabilityModels: availability,
+			availabilitySource: "live",
+		})
+
+		expect(artifact.failed).toEqual([])
+		const openaiModels = artifact.providerPatch["cliproxy-openai"].models as Record<
+			string,
+			Record<string, unknown>
+		>
+		expect(openaiModels["gpt-5.4"].attachment).toBe(true)
+		expect(openaiModels["gpt-5.4"].modalities).toEqual({
+			input: ["image", "pdf", "text"],
+			output: ["text"],
+		})
+		expect(openaiModels["gpt-5.4"].metadata).toEqual({
+			canonicalId: "gpt-5.4",
+			baseCatalogSource: "models.dev",
+			sourceProvider: "openai",
+			sourceModelId: "gpt-5.4",
+			modalities: ["image", "pdf", "text"],
+		})
+	})
+
+	it("emits modalities for active openai/codex alias path when canonical cache provides them", () => {
+		const cacheWithActiveModalities = parseCliproxyCacheText(
+			JSON.stringify({
+				$cliproxyCacheContractVersion: 1,
+				openai: {
+					id: "openai",
+					name: "OpenAI",
+					npm: "@ai-sdk/openai",
+					models: {
+						"gpt-5": {
+							id: "gpt-5",
+							name: "GPT-5",
+							reasoning: true,
+							limit: { context: 400000, output: 128000 },
+							modalities: ["text", "audio"],
+						},
+						"codex-mini": {
+							id: "codex-mini",
+							name: "Codex Mini",
+							reasoning: true,
+							limit: { context: 200000, output: 100000 },
+							capabilities: {
+								modalities: ["text", "text"],
+							},
+						},
+					},
+				},
+				"google-vertex-anthropic": {
+					id: "google-vertex-anthropic",
+					name: "Google Vertex Anthropic",
+					npm: "@ai-sdk/google-vertex/anthropic",
+					models: {
+						"vertex-claude": {
+							id: "vertex-claude",
+							name: "Vertex Claude",
+							reasoning: true,
+							limit: { context: 200000, output: 64000 },
+						},
+					},
+				},
+			}),
+			"active-openai-codex-modalities-cache.json",
+		)
+
+		const availability = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({
+				data: [
+					{ id: "gpt-5-latest", display_name: "GPT 5 Latest" },
+					{ id: "codex-mini-latest", display_name: "Codex Mini Latest" },
+				],
+			}),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const artifact = buildCliproxyGenerationArtifact({
+			cache: cacheWithActiveModalities,
+			config: configBase(),
+			availabilityModels: availability,
+			availabilitySource: "live",
+		})
+
+		expect(artifact.failed).toEqual([])
+		const openaiModels = artifact.providerPatch["cliproxy-openai"].models as Record<
+			string,
+			Record<string, unknown>
+		>
+		expect(openaiModels["gpt-5"].metadata).toEqual({
+			canonicalId: "gpt-5",
+			baseCatalogSource: "models.dev",
+			sourceProvider: "openai",
+			sourceModelId: "gpt-5",
+			modalities: ["audio", "text"],
+			resolvedFromAliasId: "gpt-5-latest",
+		})
+		expect(openaiModels["codex-mini"].metadata).toEqual({
+			canonicalId: "codex-mini",
+			baseCatalogSource: "models.dev",
+			sourceProvider: "openai",
+			sourceModelId: "codex-mini",
+			modalities: ["text"],
+			resolvedFromAliasId: "codex-mini-latest",
+		})
+	})
+
+	it("emits modalities for active openai/codex alias path when cache uses object-shaped modalities", () => {
+		const cacheWithObjectModalities = parseCliproxyCacheText(
+			JSON.stringify({
+				$cliproxyCacheContractVersion: 1,
+				openai: {
+					id: "openai",
+					name: "OpenAI",
+					npm: "@ai-sdk/openai",
+					models: {
+						"gpt-5": {
+							id: "gpt-5",
+							name: "GPT-5",
+							reasoning: true,
+							limit: { context: 400000, output: 128000 },
+							modalities: {
+								input: ["text", "audio", "text"],
+								output: ["audio", "image"],
+							},
+						},
+						"codex-mini": {
+							id: "codex-mini",
+							name: "Codex Mini",
+							reasoning: true,
+							limit: { context: 200000, output: 100000 },
+							capabilities: {
+								modalities: {
+									input: ["text", "code"],
+									output: ["code", "text"],
+								},
+							},
+						},
+					},
+				},
+				"google-vertex-anthropic": {
+					id: "google-vertex-anthropic",
+					name: "Google Vertex Anthropic",
+					npm: "@ai-sdk/google-vertex/anthropic",
+					models: {
+						"vertex-claude": {
+							id: "vertex-claude",
+							name: "Vertex Claude",
+							reasoning: true,
+							limit: { context: 200000, output: 64000 },
+						},
+					},
+				},
+			}),
+			"active-openai-codex-object-modalities-cache.json",
+		)
+
+		const availability = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({
+				data: [
+					{ id: "gpt-5-latest", display_name: "GPT 5 Latest" },
+					{ id: "codex-mini-latest", display_name: "Codex Mini Latest" },
+				],
+			}),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const artifact = buildCliproxyGenerationArtifact({
+			cache: cacheWithObjectModalities,
+			config: configBase(),
+			availabilityModels: availability,
+			availabilitySource: "live",
+		})
+
+		expect(artifact.failed).toEqual([])
+		const openaiModels = artifact.providerPatch["cliproxy-openai"].models as Record<
+			string,
+			Record<string, unknown>
+		>
+		expect(openaiModels["gpt-5"].metadata).toEqual({
+			canonicalId: "gpt-5",
+			baseCatalogSource: "models.dev",
+			sourceProvider: "openai",
+			sourceModelId: "gpt-5",
+			modalities: ["audio", "image", "text"],
+			resolvedFromAliasId: "gpt-5-latest",
+		})
+		expect(openaiModels["codex-mini"].metadata).toEqual({
+			canonicalId: "codex-mini",
+			baseCatalogSource: "models.dev",
+			sourceProvider: "openai",
+			sourceModelId: "codex-mini",
+			modalities: ["code", "text"],
+			resolvedFromAliasId: "codex-mini-latest",
+		})
+	})
+
+	it("emits resolvedFromAliasId for explicit alias-table reconciliation", () => {
+		const availability = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({
+				data: [{ id: "gpt-5-latest", display_name: "GPT 5 Latest" }],
+			}),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const artifact = buildCliproxyGenerationArtifact({
+			cache: cacheFixture(),
+			config: configBase(),
+			availabilityModels: availability,
+			availabilitySource: "live",
+		})
+
+		expect(artifact.failed).toEqual([])
+		const openaiModels = artifact.providerPatch["cliproxy-openai"].models as Record<
+			string,
+			Record<string, unknown>
+		>
+		expect(openaiModels["gpt-5"].metadata).toEqual({
+			canonicalId: "gpt-5",
+			baseCatalogSource: "models.dev",
+			sourceProvider: "openai",
+			sourceModelId: "gpt-5",
+			resolvedFromAliasId: "gpt-5-latest",
+		})
+	})
+
+	it("does not emit alias metadata for provider-qualified reconciliation", () => {
+		const availability = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({
+				data: [{ id: "openai/gpt-5", display_name: "OpenAI GPT 5" }],
+			}),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const artifact = buildCliproxyGenerationArtifact({
+			cache: cacheFixture(),
+			config: configBase(),
+			availabilityModels: availability,
+			availabilitySource: "live",
+		})
+
+		expect(artifact.failed).toEqual([])
+		const openaiModels = artifact.providerPatch["cliproxy-openai"].models as Record<
+			string,
+			Record<string, unknown>
+		>
+		expect(openaiModels["gpt-5"].metadata).toEqual({
+			canonicalId: "gpt-5",
+			baseCatalogSource: "models.dev",
+			sourceProvider: "openai",
+			sourceModelId: "gpt-5",
+		})
+	})
+
+	it("does not emit alias metadata for owner-hint reconciliation", () => {
+		const availability = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({
+				data: [
+					{
+						id: "gpt-4.1-mini",
+						display_name: "Copilot GPT",
+						owned_by: "github-copilot",
+					},
+				],
+			}),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const artifact = buildCliproxyGenerationArtifact({
+			cache: cacheFixture(),
+			config: configBase(),
+			availabilityModels: availability,
+			availabilitySource: "live",
+		})
+
+		expect(artifact.failed).toEqual([])
+		const copilotModels = artifact.providerPatch["cliproxy-github-copilot"].models as Record<
+			string,
+			Record<string, unknown>
+		>
+		expect(copilotModels["github-copilot/gpt-4.1-mini"].metadata).toEqual({
+			canonicalId: "github-copilot/gpt-4.1-mini",
+			baseCatalogSource: "models.dev",
+			sourceProvider: "github-copilot",
+			sourceModelId: "gpt-4.1-mini",
+		})
+	})
+
+	it("does not emit alias metadata when direct canonical discovery exists", () => {
+		const availability = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({
+				data: [
+					{ id: "gpt-5", display_name: "GPT 5" },
+					{ id: "gpt-5-latest", display_name: "GPT 5 Latest" },
+				],
+			}),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const artifact = buildCliproxyGenerationArtifact({
+			cache: cacheFixture(),
+			config: configBase(),
+			availabilityModels: availability,
+			availabilitySource: "live",
+		})
+
+		expect(artifact.failed).toEqual([])
+		const openaiModels = artifact.providerPatch["cliproxy-openai"].models as Record<
+			string,
+			Record<string, unknown>
+		>
+		expect(openaiModels["gpt-5"].metadata).toEqual({
+			canonicalId: "gpt-5",
+			baseCatalogSource: "models.dev",
+			sourceProvider: "openai",
+			sourceModelId: "gpt-5",
+		})
+	})
+
+	it("emits machine-readable fail records for duplicate canonical emitted IDs", () => {
+		const duplicateCache = parseCliproxyCacheText(
+			JSON.stringify({
+				$cliproxyCacheContractVersion: 1,
+				openai: {
+					id: "openai",
+					name: "OpenAI",
+					npm: "@ai-sdk/openai",
+					models: {
+						shared: {
+							id: "shared",
+							name: "Shared OpenAI",
+							reasoning: true,
+							limit: { context: 128000, output: 32000 },
+						},
+					},
+				},
+				anthropic: {
+					id: "anthropic",
+					name: "Anthropic",
+					npm: "@ai-sdk/anthropic",
+					models: {
+						shared: {
+							id: "shared",
+							name: "Shared Anthropic",
+							reasoning: true,
+							limit: { context: 128000, output: 32000 },
+						},
+					},
+				},
+			}),
+			"duplicate-cache.json",
+		)
+
+		const availability = mergeDiscoveryModels(
+			parseV1DiscoveryPayload({ data: [{ id: "shared", display_name: "Shared" }] }),
+			parseV1BetaDiscoveryPayload({ models: [] }),
+		)
+
+		const artifact = buildCliproxyGenerationArtifact({
+			cache: duplicateCache,
+			config: configBase(),
+			availabilityModels: availability,
+			availabilitySource: "live",
+		})
+
+		expect(artifact.providerPatch).toEqual({})
+		expect(artifact.failed).toEqual([
+			{
+				code: "duplicate-emitted-id",
+				message: "[cliproxy] duplicate canonical model id emitted: shared",
+				canonicalId: "shared",
+			},
+		])
 	})
 })
 

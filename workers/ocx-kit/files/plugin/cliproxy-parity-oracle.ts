@@ -68,6 +68,7 @@ type ParityRecord = {
 		modelId: string
 		effectiveHost: string
 	}
+	baseSource: "models.dev" | "supplemental"
 	output: {
 		providerBucketId: string
 		modelId: string
@@ -197,9 +198,9 @@ export const CLIPROXY_PARITY_FIXTURE_MATRIX: readonly ParityFixtureCase[] = [
 	},
 	{
 		name: "google-vertex-anthropic",
-		discovery: [{ id: "vertex-claude", displayName: "Vertex Fixture" }],
+		discovery: [{ id: "google-vertex-anthropic/vertex-claude", displayName: "Vertex Fixture" }],
 		selectedSource: { providerNamespace: "google-vertex-anthropic", modelId: "vertex-claude" },
-		outputModelId: "vertex-claude",
+		outputModelId: "google-vertex-anthropic/vertex-claude",
 		outputDisplayName: "Vertex Fixture",
 	},
 	{
@@ -254,6 +255,14 @@ function normalizeCost(input: Partial<Cost> | undefined): Cost {
 	}
 }
 
+function inferBaseSource(pointer: SourcePointer): "models.dev" | "supplemental" {
+	if (pointer.providerNamespace === "google-antigravity") {
+		return "supplemental"
+	}
+
+	return "models.dev"
+}
+
 function buildExpectedRecord(fixture: ParityFixtureCase): ParityRecord {
 	const provider = PROVIDER_EXPECTATIONS[fixture.selectedSource.providerNamespace]
 	const model = MODEL_EXPECTATIONS[sourceKey(fixture.selectedSource)]
@@ -270,6 +279,7 @@ function buildExpectedRecord(fixture: ParityFixtureCase): ParityRecord {
 			modelId: fixture.selectedSource.modelId,
 			effectiveHost: provider.effectiveHost,
 		},
+		baseSource: inferBaseSource(fixture.selectedSource),
 		output: {
 			providerBucketId: `cliproxy-${provider.effectiveHost}`,
 			modelId: fixture.outputModelId,
