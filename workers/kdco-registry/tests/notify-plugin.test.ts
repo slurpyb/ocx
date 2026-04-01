@@ -1,5 +1,49 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
 import type { Event } from "@opencode-ai/sdk"
+import {
+	NotificationChannel as HostNotificationChannel,
+	NotificationNegotiatedState as HostNotificationNegotiatedState,
+	type NotificationContractHandshake,
+	NotificationContractID,
+	NotificationContractSchemaVersion,
+} from "../../../packages/cli/src/notify/contract-compat"
+import {
+	NotificationCapabilityState,
+	NotificationChannel,
+	NotificationFallbackMode,
+	NotificationHandlingMode,
+	normalizeNotificationBoundaryInput,
+} from "../files/plugins/notify/normalize"
+
+function createHostHandshakeFixture(
+	input: { schemaVersion?: string; capabilities?: Record<string, { state: string }> } = {},
+): NotificationContractHandshake {
+	return {
+		contract: {
+			id: NotificationContractID,
+			schemaVersion: input.schemaVersion ?? NotificationContractSchemaVersion,
+		},
+		capabilities:
+			input.capabilities ??
+			({
+				[HostNotificationChannel.UIToast]: {
+					state: HostNotificationNegotiatedState.Supported,
+				},
+				[HostNotificationChannel.TaskSystem]: {
+					state: HostNotificationNegotiatedState.Supported,
+				},
+				[HostNotificationChannel.SDKSystem]: {
+					state: HostNotificationNegotiatedState.Unsupported,
+				},
+				[HostNotificationChannel.DesktopTerminal]: {
+					state: HostNotificationNegotiatedState.Unsupported,
+				},
+				[HostNotificationChannel.MCPChannel]: {
+					state: HostNotificationNegotiatedState.InternalOnly,
+				},
+			} satisfies NotificationContractHandshake["capabilities"]),
+	}
+}
 
 type SessionInfo = {
 	parentID?: string
@@ -35,9 +79,12 @@ mock.module("node-notifier", () => ({
 }))
 
 let NotifyPlugin: typeof import("../files/plugins/notify").NotifyPlugin
+let resolveNotificationRuntimePolicyFromHostHandshake: typeof import("../files/plugins/notify").resolveNotificationRuntimePolicyFromHostHandshake
 
 beforeAll(async () => {
-	;({ NotifyPlugin } = await import("../files/plugins/notify"))
+	;({ NotifyPlugin, resolveNotificationRuntimePolicyFromHostHandshake } = await import(
+		"../files/plugins/notify"
+	))
 })
 
 beforeEach(() => {
@@ -86,7 +133,12 @@ function mockFocusedTerminal(): void {
 	})
 }
 
-async function createPlugin(sessionInfoByID: Record<string, SessionInfo> = {}): Promise<{
+async function createPlugin(
+	sessionInfoByID: Record<string, SessionInfo> = {},
+	options: {
+		hostNotificationContractHandshake?: unknown
+	} = {},
+): Promise<{
 	hooks: Awaited<ReturnType<typeof NotifyPlugin>>
 	sessionGet: ReturnType<typeof mock>
 }> {
@@ -97,13 +149,19 @@ async function createPlugin(sessionInfoByID: Record<string, SessionInfo> = {}): 
 		},
 	}))
 
-	const hooks = await NotifyPlugin({
+	const pluginContext: Record<string, unknown> = {
 		client: {
 			session: {
 				get: sessionGet,
 			},
 		},
-	} as unknown as Parameters<typeof NotifyPlugin>[0])
+	}
+
+	if (options.hostNotificationContractHandshake !== undefined) {
+		pluginContext.notificationContractHandshake = options.hostNotificationContractHandshake
+	}
+
+	const hooks = await NotifyPlugin(pluginContext as unknown as Parameters<typeof NotifyPlugin>[0])
 
 	return { hooks, sessionGet }
 }
@@ -121,20 +179,247 @@ async function emitQuestionToolBefore(
 	sessionID: string,
 	callID: string,
 ): Promise<void> {
+	await emitToolBefore(hooks, {
+		tool: "question",
+		sessionID,
+		callID,
+	})
+}
+
+async function emitToolBefore(
+	hooks: Awaited<ReturnType<typeof NotifyPlugin>>,
+	input: unknown,
+): Promise<void> {
 	const hook = hooks["tool.execute.before"]
 	if (!hook) throw new Error("Notify plugin did not register tool.execute.before")
 
-	await (hook as (...args: unknown[]) => Promise<void>)(
-		{
-			tool: "question",
-			sessionID,
-			callID,
-		},
-		{},
-	)
+	await (hook as (...args: unknown[]) => Promise<void>)(input, {})
 }
 
+describe("notify host handshake mixed-version seam", () => {
+	it("accepts same-major drift, warns on unknown channels, and enforces host fail_closed runtime policy", async () => {
+		const hostHandshake = createHostHandshakeFixture({
+			schemaVersion: "1.2.0",
+			capabilities: {
+				[HostNotificationChannel.UIToast]: {
+					state: HostNotificationNegotiatedState.Supported,
+				},
+				[HostNotificationChannel.TaskSystem]: {
+					state: HostNotificationNegotiatedState.FallbackApproved,
+				},
+				[HostNotificationChannel.SDKSystem]: {
+					state: HostNotificationNegotiatedState.Unsupported,
+				},
+				[HostNotificationChannel.DesktopTerminal]: {
+					state: HostNotificationNegotiatedState.InternalOnly,
+				},
+				[HostNotificationChannel.MCPChannel]: {
+					state: HostNotificationNegotiatedState.InternalOnly,
+				},
+				"future.channel": {
+					state: HostNotificationNegotiatedState.Supported,
+				},
+			},
+		})
+
+		const policyResolution = resolveNotificationRuntimePolicyFromHostHandshake(hostHandshake)
+		expect(policyResolution.compatible).toBe(true)
+		if (!policyResolution.compatible) {
+			expect.unreachable("Expected same-major host handshake to be compatible")
+		}
+
+		expect(policyResolution.source).toBe("host-handshake")
+		expect(policyResolution.warnings.map((warning) => warning.code).sort()).toEqual([
+			"newer-schema-minor-or-patch",
+			"unknown-channel-ignored",
+		])
+		expect(
+			Object.hasOwn(policyResolution.normalizePolicy.capabilityByChannel ?? {}, "future.channel"),
+		).toBe(false)
+
+		const desktopEvent = {
+			type: "notification.desktop.terminal",
+			properties: {
+				title: "Terminal ping",
+				message: "Agent needs your attention",
+				level: "warning",
+			},
+		}
+
+		const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+		const { hooks: defaultHooks } = await createPlugin()
+
+		await emitEvent(defaultHooks, desktopEvent)
+
+		expect(notificationPayloads).toHaveLength(1)
+
+		notificationPayloads.length = 0
+
+		const { hooks } = await createPlugin({}, { hostNotificationContractHandshake: hostHandshake })
+
+		await emitEvent(hooks, desktopEvent)
+
+		expect(notificationPayloads).toHaveLength(0)
+
+		const warningMessages = warnSpy.mock.calls.map((args) => String(args[0]))
+		expect(warningMessages.some((message) => message.includes("newer-schema-minor-or-patch"))).toBe(
+			true,
+		)
+		expect(warningMessages.some((message) => message.includes("unknown-channel-ignored"))).toBe(
+			true,
+		)
+		expect(warningMessages.some((message) => message.includes("fail_closed"))).toBe(true)
+	})
+
+	it("hard-fails plugin startup for unsupported schema major", async () => {
+		const incompatibleHandshake = createHostHandshakeFixture({
+			schemaVersion: "2.0.0",
+		})
+
+		const policyResolution =
+			resolveNotificationRuntimePolicyFromHostHandshake(incompatibleHandshake)
+		expect(policyResolution.compatible).toBe(false)
+		if (policyResolution.compatible) {
+			expect.unreachable("Expected incompatible host handshake")
+		}
+
+		expect(policyResolution.errors.map((issue) => issue.code)).toContain("unsupported-schema-major")
+
+		await expect(
+			createPlugin({}, { hostNotificationContractHandshake: incompatibleHandshake }),
+		).rejects.toThrow("unsupported-schema-major")
+	})
+
+	it("hard-fails plugin startup when a canonical channel is missing", async () => {
+		const missingRequiredChannelHandshake = createHostHandshakeFixture()
+		delete missingRequiredChannelHandshake.capabilities[HostNotificationChannel.DesktopTerminal]
+
+		const policyResolution = resolveNotificationRuntimePolicyFromHostHandshake(
+			missingRequiredChannelHandshake,
+		)
+		expect(policyResolution.compatible).toBe(false)
+		if (policyResolution.compatible) {
+			expect.unreachable("Expected incompatible host handshake")
+		}
+
+		expect(policyResolution.errors.map((issue) => issue.code)).toContain("missing-required-channel")
+
+		await expect(
+			createPlugin({}, { hostNotificationContractHandshake: missingRequiredChannelHandshake }),
+		).rejects.toThrow("missing-required-channel")
+	})
+
+	it("hard-fails plugin startup for unknown negotiated state on canonical channel", async () => {
+		const unknownStateHandshake = createHostHandshakeFixture()
+		unknownStateHandshake.capabilities[HostNotificationChannel.SDKSystem] = {
+			state: "legacy_supported",
+		}
+
+		const policyResolution =
+			resolveNotificationRuntimePolicyFromHostHandshake(unknownStateHandshake)
+		expect(policyResolution.compatible).toBe(false)
+		if (policyResolution.compatible) {
+			expect.unreachable("Expected incompatible host handshake")
+		}
+
+		expect(policyResolution.errors).toContainEqual(
+			expect.objectContaining({
+				code: "unknown-negotiated-state",
+				channel: HostNotificationChannel.SDKSystem,
+				state: "legacy_supported",
+			}),
+		)
+
+		await expect(
+			createPlugin({}, { hostNotificationContractHandshake: unknownStateHandshake }),
+		).rejects.toThrow("unknown-negotiated-state")
+	})
+})
+
 describe("notify plugin event compatibility and dedupe", () => {
+	it("proves host-handshake policy resolves mcp.channel fail_closed normalization and remains non-deliverable at runtime", async () => {
+		const hostHandshake = createHostHandshakeFixture()
+		hostHandshake.capabilities[HostNotificationChannel.MCPChannel] = {
+			state: HostNotificationNegotiatedState.Unsupported,
+		}
+
+		const mcpEvent = {
+			type: "notification.mcp.channel",
+			properties: {
+				server: "mcp-gateway",
+				message: "rate limit warning",
+				level: "warning",
+				source: "mcp.server",
+				trust: "untrusted",
+			},
+		}
+
+		const hostPolicyResolution = resolveNotificationRuntimePolicyFromHostHandshake(hostHandshake)
+		expect(hostPolicyResolution.compatible).toBe(true)
+		if (!hostPolicyResolution.compatible) {
+			expect.unreachable("Expected host notification handshake to be compatible")
+		}
+
+		expect(hostPolicyResolution.source).toBe("host-handshake")
+		expect(
+			hostPolicyResolution.normalizePolicy.capabilityByChannel?.[NotificationChannel.MCPChannel],
+		).toEqual({
+			state: NotificationCapabilityState.Unsupported,
+			fallbackMode: NotificationFallbackMode.FailClosed,
+		})
+
+		const normalizedDefaultMCPIntent = normalizeNotificationBoundaryInput({
+			source: "event",
+			value: mcpEvent,
+		})
+		expect(normalizedDefaultMCPIntent.ok).toBe(true)
+		if (!normalizedDefaultMCPIntent.ok) {
+			expect.unreachable("Expected normalized default-policy mcp.channel intent")
+		}
+
+		expect(normalizedDefaultMCPIntent.intent.channel).toBe(NotificationChannel.MCPChannel)
+		expect(normalizedDefaultMCPIntent.intent.capabilityState).toBe(
+			NotificationCapabilityState.InternalOnly,
+		)
+		expect(normalizedDefaultMCPIntent.intent.fallbackMode).toBe(NotificationFallbackMode.FailClosed)
+		expect(normalizedDefaultMCPIntent.intent.handlingMode).toBe(NotificationHandlingMode.FailClosed)
+
+		const normalizedMCPIntent = normalizeNotificationBoundaryInput(
+			{
+				source: "event",
+				value: mcpEvent,
+			},
+			hostPolicyResolution.normalizePolicy,
+		)
+		expect(normalizedMCPIntent.ok).toBe(true)
+		if (!normalizedMCPIntent.ok) {
+			expect.unreachable("Expected normalized mcp.channel intent")
+		}
+
+		expect(normalizedMCPIntent.intent.channel).toBe(NotificationChannel.MCPChannel)
+		expect(normalizedMCPIntent.intent.capabilityState).toBe(NotificationCapabilityState.Unsupported)
+		expect(normalizedMCPIntent.intent.fallbackMode).toBe(NotificationFallbackMode.FailClosed)
+		expect(normalizedMCPIntent.intent.handlingMode).toBe(NotificationHandlingMode.FailClosed)
+		expect(normalizedMCPIntent.intent.capabilityState).not.toBe(
+			normalizedDefaultMCPIntent.intent.capabilityState,
+		)
+
+		const { hooks: defaultHooks } = await createPlugin()
+		await emitEvent(defaultHooks, mcpEvent)
+		expect(notificationPayloads).toHaveLength(0)
+
+		notificationPayloads.length = 0
+
+		const { hooks: hostHandshakeHooks } = await createPlugin(
+			{},
+			{
+				hostNotificationContractHandshake: hostHandshake,
+			},
+		)
+		await emitEvent(hostHandshakeHooks, mcpEvent)
+		expect(notificationPayloads).toHaveLength(0)
+	})
+
 	it("dedupes permission notification when permission.asked and permission.updated describe same request", async () => {
 		const { hooks } = await createPlugin()
 
@@ -236,6 +521,65 @@ describe("notify plugin event compatibility and dedupe", () => {
 			"Ready for review",
 			"Ready for review",
 		])
+	})
+
+	it("delivers direct notification.desktop.terminal events through NotifyPlugin", async () => {
+		const { hooks } = await createPlugin()
+
+		await emitEvent(hooks, {
+			type: "notification.desktop.terminal",
+			properties: {
+				title: "Terminal ping",
+				message: "Agent needs your attention",
+				level: "warning",
+			},
+		})
+
+		expect(notificationPayloads).toHaveLength(1)
+		expect(notificationPayloads[0]).toMatchObject({
+			title: "Terminal ping",
+			message: "Agent needs your attention",
+		})
+	})
+
+	it("keeps direct notification.desktop.terminal payload literal when title matches legacy question", async () => {
+		const { hooks } = await createPlugin()
+
+		await emitEvent(hooks, {
+			type: "notification.desktop.terminal",
+			properties: {
+				title: "Question for you",
+				message: "Literal question body from direct desktop event",
+				level: "warning",
+			},
+		})
+
+		expect(notificationPayloads).toHaveLength(1)
+		expect(notificationPayloads[0]).toMatchObject({
+			title: "Question for you",
+			message: "Literal question body from direct desktop event",
+		})
+		expect(notificationPayloads[0]?.message).not.toBe("OpenCode needs your input")
+	})
+
+	it("notifies for session.error through NotifyPlugin", async () => {
+		const { hooks } = await createPlugin({
+			"session-error": { title: "Error Session" },
+		})
+
+		await emitEvent(hooks, {
+			type: "session.error",
+			properties: {
+				sessionID: "session-error",
+				error: "Disk blew up",
+			},
+		})
+
+		expect(notificationPayloads).toHaveLength(1)
+		expect(notificationPayloads[0]).toMatchObject({
+			title: "Something went wrong",
+			message: "Disk blew up",
+		})
 	})
 
 	it("dedupes ready notification when session.status idle and session.idle describe same transition", async () => {
@@ -414,5 +758,38 @@ describe("notify plugin event compatibility and dedupe", () => {
 		})
 
 		expect(notificationPayloads).toHaveLength(0)
+	})
+
+	it("logs and drops malformed legacy event payloads from normalization boundary", async () => {
+		const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+		const { hooks } = await createPlugin()
+
+		await emitEvent(hooks, {
+			type: "session.status",
+			properties: {
+				status: {
+					type: "idle",
+				},
+			},
+		})
+
+		expect(notificationPayloads).toHaveLength(0)
+		expect(warnSpy).toHaveBeenCalledTimes(1)
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining("[notify] Dropping event payload type=session.status"),
+		)
+	})
+
+	it("logs and drops malformed tool.execute.before payloads from normalization boundary", async () => {
+		const warnSpy = spyOn(console, "warn").mockImplementation(() => {})
+		const { hooks } = await createPlugin()
+
+		await emitToolBefore(hooks, null)
+
+		expect(notificationPayloads).toHaveLength(0)
+		expect(warnSpy).toHaveBeenCalledTimes(1)
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining("[notify] Dropping tool.execute.before payload"),
+		)
 	})
 })

@@ -43,6 +43,79 @@ This document provides a complete testing checklist for OCX. Use it to verify fu
 
 > **Testing Coverage**: For automated coverage details, see `packages/cli/tests/`.
 
+### Phase 2.10 Notification Contract Release Gate (Blocks Phase 3)
+
+- **OCX ownership:** `packages/cli/src/notify/contract-compat.ts`
+- **OCX blocking test:** `packages/cli/tests/notify/contract-compat.test.ts`
+
+Required release evidence:
+
+1. `bun --cwd packages/cli test tests/notify/contract-compat.test.ts` passes.
+2. Upstream opencode notification contract evidence is attached for the same release window:
+   - `packages/opencode/test/plugin/notification-contract.test.ts`
+   - `packages/opencode/test/bus/bus-event-visibility.test.ts`
+   - `packages/opencode/test/server/event-visibility.test.ts`
+
+Scope clarification for Phase 2.10 closure evidence:
+
+- The 2.10 closure gate validates that public generated artifacts remain correct and exclude internal-only channels.
+- It does **not** require those artifacts to be newly regenerated in the 2.10 slice itself.
+- Phase 2 closure still relies on `packages/sdk/openapi.json` and `packages/sdk/js/src/v2/gen/types.gen.ts` being already synced from earlier Phase 2 generation work.
+
+Do not mark the notification contract gate complete (or begin Phase 3-dependent release steps) without this evidence set.
+
+Current closure-window evidence (2026-04-01, blocker audit refresh):
+
+- [x] `bun --cwd packages/cli test tests/notify/contract-compat.test.ts`
+  - PASS — `18 pass`, `0 fail` (bun test v1.3.5, 150ms)
+- [x] (run in `/Users/kenny/workspace/kdcokenny/opencode`) `bun --cwd packages/opencode test test/plugin/notification-contract.test.ts test/bus/bus-event-visibility.test.ts test/server/event-visibility.test.ts`
+  - PASS — `20 pass`, `0 fail` across the three required upstream gate tests (bun test v1.3.11, 5.26s)
+
+### Notification Parity Closure Snapshot (Host Phase 2 closed; OCX Phase 3.1–3.5 complete)
+
+This checklist captures the current reviewer-approved status for notification parity.
+
+**Normative source-of-truth (do not redefine in OCX docs):**
+
+- `opencode/packages/plugin/src/notification.ts`
+- `opencode/packages/opencode/specs/notification-contract-slice-2-host-task-system-mcp.md`
+
+**Derived per-channel status (auditable):**
+
+`Capability visibility` below is the negotiated contract metadata from `opencode/packages/plugin/src/notification.ts` (not the same field as host `notification.*` event-stream visibility).
+
+| Channel | Negotiated state | Capability visibility (matrix metadata) | Support | Fallback / slice note |
+| --- | --- | --- | --- | --- |
+| `ui.toast` | `supported` | `public` | `supported` | `none` |
+| `task.system` | `supported` | `public` | `supported` | `none` |
+| `sdk.system` | `unsupported` | `public` | `unsupported` | `drop`; host `notification.sdk.system` event is internal and not emitted in this slice |
+| `desktop.terminal` | `unsupported` | `public` | `unsupported` | `fail_closed` |
+| `mcp.channel` | `internal_only` | `internal` | `unsupported` | `fail_closed`; host `notification.mcp.channel` event is internal |
+
+**Verification evidence (exact test files):**
+
+- [x] **OCX mixed-version seam verification**
+  - `packages/cli/tests/notify/contract-compat.test.ts`
+  - Covers: unsupported major fail-closed, newer minor/patch warn-and-continue, canonical-channel/state enforcement.
+- [x] **Host 5-channel parity smoke**
+  - `opencode/packages/opencode/test/plugin/notification-contract.test.ts`
+  - Includes `capability matrix parity smoke stays auditable across all five channels`.
+- [x] **MCP fail-closed verification across host/app surfaces**
+  - `opencode/packages/opencode/test/mcp/notification-guard.test.ts`
+  - `opencode/packages/opencode/test/mcp/notification-flow.test.ts`
+  - `opencode/packages/app/src/utils/host-notification.test.ts`
+  - `opencode/packages/app/src/context/notification.consumer.test.ts`
+- [x] **Public/internal visibility enforcement**
+  - `opencode/packages/opencode/test/bus/bus-event-visibility.test.ts`
+  - `opencode/packages/opencode/test/server/event-visibility.test.ts`
+
+**Known non-blocking limitations (recorded, not blockers):**
+
+- `sdk.system` remains negotiated `unsupported` in the capability matrix; host `notification.sdk.system` remains internal and unemitted in this slice.
+- `desktop.terminal` remains unsupported (no delivery implementation yet).
+- `mcp.channel` remains internal-only and not rendered in app/TUI until a trust/source-aware UI surface exists.
+- Reviewer notes include minor coverage follow-ups only; no critical/major blockers remain.
+
 ### Out of Scope
 
 - **Performance benchmarking** - Not covered by manual testing

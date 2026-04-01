@@ -17,6 +17,11 @@ import type { Event, Message, Part, TextPart } from "@opencode-ai/sdk"
 import { adjectives, animals, colors, uniqueNamesGenerator } from "unique-names-generator"
 import { getProjectId } from "./kdco-primitives/get-project-id"
 import type { OpencodeClient } from "./kdco-primitives/types"
+import {
+	type NotificationLevel,
+	NotificationLevel as NotificationLevelValue,
+} from "./notify/normalize"
+import { createNotificationTaskSystemEvent } from "./notify/task-system-event"
 
 // ==========================================
 // READABLE ID GENERATION
@@ -236,6 +241,7 @@ const DEFAULT_MAX_RUN_TIME_MS = 15 * 60 * 1000 // 15 minutes
 const TERMINAL_WAIT_GRACE_MS = 10_000
 const READ_POLL_INTERVAL_MS = 250
 const ALL_COMPLETE_QUIET_PERIOD_MS = 50
+const TASK_SYSTEM_BRIDGE_PAYLOAD_TAG = "task-system-bridge-payload"
 
 interface DelegateInput {
 	parentSessionID: string
@@ -394,6 +400,33 @@ function parsePersistedStatus(raw: string | undefined): DelegationStatus {
 	if (raw === "cancelled") return "cancelled"
 	if (raw === "timeout") return "timeout"
 	return "complete"
+}
+
+function mapDelegationStatusToTaskSystemLevel(status: DelegationStatus): NotificationLevel {
+	if (status === "complete") return NotificationLevelValue.Success
+	if (status === "error") return NotificationLevelValue.Error
+	if (status === "registered" || status === "running") return NotificationLevelValue.Info
+	return NotificationLevelValue.Warning
+}
+
+function buildTaskSystemBridgePayload(input: {
+	id: string
+	dedupeKey: string
+	title?: string
+	message: string
+	level: NotificationLevel
+	sessionID?: string
+}): string {
+	return JSON.stringify(
+		createNotificationTaskSystemEvent({
+			id: input.id,
+			dedupeKey: input.dedupeKey,
+			title: input.title,
+			message: input.message,
+			level: input.level,
+			sessionID: input.sessionID,
+		}),
+	)
 }
 
 export class DelegationManager {
@@ -840,16 +873,28 @@ export class DelegationManager {
 	}
 
 	private buildTerminalNotification(delegation: DelegationRecord, remainingCount: number): string {
+		const summary = `Background agent ${delegation.status}: ${delegation.title || delegation.id}`
+		const bridgeIdentity = `background-agent:terminal:${delegation.parentSessionID}:${delegation.id}:${delegation.status}`
+		const taskSystemBridgePayload = buildTaskSystemBridgePayload({
+			id: bridgeIdentity,
+			dedupeKey: bridgeIdentity,
+			title: delegation.title,
+			message: summary,
+			level: mapDelegationStatusToTaskSystemLevel(delegation.status),
+			sessionID: delegation.parentSessionID,
+		})
+
 		const lines = [
 			"<task-notification>",
 			`<task-id>${delegation.id}</task-id>`,
 			`<status>${delegation.status}</status>`,
-			`<summary>Background agent ${delegation.status}: ${delegation.title || delegation.id}</summary>`,
+			`<summary>${summary}</summary>`,
 			delegation.title ? `<title>${delegation.title}</title>` : "",
 			delegation.description ? `<description>${delegation.description}</description>` : "",
 			delegation.error ? `<error>${delegation.error}</error>` : "",
 			`<artifact>${delegation.artifact.filePath}</artifact>`,
 			`<retrieval>Use delegation_read("${delegation.id}") for full output.</retrieval>`,
+			`<${TASK_SYSTEM_BRIDGE_PAYLOAD_TAG}>${taskSystemBridgePayload}</${TASK_SYSTEM_BRIDGE_PAYLOAD_TAG}>`,
 			remainingCount > 0 ? `<remaining>${remainingCount}</remaining>` : "",
 			"</task-notification>",
 		]
@@ -862,6 +907,17 @@ export class DelegationManager {
 		cycle: number,
 		cycleToken: string,
 	): string {
+		const summary = "All delegations complete."
+		const bridgeIdentity = `background-agent:all-complete:${parentSessionID}:${cycleToken}`
+		const taskSystemBridgePayload = buildTaskSystemBridgePayload({
+			id: bridgeIdentity,
+			dedupeKey: bridgeIdentity,
+			title: "All delegations complete",
+			message: summary,
+			level: NotificationLevelValue.Success,
+			sessionID: parentSessionID,
+		})
+
 		// cycle-token is a boundary watermark.
 		// Receivers should ignore all-complete payloads whose token is older than
 		// the latest known registration cycle for this parent session.
@@ -869,10 +925,11 @@ export class DelegationManager {
 			"<task-notification>",
 			"<type>all-complete</type>",
 			"<status>completed</status>",
-			"<summary>All delegations complete.</summary>",
+			`<summary>${summary}</summary>`,
 			`<parent-session-id>${parentSessionID}</parent-session-id>`,
 			`<cycle>${cycle}</cycle>`,
 			`<cycle-token>${cycleToken}</cycle-token>`,
+			`<${TASK_SYSTEM_BRIDGE_PAYLOAD_TAG}>${taskSystemBridgePayload}</${TASK_SYSTEM_BRIDGE_PAYLOAD_TAG}>`,
 			"</task-notification>",
 		].join("\n")
 	}

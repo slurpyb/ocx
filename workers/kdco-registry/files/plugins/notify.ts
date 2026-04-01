@@ -25,11 +25,32 @@ import type { Plugin } from "@opencode-ai/plugin"
 import type { Event } from "@opencode-ai/sdk"
 // @ts-expect-error - installed at runtime by OCX
 import detectTerminal from "detect-terminal"
-// @ts-expect-error - installed at runtime by OCX
-import notifier from "node-notifier"
+import {
+	classifyNotificationContractHandshake,
+	type NotificationContractCompatErrorIssue,
+	type NotificationContractCompatWarningIssue,
+} from "../../../../packages/cli/src/notify/contract-compat"
+import { isPlainObject } from "../../../../packages/cli/src/utils/type-guards"
 import type { OpencodeClient } from "./kdco-primitives/types"
-import { sendNotificationWithFallback } from "./notify/backend"
-import { canUseCmuxNotification, sendCmuxNotification } from "./notify/cmux"
+import {
+	type DesktopTransportPayload,
+	type NotifyBackendRuntime,
+	sendNotificationWithFallback,
+} from "./notify/backend"
+import { canUseCmuxNotification } from "./notify/cmux"
+import {
+	createNotificationCapabilityByChannelFromNegotiatedState,
+	DEFAULT_NOTIFICATION_CAPABILITY_BY_CHANNEL,
+	DesktopTerminalSemanticIntent,
+	type NormalizedNotificationIntent,
+	type NormalizedNotificationParseFailure,
+	type NormalizeNotificationBoundaryInput,
+	type NormalizeNotificationOptions,
+	NotificationChannel,
+	NotificationHandlingMode,
+	NotificationLevel,
+	normalizeNotificationBoundaryInput,
+} from "./notify/normalize"
 
 interface NotifyConfig {
 	/** Notify for child/sub-session events (default: false) */
@@ -227,27 +248,114 @@ interface NotificationOptions {
 	subtitle?: string
 	cmuxBody?: string
 	sound: string
-	terminalInfo: TerminalInfo
-}
-
-interface NotificationRuntime {
-	preferCmux: boolean
+	terminalBundleId?: string | null
 }
 
 const QUESTION_DEDUPE_WINDOW_MS = 1500
 const READY_DEDUPE_WINDOW_MS = 1500
 const PERMISSION_DEDUPE_WINDOW_MS = 1500
 
+const NORMALIZE_NOTIFICATION_POLICY: NormalizeNotificationOptions = {
+	capabilityByChannel: DEFAULT_NOTIFICATION_CAPABILITY_BY_CHANNEL,
+}
+
+export type NotifyRuntimePolicyResolution =
+	| {
+			compatible: true
+			source: "default" | "host-handshake"
+			normalizePolicy: NormalizeNotificationOptions
+			warnings: NotificationContractCompatWarningIssue[]
+	  }
+	| {
+			compatible: false
+			source: "host-handshake"
+			errors: NotificationContractCompatErrorIssue[]
+			warnings: NotificationContractCompatWarningIssue[]
+	  }
+
+export function resolveNotificationRuntimePolicyFromHostHandshake(
+	hostNotificationContractHandshake: unknown,
+): NotifyRuntimePolicyResolution {
+	if (hostNotificationContractHandshake === undefined) {
+		return {
+			compatible: true,
+			source: "default",
+			normalizePolicy: NORMALIZE_NOTIFICATION_POLICY,
+			warnings: [],
+		}
+	}
+
+	const compatibility = classifyNotificationContractHandshake(hostNotificationContractHandshake)
+	if (!compatibility.compatible) {
+		return {
+			compatible: false,
+			source: "host-handshake",
+			errors: compatibility.errors,
+			warnings: compatibility.warnings,
+		}
+	}
+
+	return {
+		compatible: true,
+		source: "host-handshake",
+		normalizePolicy: {
+			capabilityByChannel: createNotificationCapabilityByChannelFromNegotiatedState(
+				compatibility.negotiatedStateByChannel,
+			),
+		},
+		warnings: compatibility.warnings,
+	}
+}
+
+function readHostNotificationContractHandshake(ctx: unknown): unknown {
+	if (!isPlainObject(ctx)) {
+		return undefined
+	}
+
+	if (!Object.hasOwn(ctx, "notificationContractHandshake")) {
+		return undefined
+	}
+
+	return (ctx as Record<string, unknown>).notificationContractHandshake
+}
+
+function reportHostHandshakeWarnings(warnings: NotificationContractCompatWarningIssue[]): void {
+	for (const warning of warnings) {
+		console.warn(
+			`[notify] Host notification handshake warning: ${warning.code} (${warning.message})`,
+		)
+	}
+}
+
+export async function processBoundaryInput(
+	input: NormalizeNotificationBoundaryInput,
+	options: {
+		normalizePolicy?: NormalizeNotificationOptions
+		routeNormalizedIntent: (intent: NormalizedNotificationIntent) => Promise<void>
+		handleParseFailure?: (failure: NormalizedNotificationParseFailure) => void
+	},
+): Promise<void> {
+	const parsed = normalizeNotificationBoundaryInput(input, options.normalizePolicy)
+	if (!parsed.ok) {
+		const onParseFailure = options.handleParseFailure ?? handleNormalizeParseFailure
+		onParseFailure(parsed)
+		return
+	}
+
+	await options.routeNormalizedIntent(parsed.intent)
+}
+
+const SESSION_READY_TITLE = "Ready for review"
+const SESSION_ERROR_TITLE = "Something went wrong"
+const PERMISSION_TITLE = "Waiting for you"
+const QUESTION_TITLE = "Question for you"
+
 type RecentNotifications = Map<string, number>
 
-function toNonEmptyString(value: unknown): string | null {
-	if (typeof value !== "string") return null
-
-	const normalized = value.trim()
-	if (!normalized) return null
-
-	return normalized
-}
+type DesktopTerminalIntent = Extract<
+	NormalizedNotificationIntent,
+	{ channel: typeof NotificationChannel.DesktopTerminal }
+>
 
 function shouldSendDedupedNotification(
 	recentNotifications: RecentNotifications,
@@ -270,89 +378,59 @@ function shouldSendDedupedNotification(
 	return true
 }
 
-function buildQuestionToolDedupeKey(sessionID: unknown, callID: unknown): string | null {
-	const normalizedSessionID = toNonEmptyString(sessionID)
-	if (!normalizedSessionID) return null
-
-	const normalizedCallID = toNonEmptyString(callID)
-	if (!normalizedCallID) return null
-
-	return `question:${normalizedSessionID}:${normalizedCallID}`
-}
-
-function buildQuestionEventDedupeKey(properties: unknown): string | null {
-	if (!properties || typeof properties !== "object") return null
-
-	const record = properties as Record<string, unknown>
-	const normalizedSessionID = toNonEmptyString(record.sessionID)
-	if (!normalizedSessionID) return null
-
-	const toolInfo =
-		record.tool && typeof record.tool === "object"
-			? (record.tool as Record<string, unknown>)
-			: undefined
-	const normalizedCallID = toNonEmptyString(toolInfo?.callID)
-	if (normalizedCallID) {
-		return `question:${normalizedSessionID}:${normalizedCallID}`
+function handleNormalizeParseFailure(failure: NormalizedNotificationParseFailure): void {
+	if (failure.code === "unsupported-type") {
+		return
 	}
 
-	const normalizedRequestID = toNonEmptyString(record.id)
-	if (normalizedRequestID) {
-		return `question:${normalizedSessionID}:request:${normalizedRequestID}`
-	}
-
-	return null
+	const rawTypeLabel = failure.rawType ? ` type=${failure.rawType}` : ""
+	console.warn(
+		`[notify] Dropping ${failure.source} payload${rawTypeLabel}: ${failure.code} (${failure.message})`,
+	)
 }
 
-function buildSessionReadyDedupeKey(sessionID: unknown): string | null {
-	const normalizedSessionID = toNonEmptyString(sessionID)
-	if (!normalizedSessionID) return null
-
-	return `session-ready:${normalizedSessionID}`
+function resolveDesktopSound(level: NotificationLevel, config: NotifyConfig): string {
+	switch (level) {
+		case NotificationLevel.Error:
+			return config.sounds.error
+		case NotificationLevel.Warning:
+			return config.sounds.permission
+		case NotificationLevel.Info:
+		case NotificationLevel.Success:
+			return config.sounds.idle
+	}
 }
 
-function buildPermissionEventDedupeKey(properties: unknown): string | null {
-	if (!properties || typeof properties !== "object") return null
-
-	const record = properties as Record<string, unknown>
-	const normalizedRequestID = toNonEmptyString(record.id)
-	if (!normalizedRequestID) return null
-
-	return `permission:request:${normalizedRequestID}`
-}
-
-function sendNodeNotification(options: NotificationOptions): void {
-	const { title, message, sound, terminalInfo } = options
-
-	// Base notification options
-	const notifyOptions: Record<string, unknown> = {
-		title,
-		message,
-		sound,
+function resolveDesktopTitle(intent: DesktopTerminalIntent): string {
+	if (intent.payload.title) {
+		return intent.payload.title
 	}
 
-	// macOS-specific: click notification to focus terminal
-	if (process.platform === "darwin" && terminalInfo.bundleId) {
-		notifyOptions.activate = terminalInfo.bundleId
+	switch (intent.payload.level) {
+		case NotificationLevel.Error:
+			return SESSION_ERROR_TITLE
+		case NotificationLevel.Warning:
+			return "OpenCode notification"
+		case NotificationLevel.Info:
+		case NotificationLevel.Success:
+			return "OpenCode"
 	}
-
-	notifier.notify(notifyOptions)
 }
 
 async function sendNotification(
 	options: NotificationOptions,
-	runtime: NotificationRuntime,
+	runtime: NotifyBackendRuntime,
 ): Promise<void> {
-	await sendNotificationWithFallback({
-		preferCmux: runtime.preferCmux,
-		tryCmuxNotify: () =>
-			sendCmuxNotification({
-				title: options.title,
-				subtitle: options.subtitle,
-				body: options.cmuxBody ?? options.message,
-			}),
-		sendNodeNotify: () => sendNodeNotification(options),
-	})
+	const transportPayload: DesktopTransportPayload = {
+		title: options.title,
+		message: options.message,
+		sound: options.sound,
+		subtitle: options.subtitle,
+		cmuxBody: options.cmuxBody,
+		terminalBundleId: options.terminalBundleId,
+	}
+
+	await sendNotificationWithFallback(transportPayload, runtime)
 }
 
 // ==========================================
@@ -364,7 +442,7 @@ async function handleSessionIdle(
 	sessionID: string,
 	config: NotifyConfig,
 	terminalInfo: TerminalInfo,
-	notificationRuntime: NotificationRuntime,
+	notificationRuntime: NotifyBackendRuntime,
 ): Promise<void> {
 	// Check if we should notify for this session
 	if (!config.notifyChildSessions) {
@@ -391,12 +469,12 @@ async function handleSessionIdle(
 
 	await sendNotification(
 		{
-			title: "Ready for review",
+			title: SESSION_READY_TITLE,
 			message: sessionTitle,
 			subtitle: sessionTitle,
 			cmuxBody: "OpenCode task is ready for review",
 			sound: config.sounds.idle,
-			terminalInfo,
+			terminalBundleId: terminalInfo.bundleId,
 		},
 		notificationRuntime,
 	)
@@ -408,7 +486,7 @@ async function handleSessionError(
 	error: string | undefined,
 	config: NotifyConfig,
 	terminalInfo: TerminalInfo,
-	notificationRuntime: NotificationRuntime,
+	notificationRuntime: NotifyBackendRuntime,
 ): Promise<void> {
 	// Check if we should notify for this session
 	if (!config.notifyChildSessions) {
@@ -426,10 +504,10 @@ async function handleSessionError(
 
 	await sendNotification(
 		{
-			title: "Something went wrong",
+			title: SESSION_ERROR_TITLE,
 			message: errorMessage,
 			sound: config.sounds.error,
-			terminalInfo,
+			terminalBundleId: terminalInfo.bundleId,
 		},
 		notificationRuntime,
 	)
@@ -438,7 +516,7 @@ async function handleSessionError(
 async function handlePermissionUpdated(
 	config: NotifyConfig,
 	terminalInfo: TerminalInfo,
-	notificationRuntime: NotificationRuntime,
+	notificationRuntime: NotifyBackendRuntime,
 ): Promise<void> {
 	// Always notify for permission events - AI is blocked waiting for human
 	// No parent check needed: permissions always need human attention
@@ -451,10 +529,10 @@ async function handlePermissionUpdated(
 
 	await sendNotification(
 		{
-			title: "Waiting for you",
+			title: PERMISSION_TITLE,
 			message: "OpenCode needs your input",
 			sound: config.sounds.permission,
-			terminalInfo,
+			terminalBundleId: terminalInfo.bundleId,
 		},
 		notificationRuntime,
 	)
@@ -463,7 +541,7 @@ async function handlePermissionUpdated(
 async function handleQuestionAsked(
 	config: NotifyConfig,
 	terminalInfo: TerminalInfo,
-	notificationRuntime: NotificationRuntime,
+	notificationRuntime: NotifyBackendRuntime,
 ): Promise<void> {
 	// Guard: quiet hours only (no focus check for questions - tmux workflow)
 	if (isQuietHours(config)) return
@@ -472,10 +550,31 @@ async function handleQuestionAsked(
 
 	await sendNotification(
 		{
-			title: "Question for you",
+			title: QUESTION_TITLE,
 			message: "OpenCode needs your input",
 			sound,
-			terminalInfo,
+			terminalBundleId: terminalInfo.bundleId,
+		},
+		notificationRuntime,
+	)
+}
+
+async function handleDesktopTerminalNotification(
+	intent: DesktopTerminalIntent,
+	config: NotifyConfig,
+	terminalInfo: TerminalInfo,
+	notificationRuntime: NotifyBackendRuntime,
+): Promise<void> {
+	if (isQuietHours(config)) return
+
+	if (await isTerminalFocused(terminalInfo)) return
+
+	await sendNotification(
+		{
+			title: resolveDesktopTitle(intent),
+			message: intent.payload.message,
+			sound: resolveDesktopSound(intent.payload.level, config),
+			terminalBundleId: terminalInfo.bundleId,
 		},
 		notificationRuntime,
 	)
@@ -487,20 +586,35 @@ async function handleQuestionAsked(
 
 export const NotifyPlugin: Plugin = async (ctx) => {
 	const { client } = ctx
+	const policyResolution = resolveNotificationRuntimePolicyFromHostHandshake(
+		readHostNotificationContractHandshake(ctx),
+	)
+
+	if (!policyResolution.compatible) {
+		const issueCodes = policyResolution.errors.map((issue) => issue.code).join(", ") || "unknown"
+		throw new Error(`Incompatible notification contract handshake: ${issueCodes}`)
+	}
+
+	if (policyResolution.warnings.length > 0) {
+		reportHostHandshakeWarnings(policyResolution.warnings)
+	}
+
+	const normalizePolicy = policyResolution.normalizePolicy
+	const shouldEnforceHostFailClosedRuntime = policyResolution.source === "host-handshake"
 
 	// Load config once at startup
 	const config = await loadConfig()
 
 	// Detect terminal once at startup (cached for performance)
 	const terminalInfo = await detectTerminalInfo(config)
-	const notificationRuntime: NotificationRuntime = {
+	const notificationRuntime: NotifyBackendRuntime = {
 		preferCmux: canUseCmuxNotification(),
 	}
 	const recentQuestionNotifications: RecentNotifications = new Map()
 	const recentReadyNotifications: RecentNotifications = new Map()
 	const recentPermissionNotifications: RecentNotifications = new Map()
 
-	const notifyQuestionIfNeeded = async (dedupeKey: string | null): Promise<void> => {
+	const notifyQuestionIfNeeded = async (dedupeKey: string | undefined): Promise<void> => {
 		if (
 			dedupeKey &&
 			!shouldSendDedupedNotification(
@@ -515,14 +629,14 @@ export const NotifyPlugin: Plugin = async (ctx) => {
 		await handleQuestionAsked(config, terminalInfo, notificationRuntime)
 	}
 
-	const notifySessionReadyIfNeeded = async (sessionID: unknown): Promise<void> => {
-		const normalizedSessionID = toNonEmptyString(sessionID)
-		if (!normalizedSessionID) return
-
-		const dedupeKey = buildSessionReadyDedupeKey(normalizedSessionID)
-		if (!dedupeKey) return
+	const notifySessionReadyIfNeeded = async (
+		sessionID: string | undefined,
+		dedupeKey: string | undefined,
+	): Promise<void> => {
+		if (!sessionID) return
 
 		if (
+			dedupeKey &&
 			!shouldSendDedupedNotification(recentReadyNotifications, dedupeKey, READY_DEDUPE_WINDOW_MS)
 		) {
 			return
@@ -530,16 +644,14 @@ export const NotifyPlugin: Plugin = async (ctx) => {
 
 		await handleSessionIdle(
 			client as OpencodeClient,
-			normalizedSessionID,
+			sessionID,
 			config,
 			terminalInfo,
 			notificationRuntime,
 		)
 	}
 
-	const notifyPermissionIfNeeded = async (properties: unknown): Promise<void> => {
-		const dedupeKey = buildPermissionEventDedupeKey(properties)
-
+	const notifyPermissionIfNeeded = async (dedupeKey: string | undefined): Promise<void> => {
 		if (
 			dedupeKey &&
 			!shouldSendDedupedNotification(
@@ -554,60 +666,84 @@ export const NotifyPlugin: Plugin = async (ctx) => {
 		await handlePermissionUpdated(config, terminalInfo, notificationRuntime)
 	}
 
-	return {
-		"tool.execute.before": async (input: { tool: string; sessionID: string; callID: string }) => {
-			if (input.tool === "question") {
-				await notifyQuestionIfNeeded(buildQuestionToolDedupeKey(input.sessionID, input.callID))
+	const routeNormalizedIntent = async (intent: NormalizedNotificationIntent): Promise<void> => {
+		if (intent.channel !== NotificationChannel.DesktopTerminal) {
+			return
+		}
+
+		switch (intent.handlingMode) {
+			case NotificationHandlingMode.Drop:
+				return
+			case NotificationHandlingMode.FailClosed:
+				if (shouldEnforceHostFailClosedRuntime) {
+					console.warn(
+						`[notify] Dropping ${intent.origin.rawType} notification due host fail_closed policy on ${intent.channel} (state=${intent.capabilityState}).`,
+					)
+					return
+				}
+				break
+			case NotificationHandlingMode.Deliver:
+				break
+		}
+
+		switch (intent.semanticIntent) {
+			case DesktopTerminalSemanticIntent.SessionReady: {
+				await notifySessionReadyIfNeeded(intent.payload.sessionID, intent.dedupeKey)
+				return
 			}
+			case DesktopTerminalSemanticIntent.SessionError: {
+				if (!intent.payload.sessionID) return
+				await handleSessionError(
+					client as OpencodeClient,
+					intent.payload.sessionID,
+					intent.payload.message,
+					config,
+					terminalInfo,
+					notificationRuntime,
+				)
+				return
+			}
+			case DesktopTerminalSemanticIntent.Permission: {
+				await notifyPermissionIfNeeded(intent.dedupeKey)
+				return
+			}
+			case DesktopTerminalSemanticIntent.Question: {
+				await notifyQuestionIfNeeded(intent.dedupeKey)
+				return
+			}
+			case DesktopTerminalSemanticIntent.Generic: {
+				await handleDesktopTerminalNotification(intent, config, terminalInfo, notificationRuntime)
+				return
+			}
+		}
+	}
+
+	return {
+		"tool.execute.before": async (input: unknown) => {
+			await processBoundaryInput(
+				{
+					source: "tool.execute.before",
+					value: input,
+				},
+				{
+					normalizePolicy,
+					routeNormalizedIntent,
+					handleParseFailure: handleNormalizeParseFailure,
+				},
+			)
 		},
 		event: async ({ event }: { event: Event }): Promise<void> => {
-			const runtimeEvent = event as { type: string; properties: Record<string, unknown> }
-
-			switch (runtimeEvent.type) {
-				case "session.status": {
-					const sessionID = runtimeEvent.properties.sessionID
-					const statusType =
-						runtimeEvent.properties.status && typeof runtimeEvent.properties.status === "object"
-							? ((runtimeEvent.properties.status as { type?: string }).type ?? undefined)
-							: undefined
-
-					if (sessionID && statusType === "idle") {
-						await notifySessionReadyIfNeeded(sessionID)
-					}
-					break
-				}
-				case "session.idle": {
-					await notifySessionReadyIfNeeded(runtimeEvent.properties.sessionID)
-					break
-				}
-				case "session.error": {
-					const sessionID = toNonEmptyString(runtimeEvent.properties.sessionID)
-					const error = runtimeEvent.properties.error
-					const errorMessage = typeof error === "string" ? error : error ? String(error) : undefined
-					if (sessionID) {
-						await handleSessionError(
-							client as OpencodeClient,
-							sessionID,
-							errorMessage,
-							config,
-							terminalInfo,
-							notificationRuntime,
-						)
-					}
-					break
-				}
-
-				case "permission.updated":
-				case "permission.asked": {
-					await notifyPermissionIfNeeded(runtimeEvent.properties)
-					break
-				}
-				case "question.asked": {
-					const dedupeKey = buildQuestionEventDedupeKey(runtimeEvent.properties)
-					await notifyQuestionIfNeeded(dedupeKey)
-					break
-				}
-			}
+			await processBoundaryInput(
+				{
+					source: "event",
+					value: event,
+				},
+				{
+					normalizePolicy,
+					routeNormalizedIntent,
+					handleParseFailure: handleNormalizeParseFailure,
+				},
+			)
 		},
 	}
 }

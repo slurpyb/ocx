@@ -2,111 +2,165 @@ import { describe, expect, it, mock } from "bun:test"
 import { sendNotificationWithFallback } from "../files/plugins/notify/backend"
 import { sendCmuxNotification } from "../files/plugins/notify/cmux"
 
+const baseTransportPayload = {
+	title: "Ready for review",
+	message: "Agent needs your attention",
+	sound: "Glass",
+	subtitle: "Session A",
+	cmuxBody: "OpenCode task is ready for review",
+	terminalBundleId: "com.mitchellh.ghostty",
+} as const
+
 describe("notify backend fallback behavior", () => {
 	it("uses node notifier directly when cmux is not preferred", async () => {
-		const tryCmuxNotify = mock(async () => true)
-		const sendNodeNotify = mock(() => {})
+		const cmuxSender = mock(async () => true)
+		const nodeSender = mock(() => {})
 
-		await sendNotificationWithFallback({
-			preferCmux: false,
-			tryCmuxNotify,
-			sendNodeNotify,
-		})
+		await sendNotificationWithFallback(
+			baseTransportPayload,
+			{
+				preferCmux: false,
+			},
+			{
+				sendCmuxNotification: cmuxSender,
+				sendNodeNotification: nodeSender,
+			},
+		)
 
-		expect(tryCmuxNotify).not.toHaveBeenCalled()
-		expect(sendNodeNotify).toHaveBeenCalledTimes(1)
+		expect(cmuxSender).not.toHaveBeenCalled()
+		expect(nodeSender).toHaveBeenCalledTimes(1)
+		const expectedNodePayload: Record<string, unknown> = {
+			title: "Ready for review",
+			message: "Agent needs your attention",
+			sound: "Glass",
+		}
+		if (process.platform === "darwin") {
+			expectedNodePayload.activate = "com.mitchellh.ghostty"
+		}
+		expect(nodeSender).toHaveBeenCalledWith(expectedNodePayload)
 	})
 
 	it("prefers cmux when cmux delivery succeeds", async () => {
-		const tryCmuxNotify = mock(async () => true)
-		const sendNodeNotify = mock(() => {})
+		const cmuxSender = mock(async () => true)
+		const nodeSender = mock(() => {})
 
-		await sendNotificationWithFallback({
-			preferCmux: true,
-			tryCmuxNotify,
-			sendNodeNotify,
+		await sendNotificationWithFallback(
+			baseTransportPayload,
+			{ preferCmux: true },
+			{
+				sendCmuxNotification: cmuxSender,
+				sendNodeNotification: nodeSender,
+			},
+		)
+
+		expect(cmuxSender).toHaveBeenCalledTimes(1)
+		expect(cmuxSender).toHaveBeenCalledWith({
+			title: "Ready for review",
+			subtitle: "Session A",
+			body: "OpenCode task is ready for review",
 		})
-
-		expect(tryCmuxNotify).toHaveBeenCalledTimes(1)
-		expect(sendNodeNotify).not.toHaveBeenCalled()
+		expect(nodeSender).not.toHaveBeenCalled()
 	})
 
 	it("falls back to node notifier when cmux returns false", async () => {
-		const tryCmuxNotify = mock(async () => false)
-		const sendNodeNotify = mock(() => {})
+		const cmuxSender = mock(async () => false)
+		const nodeSender = mock(() => {})
 
-		await sendNotificationWithFallback({
-			preferCmux: true,
-			tryCmuxNotify,
-			sendNodeNotify,
-		})
+		await sendNotificationWithFallback(
+			baseTransportPayload,
+			{ preferCmux: true },
+			{
+				sendCmuxNotification: cmuxSender,
+				sendNodeNotification: nodeSender,
+			},
+		)
 
-		expect(tryCmuxNotify).toHaveBeenCalledTimes(1)
-		expect(sendNodeNotify).toHaveBeenCalledTimes(1)
+		expect(cmuxSender).toHaveBeenCalledTimes(1)
+		expect(nodeSender).toHaveBeenCalledTimes(1)
 	})
 
 	it("falls back to node notifier when cmux throws", async () => {
-		const tryCmuxNotify = mock(async () => {
+		const cmuxSender = mock(async () => {
 			throw new Error("cmux unavailable")
 		})
-		const sendNodeNotify = mock(() => {})
+		const nodeSender = mock(() => {})
 
-		await sendNotificationWithFallback({
-			preferCmux: true,
-			tryCmuxNotify,
-			sendNodeNotify,
-		})
+		await sendNotificationWithFallback(
+			baseTransportPayload,
+			{ preferCmux: true },
+			{
+				sendCmuxNotification: cmuxSender,
+				sendNodeNotification: nodeSender,
+			},
+		)
 
-		expect(tryCmuxNotify).toHaveBeenCalledTimes(1)
-		expect(sendNodeNotify).toHaveBeenCalledTimes(1)
+		expect(cmuxSender).toHaveBeenCalledTimes(1)
+		expect(nodeSender).toHaveBeenCalledTimes(1)
 	})
 
 	it("falls back to node notifier when cmux exits non-zero", async () => {
-		const sendNodeNotify = mock(() => {})
+		const nodeSender = mock(() => {})
 
-		await sendNotificationWithFallback({
-			preferCmux: true,
-			tryCmuxNotify: () =>
-				sendCmuxNotification(
-					{
-						title: "Something went wrong",
-						body: "Task failed",
-					},
-					{
+		await sendNotificationWithFallback(
+			baseTransportPayload,
+			{ preferCmux: true },
+			{
+				sendCmuxNotification: (payload) =>
+					sendCmuxNotification(payload, {
 						spawnProcess: () => ({
 							exited: Promise.resolve(1),
 						}),
-					},
-				),
-			sendNodeNotify,
-		})
+					}),
+				sendNodeNotification: nodeSender,
+			},
+		)
 
-		expect(sendNodeNotify).toHaveBeenCalledTimes(1)
+		expect(nodeSender).toHaveBeenCalledTimes(1)
 	})
 
 	it("falls back to node notifier when cmux times out", async () => {
-		const sendNodeNotify = mock(() => {})
+		const nodeSender = mock(() => {})
 
-		await sendNotificationWithFallback({
-			preferCmux: true,
-			tryCmuxNotify: () =>
-				sendCmuxNotification(
-					{
-						title: "Ready",
-						body: "Task complete",
-					},
-					{
+		await sendNotificationWithFallback(
+			baseTransportPayload,
+			{ preferCmux: true },
+			{
+				sendCmuxNotification: (payload) =>
+					sendCmuxNotification(payload, {
 						timeoutMs: 10,
 						spawnProcess: () => ({
 							exited: new Promise<number>(() => {
 								// Simulate hung cmux process
 							}),
 						}),
-					},
-				),
-			sendNodeNotify,
-		})
+					}),
+				sendNodeNotification: nodeSender,
+			},
+		)
 
-		expect(sendNodeNotify).toHaveBeenCalledTimes(1)
+		expect(nodeSender).toHaveBeenCalledTimes(1)
+	})
+
+	it("uses message as cmux body when cmuxBody is omitted", async () => {
+		const cmuxSender = mock(async () => true)
+
+		await sendNotificationWithFallback(
+			{
+				title: "Fallback body",
+				message: "Message body",
+				sound: "Glass",
+			},
+			{ preferCmux: true },
+			{
+				sendCmuxNotification: cmuxSender,
+				sendNodeNotification: mock(() => {}),
+			},
+		)
+
+		expect(cmuxSender).toHaveBeenCalledWith({
+			title: "Fallback body",
+			subtitle: undefined,
+			body: "Message body",
+		})
 	})
 })

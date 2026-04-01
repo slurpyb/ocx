@@ -3,6 +3,11 @@ import * as fs from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
 import { BackgroundAgentsPlugin, DelegationManager } from "../files/plugins/background-agents"
+import {
+	NotificationChannel,
+	NotificationLevel,
+	normalizeNotificationEvent,
+} from "../files/plugins/notify/normalize"
 
 type PromptCall = {
 	sessionID: string
@@ -161,6 +166,16 @@ function sleep(ms: number): Promise<void> {
 
 function getPromptText(call: PromptCall): string {
 	return call.body.parts?.[0]?.text || ""
+}
+
+function extractTaskSystemBridgeEvent(text: string): Record<string, unknown> {
+	const match = text.match(/<task-system-bridge-payload>([\s\S]*?)<\/task-system-bridge-payload>/)
+
+	if (!match?.[1]) {
+		throw new Error("Missing task-system bridge payload in notification text")
+	}
+
+	return JSON.parse(match[1]) as Record<string, unknown>
 }
 
 let originalHome: string | undefined
@@ -396,6 +411,89 @@ describe("background-agents lifecycle refactor", () => {
 			getPromptText(call).includes("<summary>All delegations complete.</summary>"),
 		)
 		expect(allCompletePromptIndex).toBeGreaterThan(Math.max(...terminalPromptIndices))
+	})
+
+	it("emits task/system bridge payloads that normalize for terminal and all-complete notifications", async () => {
+		const rootSessionID = "root-session"
+		const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), "background-agents-bridge-"))
+		testDirs.push(baseDir)
+		const allCompleteQuietPeriodMs = 20
+
+		const { client, state } = createMockClient({
+			rootSessionID,
+			childPromptMode: "pending",
+		})
+
+		const manager = new DelegationManager(client as never, baseDir, createNoopLogger(), {
+			idGenerator: () => "bridge-id",
+			metadataGenerator: async () => ({
+				title: "Bridge Result",
+				description: "Bridge payload check.",
+			}),
+			allCompleteQuietPeriodMs,
+		})
+
+		const delegation = await manager.delegate({
+			parentSessionID: rootSessionID,
+			parentMessageID: "msg-1",
+			parentAgent: "plan",
+			prompt: "Verify task/system bridge payload",
+			agent: "researcher",
+		})
+
+		state.messagesBySession.set(delegation.sessionID, "Bridge payload body")
+		await manager.handleSessionIdle(delegation.sessionID)
+		await sleep(allCompleteQuietPeriodMs + 30)
+
+		const terminalNotification = state.notificationTexts.find((text) =>
+			text.includes("<task-id>bridge-id</task-id>"),
+		)
+		expect(terminalNotification).toBeTruthy()
+		if (!terminalNotification) {
+			throw new Error("Missing terminal notification")
+		}
+
+		const terminalBridgeEvent = extractTaskSystemBridgeEvent(terminalNotification)
+		expect(terminalBridgeEvent.type).toBe("notification.task.system")
+
+		const normalizedTerminalBridge = normalizeNotificationEvent(terminalBridgeEvent)
+		expect(normalizedTerminalBridge.ok).toBe(true)
+		if (!normalizedTerminalBridge.ok) {
+			expect.unreachable("Expected normalized terminal bridge event")
+		}
+
+		expect(normalizedTerminalBridge.intent.channel).toBe(NotificationChannel.TaskSystem)
+		expect(normalizedTerminalBridge.intent.payload).toEqual({
+			title: "Bridge Result",
+			message: "Background agent complete: Bridge Result",
+			level: NotificationLevel.Success,
+			sessionID: rootSessionID,
+		})
+
+		const allCompleteNotification = state.notificationTexts.find((text) =>
+			text.includes("<type>all-complete</type>"),
+		)
+		expect(allCompleteNotification).toBeTruthy()
+		if (!allCompleteNotification) {
+			throw new Error("Missing all-complete notification")
+		}
+
+		const allCompleteBridgeEvent = extractTaskSystemBridgeEvent(allCompleteNotification)
+		expect(allCompleteBridgeEvent.type).toBe("notification.task.system")
+
+		const normalizedAllCompleteBridge = normalizeNotificationEvent(allCompleteBridgeEvent)
+		expect(normalizedAllCompleteBridge.ok).toBe(true)
+		if (!normalizedAllCompleteBridge.ok) {
+			expect.unreachable("Expected normalized all-complete bridge event")
+		}
+
+		expect(normalizedAllCompleteBridge.intent.channel).toBe(NotificationChannel.TaskSystem)
+		expect(normalizedAllCompleteBridge.intent.payload).toEqual({
+			title: "All delegations complete",
+			message: "All delegations complete.",
+			level: NotificationLevel.Success,
+			sessionID: rootSessionID,
+		})
 	})
 
 	it("allows batch B registration while cycle A all-complete is pending and suppresses stale cycle A before dispatch", async () => {
