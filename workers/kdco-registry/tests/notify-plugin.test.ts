@@ -137,6 +137,7 @@ async function createPlugin(
 	sessionInfoByID: Record<string, SessionInfo> = {},
 	options: {
 		hostNotificationContractHandshake?: unknown
+		useNullPrototypeContext?: boolean
 	} = {},
 ): Promise<{
 	hooks: Awaited<ReturnType<typeof NotifyPlugin>>
@@ -149,11 +150,13 @@ async function createPlugin(
 		},
 	}))
 
-	const pluginContext: Record<string, unknown> = {
-		client: {
-			session: {
-				get: sessionGet,
-			},
+	const pluginContext = (options.useNullPrototypeContext ? Object.create(null) : {}) as Record<
+		string,
+		unknown
+	>
+	pluginContext.client = {
+		session: {
+			get: sessionGet,
 		},
 	}
 
@@ -288,6 +291,22 @@ describe("notify host handshake mixed-version seam", () => {
 		await expect(
 			createPlugin({}, { hostNotificationContractHandshake: incompatibleHandshake }),
 		).rejects.toThrow("unsupported-schema-major")
+	})
+
+	it("ignores host handshake on null-prototype context envelope", async () => {
+		const incompatibleHandshake = createHostHandshakeFixture({
+			schemaVersion: "2.0.0",
+		})
+
+		await expect(
+			createPlugin(
+				{},
+				{
+					hostNotificationContractHandshake: incompatibleHandshake,
+					useNullPrototypeContext: true,
+				},
+			),
+		).resolves.toBeDefined()
 	})
 
 	it("hard-fails plugin startup when a canonical channel is missing", async () => {

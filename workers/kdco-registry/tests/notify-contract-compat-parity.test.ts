@@ -15,6 +15,10 @@ import {
 	NotificationContractSchemaVersion as shippedNotificationContractSchemaVersion,
 } from "../files/plugins/notify/contract-compat"
 
+function withNullPrototype<T extends object>(value: T): T {
+	return Object.assign(Object.create(null), value) as T
+}
+
 describe("notify contract-compat parity", () => {
 	it("keeps shipped notification contract constants aligned with canonical CLI definitions", () => {
 		expect(shippedNotificationContractID).toBe(canonicalNotificationContractID)
@@ -38,5 +42,54 @@ describe("notify contract-compat parity", () => {
 		)
 
 		expect(shippedResult).toEqual(canonicalResult)
+	})
+
+	it("matches canonical classification for invalid object-shape handshakes", () => {
+		const channel = Object.keys(canonicalClosedHostDefaultHandshake.capabilities)[0]
+		expect(channel).toBeTruthy()
+		if (!channel) {
+			expect.unreachable("Expected closed-host handshake fixture to include at least one channel")
+		}
+
+		const invalidShapeCases = [
+			{
+				label: "null-prototype handshake root",
+				handshake: withNullPrototype(canonicalClosedHostDefaultHandshake),
+			},
+			{
+				label: "null-prototype contract",
+				handshake: {
+					...canonicalClosedHostDefaultHandshake,
+					contract: withNullPrototype(canonicalClosedHostDefaultHandshake.contract),
+				},
+			},
+			{
+				label: "null-prototype capabilities",
+				handshake: {
+					...canonicalClosedHostDefaultHandshake,
+					capabilities: withNullPrototype(canonicalClosedHostDefaultHandshake.capabilities),
+				},
+			},
+			{
+				label: "null-prototype capability entry",
+				handshake: {
+					...canonicalClosedHostDefaultHandshake,
+					capabilities: {
+						...canonicalClosedHostDefaultHandshake.capabilities,
+						[channel]: withNullPrototype(
+							canonicalClosedHostDefaultHandshake.capabilities[channel] as { state: string },
+						),
+					},
+				},
+			},
+		] as const
+
+		for (const testCase of invalidShapeCases) {
+			const canonicalResult = classifyCanonicalNotificationContractHandshake(testCase.handshake)
+			const shippedResult = classifyShippedNotificationContractHandshake(testCase.handshake)
+
+			expect(canonicalResult.compatible, testCase.label).toBe(false)
+			expect(shippedResult, testCase.label).toEqual(canonicalResult)
+		}
 	})
 })

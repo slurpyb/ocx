@@ -83,6 +83,6 @@ describe("kdco/notify packaging contract", () => {
 			"utf-8",
 		)
 
-		expect(backgroundAgentsSource).not.toContain('from "./notify/')
+		expect(backgroundAgentsSource).not.toMatch(/from\s+["']\.\/notify(?:["']|\/)/)
 	})
 })

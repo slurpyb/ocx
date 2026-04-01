@@ -306,13 +306,13 @@ export function resolveNotificationRuntimePolicyFromHostHandshake(
 	}
 }
 
-function isPlainObject(value: unknown): value is Record<PropertyKey, unknown> {
-	if (value === null || typeof value !== "object") {
-		return false
-	}
-
-	const prototype = Object.getPrototypeOf(value)
-	return prototype === Object.prototype || prototype === null
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		!Array.isArray(value) &&
+		Object.getPrototypeOf(value) === Object.prototype
+	)
 }
 
 function readHostNotificationContractHandshake(ctx: unknown): unknown {

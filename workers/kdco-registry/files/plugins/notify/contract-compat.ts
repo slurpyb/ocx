@@ -3,13 +3,13 @@
  *
  * Keep this in sync with packages/cli/src/notify/contract-compat.ts.
  */
-function isPlainObject(value: unknown): value is Record<PropertyKey, unknown> {
-	if (value === null || typeof value !== "object") {
-		return false
-	}
-
-	const prototype = Object.getPrototypeOf(value)
-	return prototype === Object.prototype || prototype === null
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		!Array.isArray(value) &&
+		Object.getPrototypeOf(value) === Object.prototype
+	)
 }
 
 export const NotificationContractID = "opencode.host.notification" as const
