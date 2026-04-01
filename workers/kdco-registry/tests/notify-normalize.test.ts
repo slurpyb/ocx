@@ -169,6 +169,55 @@ describe("notify normalization boundary", () => {
 		expect(mcpResult.intent.trustLevel).toBe("untrusted")
 	})
 
+	it("keeps mcp.channel fallback identity unique per message", () => {
+		const baseline = normalizeNotificationEvent({
+			type: "notification.mcp.channel",
+			properties: {
+				server: "mcp-gateway",
+				message: "rate limit warning",
+				level: "warning",
+				source: "mcp.server",
+				trust: "untrusted",
+			},
+		})
+
+		const distinctMessage = normalizeNotificationEvent({
+			type: "notification.mcp.channel",
+			properties: {
+				server: "mcp-gateway",
+				message: "gateway degraded",
+				level: "warning",
+				source: "mcp.server",
+				trust: "untrusted",
+			},
+		})
+
+		const repeatedBaseline = normalizeNotificationEvent({
+			type: "notification.mcp.channel",
+			properties: {
+				server: "mcp-gateway",
+				message: "rate limit warning",
+				level: "warning",
+				source: "mcp.server",
+				trust: "untrusted",
+			},
+		})
+
+		expect(baseline.ok).toBe(true)
+		expect(distinctMessage.ok).toBe(true)
+		expect(repeatedBaseline.ok).toBe(true)
+
+		if (!baseline.ok || !distinctMessage.ok || !repeatedBaseline.ok) {
+			expect.unreachable("Expected normalized mcp.channel intents")
+		}
+
+		expect(baseline.intent.notificationId).not.toBe(distinctMessage.intent.notificationId)
+		expect(baseline.intent.dedupeKey).not.toBe(distinctMessage.intent.dedupeKey)
+
+		expect(baseline.intent.notificationId).toBe(repeatedBaseline.intent.notificationId)
+		expect(baseline.intent.dedupeKey).toBe(repeatedBaseline.intent.dedupeKey)
+	})
+
 	it("returns parse_failure for malformed event payload", () => {
 		const result = normalizeNotificationEvent({
 			type: "notification.task.system",

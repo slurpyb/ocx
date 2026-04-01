@@ -25,12 +25,6 @@ import type { Plugin } from "@opencode-ai/plugin"
 import type { Event } from "@opencode-ai/sdk"
 // @ts-expect-error - installed at runtime by OCX
 import detectTerminal from "detect-terminal"
-import {
-	classifyNotificationContractHandshake,
-	type NotificationContractCompatErrorIssue,
-	type NotificationContractCompatWarningIssue,
-} from "../../../../packages/cli/src/notify/contract-compat"
-import { isPlainObject } from "../../../../packages/cli/src/utils/type-guards"
 import type { OpencodeClient } from "./kdco-primitives/types"
 import {
 	type DesktopTransportPayload,
@@ -38,6 +32,11 @@ import {
 	sendNotificationWithFallback,
 } from "./notify/backend"
 import { canUseCmuxNotification } from "./notify/cmux"
+import {
+	classifyNotificationContractHandshake,
+	type NotificationContractCompatErrorIssue,
+	type NotificationContractCompatWarningIssue,
+} from "./notify/contract-compat"
 import {
 	createNotificationCapabilityByChannelFromNegotiatedState,
 	DEFAULT_NOTIFICATION_CAPABILITY_BY_CHANNEL,
@@ -305,6 +304,15 @@ export function resolveNotificationRuntimePolicyFromHostHandshake(
 		},
 		warnings: compatibility.warnings,
 	}
+}
+
+function isPlainObject(value: unknown): value is Record<PropertyKey, unknown> {
+	if (value === null || typeof value !== "object") {
+		return false
+	}
+
+	const prototype = Object.getPrototypeOf(value)
+	return prototype === Object.prototype || prototype === null
 }
 
 function readHostNotificationContractHandshake(ctx: unknown): unknown {

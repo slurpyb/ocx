@@ -17,11 +17,41 @@ import type { Event, Message, Part, TextPart } from "@opencode-ai/sdk"
 import { adjectives, animals, colors, uniqueNamesGenerator } from "unique-names-generator"
 import { getProjectId } from "./kdco-primitives/get-project-id"
 import type { OpencodeClient } from "./kdco-primitives/types"
-import {
-	type NotificationLevel,
-	NotificationLevel as NotificationLevelValue,
-} from "./notify/normalize"
-import { createNotificationTaskSystemEvent } from "./notify/task-system-event"
+
+const NotificationLevelValue = {
+	Info: "info",
+	Success: "success",
+	Warning: "warning",
+	Error: "error",
+} as const
+
+type NotificationLevel = (typeof NotificationLevelValue)[keyof typeof NotificationLevelValue]
+
+const NotificationTaskSystemEventType = "notification.task.system" as const
+
+function createNotificationTaskSystemEvent(properties: {
+	id?: string
+	dedupeKey?: string
+	title?: string
+	message: string
+	level: NotificationLevel
+	sessionID?: string
+}): {
+	type: typeof NotificationTaskSystemEventType
+	properties: {
+		id?: string
+		dedupeKey?: string
+		title?: string
+		message: string
+		level: NotificationLevel
+		sessionID?: string
+	}
+} {
+	return {
+		type: NotificationTaskSystemEventType,
+		properties,
+	}
+}
 
 // ==========================================
 // READABLE ID GENERATION

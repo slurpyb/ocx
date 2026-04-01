@@ -3,7 +3,7 @@ import {
 	ClosedHostDefaultNotificationNegotiatedStateByChannel as CanonicalClosedHostNegotiatedStateByChannel,
 	type NotificationFallbackModeByChannel as CanonicalNotificationFallbackModeByChannel,
 	type NotificationNegotiatedStateByChannel as CanonicalNotificationNegotiatedStateByChannel,
-} from "../../../../../packages/cli/src/notify/contract-compat"
+} from "./contract-compat"
 import { NotificationTaskSystemEventType } from "./task-system-event"
 
 export const NotificationChannel = {
@@ -812,8 +812,8 @@ function normalizeMCPChannelEvent(
 	const identity = createIdentity({
 		explicitID: toNonEmptyString(properties.id),
 		explicitDedupeKey: toNonEmptyString(properties.dedupeKey),
-		fallbackNotificationID: `mcp-channel:${source}:${server}:${level}`,
-		fallbackDedupeKey: `mcp-channel:${source}:${server}:${level}`,
+		fallbackNotificationID: `mcp-channel:${source}:${server}:${level}:${message}`,
+		fallbackDedupeKey: `mcp-channel:${source}:${server}:${level}:${message}`,
 	})
 
 	const base = createIntentBase({
