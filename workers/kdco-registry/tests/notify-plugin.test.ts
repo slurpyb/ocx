@@ -293,7 +293,7 @@ describe("notify host handshake mixed-version seam", () => {
 		).rejects.toThrow("unsupported-schema-major")
 	})
 
-	it("ignores host handshake on null-prototype context envelope", async () => {
+	it("hard-fails incompatible host handshake even on null-prototype context envelope", async () => {
 		const incompatibleHandshake = createHostHandshakeFixture({
 			schemaVersion: "2.0.0",
 		})
@@ -306,7 +306,7 @@ describe("notify host handshake mixed-version seam", () => {
 					useNullPrototypeContext: true,
 				},
 			),
-		).resolves.toBeDefined()
+		).rejects.toThrow("unsupported-schema-major")
 	})
 
 	it("hard-fails plugin startup when a canonical channel is missing", async () => {
