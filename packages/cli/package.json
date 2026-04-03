@@ -1,6 +1,6 @@
 {
 	"name": "ocx",
-	"version": "2.0.4",
+	"version": "2.0.5",
 	"description": "OCX CLI - ShadCN-style registry for OpenCode extensions. Install agents, plugins, skills, and MCP servers.",
 	"author": "kdcokenny",
 	"license": "MIT",
