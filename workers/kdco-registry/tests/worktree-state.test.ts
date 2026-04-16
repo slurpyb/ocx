@@ -13,15 +13,20 @@ import {
 	addSession,
 	clearPendingDelete,
 	clearPendingSpawn,
+	deleteHookApproval,
 	getAllSessions,
+	getHookApproval,
 	getPendingDelete,
 	getPendingSpawn,
 	getSession,
 	getWorktreePath,
 	initStateDb,
+	readPendingDeleteSnapshot,
 	removeSession,
 	setPendingDelete,
 	setPendingSpawn,
+	upsertHookApproval,
+	writePendingDeleteSnapshot,
 } from "../files/plugins/worktree/state"
 
 /** Use temp directory for test databases to avoid polluting user's system */
@@ -84,6 +89,12 @@ describe("worktree-state", () => {
 				.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='pending_operations'")
 				.get()
 			expect(pendingTable).toBeTruthy()
+
+			// Check hook_approvals table exists
+			const hookApprovalsTable = db
+				.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='hook_approvals'")
+				.get()
+			expect(hookApprovalsTable).toBeTruthy()
 
 			db.close()
 		})
@@ -149,11 +160,23 @@ describe("worktree-state", () => {
 				name: string
 			}>
 			const columns = new Set(tableInfo.map((column) => column.name))
-			migratedDb.close()
 
 			expect(columns.has("launch_mode")).toBe(true)
 			expect(columns.has("profile")).toBe(true)
 			expect(columns.has("ocx_bin")).toBe(true)
+
+			const pendingTableInfo = migratedDb
+				.prepare("PRAGMA table_info(pending_operations)")
+				.all() as Array<{ name: string }>
+			const pendingColumns = new Set(pendingTableInfo.map((column) => column.name))
+			expect(pendingColumns.has("pre_delete_hook_hashes")).toBe(true)
+			expect(pendingColumns.has("pre_delete_hook_texts")).toBe(true)
+
+			const hookApprovalsTable = migratedDb
+				.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='hook_approvals'")
+				.get()
+			expect(hookApprovalsTable).toBeTruthy()
+			migratedDb.close()
 		})
 	})
 
@@ -700,6 +723,194 @@ describe("worktree-state", () => {
 					path: "",
 				}),
 			).toThrow()
+		})
+
+		it("persists and reloads approved preDelete hook snapshot", () => {
+			setPendingDelete(db, {
+				branch: "snapshot-delete",
+				path: "/snapshot/path",
+				approvedPreDeleteHooks: {
+					commandHashes: ["hash-a", "hash-b", "hash-a"],
+					commandTexts: ["echo a", "echo b", "echo a"],
+				},
+			})
+
+			const pendingDelete = getPendingDelete(db)
+			expect(pendingDelete).toEqual({
+				branch: "snapshot-delete",
+				path: "/snapshot/path",
+				approvedPreDeleteHooks: {
+					commandHashes: ["hash-a", "hash-b", "hash-a"],
+					commandTexts: ["echo a", "echo b", "echo a"],
+				},
+			})
+
+			const snapshotResult = readPendingDeleteSnapshot(db)
+			expect(snapshotResult.ok).toBe(true)
+			expect(snapshotResult.ok ? snapshotResult.value : null).toEqual({
+				commandHashes: ["hash-a", "hash-b", "hash-a"],
+				commandTexts: ["echo a", "echo b", "echo a"],
+			})
+		})
+
+		it("writePendingDeleteSnapshot updates snapshot data for existing delete", () => {
+			setPendingDelete(db, {
+				branch: "snapshot-update",
+				path: "/snapshot/update",
+			})
+
+			const writeResult = writePendingDeleteSnapshot(db, {
+				commandHashes: ["hash-1", "hash-2"],
+				commandTexts: ["echo 1", "echo 2"],
+			})
+			expect(writeResult.ok).toBe(true)
+
+			const snapshotResult = readPendingDeleteSnapshot(db)
+			expect(snapshotResult.ok).toBe(true)
+			expect(snapshotResult.ok ? snapshotResult.value : null).toEqual({
+				commandHashes: ["hash-1", "hash-2"],
+				commandTexts: ["echo 1", "echo 2"],
+			})
+		})
+
+		it("fails closed when pending-delete snapshot payload is corrupt", () => {
+			setPendingDelete(db, {
+				branch: "corrupt-snapshot-branch",
+				path: "/corrupt/snapshot/path",
+				approvedPreDeleteHooks: {
+					commandHashes: ["hash-ok"],
+					commandTexts: ["echo ok"],
+				},
+			})
+
+			db.prepare(
+				`UPDATE pending_operations
+				 SET pre_delete_hook_hashes = $hashes,
+				 	 pre_delete_hook_texts = $texts
+				 WHERE id = 1 AND type = 'delete'`,
+			).run({
+				$hashes: "{not-json}",
+				$texts: '["echo ok"]',
+			})
+
+			const warnSpy = spyOn(console, "warn")
+			try {
+				expect(() => getPendingDelete(db)).not.toThrow()
+
+				const pendingDelete = getPendingDelete(db)
+				expect(pendingDelete).toEqual({
+					branch: "corrupt-snapshot-branch",
+					path: "/corrupt/snapshot/path",
+				})
+
+				const snapshotReadResult = readPendingDeleteSnapshot(db)
+				expect(snapshotReadResult.ok).toBe(false)
+				expect(warnSpy).toHaveBeenCalled()
+			} finally {
+				warnSpy.mockRestore()
+			}
+		})
+	})
+
+	describe("Hook Approval CRUD", () => {
+		let db: Database
+		const projectRoot = () => path.join(testDir, "hook-approval-project")
+
+		beforeEach(async () => {
+			fs.mkdirSync(projectRoot(), { recursive: true })
+			db = await initStateDb(projectRoot())
+		})
+
+		afterEach(() => {
+			db.close()
+		})
+
+		it("stores and reads durable hook approval by hook_type + command_hash", () => {
+			const writeResult = upsertHookApproval(db, {
+				hookType: "postCreate",
+				commandHash: "hash-post-create",
+				commandText: "pnpm install",
+			})
+			expect(writeResult.ok).toBe(true)
+
+			const readResult = getHookApproval(db, "postCreate", "hash-post-create")
+			expect(readResult.ok).toBe(true)
+			expect(readResult.ok ? readResult.value?.commandText : null).toBe("pnpm install")
+		})
+
+		it("updates command_text and updated_at on approval upsert", async () => {
+			const firstWrite = upsertHookApproval(db, {
+				hookType: "preDelete",
+				commandHash: "hash-shared",
+				commandText: "docker compose down",
+			})
+			expect(firstWrite.ok).toBe(true)
+
+			const firstRead = getHookApproval(db, "preDelete", "hash-shared")
+			expect(firstRead.ok).toBe(true)
+			const initialUpdatedAt = firstRead.ok ? firstRead.value?.updatedAt : null
+
+			await Bun.sleep(5)
+
+			const secondWrite = upsertHookApproval(db, {
+				hookType: "preDelete",
+				commandHash: "hash-shared",
+				commandText: "docker compose down --remove-orphans",
+			})
+			expect(secondWrite.ok).toBe(true)
+
+			const secondRead = getHookApproval(db, "preDelete", "hash-shared")
+			expect(secondRead.ok).toBe(true)
+			expect(secondRead.ok ? secondRead.value?.commandText : null).toBe(
+				"docker compose down --remove-orphans",
+			)
+			expect(
+				secondRead.ok && secondRead.value && initialUpdatedAt
+					? secondRead.value.updatedAt >= initialUpdatedAt
+					: false,
+			).toBe(true)
+		})
+
+		it("deletes durable hook approval", () => {
+			expect(
+				upsertHookApproval(db, {
+					hookType: "postCreate",
+					commandHash: "hash-delete",
+					commandText: "bun install",
+				}).ok,
+			).toBe(true)
+
+			expect(deleteHookApproval(db, "postCreate", "hash-delete").ok).toBe(true)
+			const readResult = getHookApproval(db, "postCreate", "hash-delete")
+			expect(readResult.ok).toBe(true)
+			expect(readResult.ok ? readResult.value : undefined).toBeNull()
+		})
+
+		it("isolates hook approvals across projects via separate sqlite files", async () => {
+			const projectA = path.join(testDir, "project-a")
+			const projectB = path.join(testDir, "project-b")
+			fs.mkdirSync(projectA, { recursive: true })
+			fs.mkdirSync(projectB, { recursive: true })
+
+			const dbA = await initStateDb(projectA)
+			const dbB = await initStateDb(projectB)
+
+			try {
+				expect(
+					upsertHookApproval(dbA, {
+						hookType: "postCreate",
+						commandHash: "shared-hash",
+						commandText: "pnpm install",
+					}).ok,
+				).toBe(true)
+
+				const approvalInProjectB = getHookApproval(dbB, "postCreate", "shared-hash")
+				expect(approvalInProjectB.ok).toBe(true)
+				expect(approvalInProjectB.ok ? approvalInProjectB.value : undefined).toBeNull()
+			} finally {
+				dbA.close()
+				dbB.close()
+			}
 		})
 	})
 

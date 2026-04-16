@@ -78,8 +78,9 @@ worktree_create:
 When called, this:
 1. Creates git worktree at `~/.local/share/opencode/worktree/<project-id>/feature/dark-mode`
 2. Syncs files based on `.opencode/worktree.jsonc` config
-3. Runs post-create hooks (e.g., `pnpm install`)
-4. Opens a new terminal with OpenCode running
+3. Resolves post-create hook approvals (once / always / reject)
+4. Runs only approved post-create hooks (e.g., `pnpm install`)
+5. Opens a new terminal with OpenCode running
 
 ### Deleting a Worktree
 
@@ -89,10 +90,32 @@ worktree_delete:
 ```
 
 When called, this:
-1. Runs pre-delete hooks (e.g., `docker compose down`)
-2. Commits all changes with snapshot message
-3. Removes git worktree with `--force`
-4. Cleans up session state
+1. Resolves pre-delete hook approvals (once / always / reject)
+2. Stores an approved pre-delete snapshot for this delete request only
+3. Defers pre-delete execution to `session.idle` cleanup
+4. Commits all changes with snapshot message
+5. Removes git worktree with `--force`
+6. Cleans up session state
+
+## Hook Trust & Approval Model
+
+Lifecycle hooks are **approval-gated**. Repository-defined commands are never executed until you explicitly approve the exact parsed command.
+
+- **Exact-text identity:** approvals are keyed by the exact command text loaded from JSONC (including whitespace/newline differences).
+- **Always:** stores durable allow approval for this project + exact command text, then runs.
+- **Once:** runs only for the current invocation and does not persist.
+- **Reject / dismiss / prompt unavailable:** hook is skipped (fail closed).
+
+### Skip Semantics
+
+- Skipped hooks are surfaced in tool output and logged concisely by hash.
+- Raw command text is shown only inside the approval prompt.
+
+### Deferred `preDelete` Safety
+
+`preDelete` runs are deferred until `session.idle`. During `worktree_delete`, the plugin stores the ordered approved snapshot for that specific delete event.
+
+At cleanup time, hooks run **only** when the current `preDelete` config still matches the stored approved snapshot. If config changed, snapshot data is missing, or state reads fail, hooks are skipped and cleanup continues safely.
 
 ## Platform Support
 

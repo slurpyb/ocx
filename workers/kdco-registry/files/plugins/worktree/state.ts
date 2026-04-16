@@ -49,6 +49,48 @@ export interface PendingSpawn {
 export interface PendingDelete {
 	branch: string
 	path: string
+	approvedPreDeleteHooks?: PendingDeleteHookSnapshot
+}
+
+export type HookType = "postCreate" | "preDelete"
+
+export interface HookApproval {
+	hookType: HookType
+	commandHash: string
+	commandText: string
+	approvedAt: string
+	updatedAt: string
+}
+
+export interface HookApprovalInput {
+	hookType: HookType
+	commandHash: string
+	commandText: string
+}
+
+export interface PendingDeleteHookSnapshot {
+	commandHashes: string[]
+	commandTexts: string[]
+}
+
+interface DbOkResult<T> {
+	ok: true
+	value: T
+}
+
+interface DbErrResult {
+	ok: false
+	error: Error
+}
+
+export type DbResult<T> = DbOkResult<T> | DbErrResult
+
+const DbResult = {
+	ok: <T>(value: T): DbOkResult<T> => ({ ok: true, value }),
+	err: (error: unknown): DbErrResult => ({
+		ok: false,
+		error: error instanceof Error ? error : new Error(String(error)),
+	}),
 }
 
 // =============================================================================
@@ -74,7 +116,39 @@ const pendingSpawnSchema = z.object({
 const pendingDeleteSchema = z.object({
 	branch: z.string().min(1),
 	path: z.string().min(1),
+	approvedPreDeleteHooks: z
+		.object({
+			commandHashes: z.array(z.string().min(1)),
+			commandTexts: z.array(z.string()).default([]),
+		})
+		.refine(
+			(snapshot) =>
+				snapshot.commandTexts.length === 0 ||
+				snapshot.commandTexts.length === snapshot.commandHashes.length,
+			"commandTexts must be empty or match commandHashes length",
+		)
+		.optional(),
 })
+
+const hookTypeSchema = z.enum(["postCreate", "preDelete"])
+
+const hookApprovalSchema = z.object({
+	hookType: hookTypeSchema,
+	commandHash: z.string().min(1),
+	commandText: z.string(),
+})
+
+const pendingDeleteHookSnapshotSchema = z
+	.object({
+		commandHashes: z.array(z.string().min(1)),
+		commandTexts: z.array(z.string()).default([]),
+	})
+	.refine(
+		(snapshot) =>
+			snapshot.commandTexts.length === 0 ||
+			snapshot.commandTexts.length === snapshot.commandHashes.length,
+		"commandTexts must be empty or match commandHashes length",
+	)
 
 // =============================================================================
 // DATABASE UTILITIES
@@ -180,9 +254,14 @@ export async function initStateDb(projectRoot: string): Promise<Database> {
 			type TEXT NOT NULL,
 			branch TEXT NOT NULL,
 			path TEXT NOT NULL,
-			session_id TEXT
+			session_id TEXT,
+			pre_delete_hook_hashes TEXT,
+			pre_delete_hook_texts TEXT
 		)
 	`)
+
+	ensurePendingOperationHookSnapshotColumns(db)
+	ensureHookApprovalsTable(db)
 
 	return db
 }
@@ -216,6 +295,58 @@ function addSessionColumn(db: Database, columnName: string, sql: string): void {
 	}
 }
 
+function ensurePendingOperationHookSnapshotColumns(db: Database): void {
+	const tableInfo = db.prepare("PRAGMA table_info(pending_operations)").all() as Array<{
+		name?: string
+	}>
+	const pendingOperationColumns = new Set(tableInfo.map((column) => column.name).filter(Boolean))
+
+	if (!pendingOperationColumns.has("pre_delete_hook_hashes")) {
+		addPendingOperationColumn(
+			db,
+			"pre_delete_hook_hashes",
+			"ALTER TABLE pending_operations ADD COLUMN pre_delete_hook_hashes TEXT",
+		)
+	}
+
+	if (!pendingOperationColumns.has("pre_delete_hook_texts")) {
+		addPendingOperationColumn(
+			db,
+			"pre_delete_hook_texts",
+			"ALTER TABLE pending_operations ADD COLUMN pre_delete_hook_texts TEXT",
+		)
+	}
+}
+
+function addPendingOperationColumn(db: Database, columnName: string, sql: string): void {
+	try {
+		db.exec(sql)
+	} catch (error) {
+		if (isDuplicateColumnError(error, columnName)) {
+			return
+		}
+
+		console.warn(`[worktree] Pending operation hook migration skipped: ${String(error)}`)
+	}
+}
+
+function ensureHookApprovalsTable(db: Database): void {
+	try {
+		db.exec(`
+			CREATE TABLE IF NOT EXISTS hook_approvals (
+				hook_type TEXT NOT NULL,
+				command_hash TEXT NOT NULL,
+				command_text TEXT NOT NULL,
+				approved_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY (hook_type, command_hash)
+			)
+		`)
+	} catch (error) {
+		console.warn(`[worktree] Hook approval table migration skipped: ${String(error)}`)
+	}
+}
+
 function isDuplicateColumnError(error: unknown, columnName: string): boolean {
 	if (!(error instanceof Error)) {
 		return false
@@ -245,6 +376,84 @@ function normalizeSessionRow(row: Record<string, string | null>): Session {
 		profile: serialized.profile,
 		ocxBin: serialized.ocxBin,
 	}
+}
+
+function serializePendingDeleteHookSnapshot(snapshot?: PendingDeleteHookSnapshot): {
+	hashes: string | null
+	texts: string | null
+} {
+	if (!snapshot) {
+		return { hashes: null, texts: null }
+	}
+
+	const parsedSnapshot = pendingDeleteHookSnapshotSchema.parse(snapshot)
+	const commandTexts =
+		parsedSnapshot.commandTexts.length === parsedSnapshot.commandHashes.length
+			? parsedSnapshot.commandTexts
+			: Array.from({ length: parsedSnapshot.commandHashes.length }, () => "")
+
+	return {
+		hashes: JSON.stringify(parsedSnapshot.commandHashes),
+		texts: JSON.stringify(commandTexts),
+	}
+}
+
+function parseStringArrayJson(value: string | null | undefined, fieldName: string): string[] {
+	if (!value) {
+		return []
+	}
+
+	let parsed: unknown
+	try {
+		parsed = JSON.parse(value)
+	} catch (error) {
+		throw new Error(
+			`Invalid ${fieldName} JSON payload: ${error instanceof Error ? error.message : String(error)}`,
+		)
+	}
+
+	if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string")) {
+		throw new Error(`Invalid ${fieldName} payload: expected string[]`)
+	}
+
+	return parsed as string[]
+}
+
+function parsePendingDeleteHookSnapshotRow(row: {
+	preDeleteHookHashes?: string | null
+	preDeleteHookTexts?: string | null
+}): PendingDeleteHookSnapshot | null {
+	if (!row.preDeleteHookHashes) {
+		return null
+	}
+
+	const commandHashes = parseStringArrayJson(row.preDeleteHookHashes, "pre_delete_hook_hashes")
+	if (commandHashes.length === 0) {
+		return { commandHashes: [], commandTexts: [] }
+	}
+
+	const parsedCommandTexts = parseStringArrayJson(row.preDeleteHookTexts, "pre_delete_hook_texts")
+	const commandTexts =
+		parsedCommandTexts.length === commandHashes.length
+			? parsedCommandTexts
+			: Array.from({ length: commandHashes.length }, () => "")
+
+	return pendingDeleteHookSnapshotSchema.parse({
+		commandHashes,
+		commandTexts,
+	})
+}
+
+function hasMissingColumnError(error: unknown, columnName: string): boolean {
+	if (!(error instanceof Error)) {
+		return false
+	}
+
+	const normalizedMessage = error.message.toLowerCase()
+	return (
+		normalizedMessage.includes("no such column") &&
+		normalizedMessage.includes(columnName.toLowerCase())
+	)
 }
 
 // =============================================================================
@@ -456,13 +665,54 @@ export function setPendingDelete(db: Database, del: PendingDelete, client?: Open
 		)
 	}
 
-	// Atomic: replace any existing pending operation
-	const stmt = db.prepare(`
+	const serializedSnapshot = serializePendingDeleteHookSnapshot(parsed.approvedPreDeleteHooks)
+
+	try {
+		const stmt = db.prepare(`
+			INSERT OR REPLACE INTO pending_operations (
+				id,
+				type,
+				branch,
+				path,
+				session_id,
+				pre_delete_hook_hashes,
+				pre_delete_hook_texts
+			)
+			VALUES (1, 'delete', $branch, $path, NULL, $preDeleteHookHashes, $preDeleteHookTexts)
+		`)
+
+		stmt.run({
+			$branch: parsed.branch,
+			$path: parsed.path,
+			$preDeleteHookHashes: serializedSnapshot.hashes,
+			$preDeleteHookTexts: serializedSnapshot.texts,
+		})
+		return
+	} catch (error) {
+		if (
+			hasMissingColumnError(error, "pre_delete_hook_hashes") ||
+			hasMissingColumnError(error, "pre_delete_hook_texts")
+		) {
+			logWarn(
+				client,
+				"worktree",
+				`Pending delete snapshot persistence unavailable; scheduling cleanup without hooks: ${String(error)}`,
+			)
+		} else {
+			logWarn(
+				client,
+				"worktree",
+				`Pending delete snapshot write failed; scheduling cleanup without hooks: ${String(error)}`,
+			)
+		}
+	}
+
+	const fallbackStmt = db.prepare(`
 		INSERT OR REPLACE INTO pending_operations (id, type, branch, path, session_id)
 		VALUES (1, 'delete', $branch, $path, NULL)
 	`)
 
-	stmt.run({
+	fallbackStmt.run({
 		$branch: parsed.branch,
 		$path: parsed.path,
 	})
@@ -475,18 +725,69 @@ export function setPendingDelete(db: Database, del: PendingDelete, client?: Open
  * @returns PendingDelete if exists and type is 'delete', null otherwise
  */
 export function getPendingDelete(db: Database): PendingDelete | null {
-	const stmt = db.prepare(`
-		SELECT type, branch, path
-		FROM pending_operations
-		WHERE id = 1 AND type = 'delete'
-	`)
+	try {
+		const stmt = db.prepare(`
+			SELECT type, branch, path,
+				pre_delete_hook_hashes as preDeleteHookHashes,
+				pre_delete_hook_texts as preDeleteHookTexts
+			FROM pending_operations
+			WHERE id = 1 AND type = 'delete'
+		`)
 
-	const row = stmt.get() as Record<string, string> | null
-	if (!row) return null
+		const row = stmt.get() as {
+			branch: string
+			path: string
+			preDeleteHookHashes: string | null
+			preDeleteHookTexts: string | null
+		} | null
+		if (!row) return null
 
-	return {
-		branch: row.branch,
-		path: row.path,
+		let snapshot: PendingDeleteHookSnapshot | null
+		try {
+			snapshot = parsePendingDeleteHookSnapshotRow(row)
+		} catch (error) {
+			console.warn(
+				`[worktree] Pending delete snapshot is malformed; ignoring hook snapshot and continuing cleanup: ${error instanceof Error ? error.message : String(error)}`,
+			)
+			return {
+				branch: row.branch,
+				path: row.path,
+			}
+		}
+
+		if (!snapshot) {
+			return {
+				branch: row.branch,
+				path: row.path,
+			}
+		}
+
+		return {
+			branch: row.branch,
+			path: row.path,
+			approvedPreDeleteHooks: snapshot,
+		}
+	} catch (error) {
+		if (
+			hasMissingColumnError(error, "pre_delete_hook_hashes") ||
+			hasMissingColumnError(error, "pre_delete_hook_texts")
+		) {
+			const fallbackStmt = db.prepare(`
+				SELECT type, branch, path
+				FROM pending_operations
+				WHERE id = 1 AND type = 'delete'
+			`)
+
+			const fallbackRow = fallbackStmt.get() as { branch: string; path: string } | null
+			if (!fallbackRow) return null
+
+			return {
+				branch: fallbackRow.branch,
+				path: fallbackRow.path,
+			}
+		}
+
+		throw error
 	}
 }
 
@@ -499,4 +800,144 @@ export function getPendingDelete(db: Database): PendingDelete | null {
 export function clearPendingDelete(db: Database): void {
 	const stmt = db.prepare(`DELETE FROM pending_operations WHERE id = 1 AND type = 'delete'`)
 	stmt.run()
+}
+
+export function readPendingDeleteSnapshot(
+	db: Database,
+): DbResult<PendingDeleteHookSnapshot | null> {
+	try {
+		const stmt = db.prepare(`
+			SELECT pre_delete_hook_hashes as preDeleteHookHashes,
+				pre_delete_hook_texts as preDeleteHookTexts
+			FROM pending_operations
+			WHERE id = 1 AND type = 'delete'
+		`)
+
+		const row = stmt.get() as {
+			preDeleteHookHashes: string | null
+			preDeleteHookTexts: string | null
+		} | null
+		if (!row) {
+			return DbResult.ok(null)
+		}
+
+		return DbResult.ok(parsePendingDeleteHookSnapshotRow(row))
+	} catch (error) {
+		return DbResult.err(error)
+	}
+}
+
+export function writePendingDeleteSnapshot(
+	db: Database,
+	snapshot: PendingDeleteHookSnapshot,
+): DbResult<void> {
+	try {
+		const serializedSnapshot = serializePendingDeleteHookSnapshot(snapshot)
+		const stmt = db.prepare(`
+			UPDATE pending_operations
+			SET pre_delete_hook_hashes = $preDeleteHookHashes,
+				pre_delete_hook_texts = $preDeleteHookTexts
+			WHERE id = 1 AND type = 'delete'
+		`)
+
+		stmt.run({
+			$preDeleteHookHashes: serializedSnapshot.hashes,
+			$preDeleteHookTexts: serializedSnapshot.texts,
+		})
+
+		return DbResult.ok(undefined)
+	} catch (error) {
+		return DbResult.err(error)
+	}
+}
+
+// =============================================================================
+// HOOK APPROVAL CRUD
+// =============================================================================
+
+export function upsertHookApproval(db: Database, input: HookApprovalInput): DbResult<void> {
+	try {
+		const parsed = hookApprovalSchema.parse(input)
+		const now = new Date().toISOString()
+
+		const stmt = db.prepare(`
+			INSERT INTO hook_approvals (hook_type, command_hash, command_text, approved_at, updated_at)
+			VALUES ($hookType, $commandHash, $commandText, $approvedAt, $updatedAt)
+			ON CONFLICT(hook_type, command_hash) DO UPDATE SET
+				command_text = excluded.command_text,
+				updated_at = excluded.updated_at
+		`)
+
+		stmt.run({
+			$hookType: parsed.hookType,
+			$commandHash: parsed.commandHash,
+			$commandText: parsed.commandText,
+			$approvedAt: now,
+			$updatedAt: now,
+		})
+
+		return DbResult.ok(undefined)
+	} catch (error) {
+		return DbResult.err(error)
+	}
+}
+
+export function getHookApproval(
+	db: Database,
+	hookType: HookType,
+	commandHash: string,
+): DbResult<HookApproval | null> {
+	try {
+		const parsedHookType = hookTypeSchema.parse(hookType)
+		const normalizedCommandHash = z.string().min(1).parse(commandHash)
+
+		const stmt = db.prepare(`
+			SELECT
+				hook_type as hookType,
+				command_hash as commandHash,
+				command_text as commandText,
+				approved_at as approvedAt,
+				updated_at as updatedAt
+			FROM hook_approvals
+			WHERE hook_type = $hookType AND command_hash = $commandHash
+		`)
+
+		const row = stmt.get({
+			$hookType: parsedHookType,
+			$commandHash: normalizedCommandHash,
+		}) as HookApproval | null
+
+		if (!row) {
+			return DbResult.ok(null)
+		}
+
+		return DbResult.ok({
+			hookType: row.hookType,
+			commandHash: row.commandHash,
+			commandText: row.commandText,
+			approvedAt: row.approvedAt,
+			updatedAt: row.updatedAt,
+		})
+	} catch (error) {
+		return DbResult.err(error)
+	}
+}
+
+export function deleteHookApproval(
+	db: Database,
+	hookType: HookType,
+	commandHash: string,
+): DbResult<void> {
+	try {
+		const parsedHookType = hookTypeSchema.parse(hookType)
+		const normalizedCommandHash = z.string().min(1).parse(commandHash)
+
+		const stmt = db.prepare(
+			`DELETE FROM hook_approvals WHERE hook_type = $hookType AND command_hash = $commandHash`,
+		)
+		stmt.run({ $hookType: parsedHookType, $commandHash: normalizedCommandHash })
+		return DbResult.ok(undefined)
+	} catch (error) {
+		return DbResult.err(error)
+	}
 }

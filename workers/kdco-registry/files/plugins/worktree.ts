@@ -16,7 +16,7 @@ import { constants as fsConstants } from "node:fs"
 import { access, copyFile, cp, mkdir, rm, stat, symlink } from "node:fs/promises"
 import * as os from "node:os"
 import * as path from "node:path"
-import { type Plugin, tool } from "@opencode-ai/plugin"
+import { type Plugin, type ToolContext, tool } from "@opencode-ai/plugin"
 import type { Event } from "@opencode-ai/sdk"
 import type { OpencodeClient } from "./kdco-primitives/types"
 
@@ -42,13 +42,27 @@ import {
 import {
 	addSession,
 	clearPendingDelete,
+	getHookApproval,
 	getPendingDelete,
+	readPendingDeleteSnapshot,
 	getSession,
 	getWorktreePath,
 	initStateDb,
 	removeSession,
 	setPendingDelete,
+	upsertHookApproval,
 } from "./worktree/state"
+import {
+	createHookApprovalSnapshot,
+	hooksForCurrentInvocation,
+	matchHooksToApprovalSnapshot,
+	parseHookCommands,
+	resolveHookApprovals,
+	shortCommandHash,
+	type HookResolution,
+	type ParsedHookCommand,
+	type HookType,
+} from "./worktree/hooks"
 import { openTerminal, type TerminalResult } from "./worktree/terminal"
 
 /** Maximum retries for database initialization */
@@ -778,26 +792,93 @@ async function symlinkDirs(
 /**
  * Run hook commands in the worktree directory.
  */
-async function runHooks(cwd: string, commands: string[], log: Logger): Promise<void> {
-	for (const command of commands) {
-		log.info(`[worktree] Running hook: ${command}`)
+async function runHooks(cwd: string, hooks: ParsedHookCommand[], log: Logger): Promise<void> {
+	for (const hook of hooks) {
+		const hookRef = `${hook.hookType}:${shortCommandHash(hook.commandHash)}`
+		log.info(`[worktree] Running hook ${hookRef}`)
 		try {
 			// Use shell to properly handle quoted arguments and complex commands
-			const result = Bun.spawnSync(["bash", "-c", command], {
+			const result = Bun.spawnSync(["bash", "-c", hook.commandText], {
 				cwd,
 				stdout: "inherit",
 				stderr: "pipe",
 			})
 			if (result.exitCode !== 0) {
-				const stderr = result.stderr?.toString() || ""
+				const hasStderrOutput = Boolean(result.stderr && result.stderr.byteLength > 0)
 				log.warn(
-					`[worktree] Hook failed (exit ${result.exitCode}): ${command}${stderr ? `\n${stderr}` : ""}`,
+					`[worktree] Hook ${hookRef} failed (exit ${result.exitCode})${hasStderrOutput ? " with stderr output" : ""}`,
 				)
 			}
 		} catch (error) {
-			log.warn(`[worktree] Hook error: ${error}`)
+			log.warn(
+				`[worktree] Hook ${hookRef} execution error${
+					error instanceof Error && error.name ? ` (${error.name})` : ""
+				}`,
+			)
 		}
 	}
+}
+
+function summarizeHookResolutionSkips(hookType: HookType, resolutions: HookResolution[]): string[] {
+	const skippedResolutions = resolutions.filter(
+		(resolution) => resolution.outcome === "skip" || resolution.outcome === "error-skip",
+	)
+	if (skippedResolutions.length === 0) {
+		return []
+	}
+
+	const skippedHashes = skippedResolutions
+		.map((resolution) => shortCommandHash(resolution.hook.commandHash))
+		.join(", ")
+	const hasErrorSkip = skippedResolutions.some((resolution) => resolution.outcome === "error-skip")
+	const reasonText = hasErrorSkip
+		? "approval unavailable or storage error"
+		: "approval rejected or dismissed"
+
+	return [
+		`⚠️ Skipped ${skippedResolutions.length} ${hookType} hook${skippedResolutions.length === 1 ? "" : "s"} (${reasonText}).`,
+		`   Hook hashes: ${skippedHashes}`,
+	]
+}
+
+async function resolveHooksForInvocation(
+	database: Database,
+	hooks: ParsedHookCommand[],
+	toolCtx: ToolContext,
+	log: Logger,
+): Promise<{ resolutions: HookResolution[]; runnableHooks: ParsedHookCommand[] }> {
+	const resolutions = await resolveHookApprovals(hooks, {
+		toolContext: toolCtx,
+		readDurableApproval: async (hook) => {
+			const approvalResult = getHookApproval(database, hook.hookType, hook.commandHash)
+			if (!approvalResult.ok) {
+				log.warn(
+					`[worktree] Hook approval lookup failed for ${hook.hookType}:${shortCommandHash(hook.commandHash)}: ${approvalResult.error.message}`,
+				)
+				return { ok: false, error: approvalResult.error.message }
+			}
+
+			return { ok: true, approved: approvalResult.value !== null }
+		},
+		writeDurableApproval: async (hook) => {
+			const writeResult = upsertHookApproval(database, {
+				hookType: hook.hookType,
+				commandHash: hook.commandHash,
+				commandText: hook.commandText,
+			})
+			if (!writeResult.ok) {
+				log.warn(
+					`[worktree] Hook approval persistence failed for ${hook.hookType}:${shortCommandHash(hook.commandHash)}: ${writeResult.error.message}`,
+				)
+				return { ok: false, error: writeResult.error.message }
+			}
+
+			return { ok: true }
+		},
+	})
+
+	const runnableHooks = hooksForCurrentInvocation(resolutions)
+	return { resolutions, runnableHooks }
 }
 
 /**
@@ -845,11 +926,15 @@ async function loadWorktreeConfig(directory: string, log: Logger): Promise<Workt
   },
 
   "hooks": {
-    // Commands to run after worktree creation
+    // Commands run after worktree creation, but only after explicit approval
+    // Approval identity is exact command text (including whitespace/newlines)
+    // Choosing "always" stores durable approval for this project + exact text
+    // Choosing "once" runs this invocation only and is not persisted
     // Example: ["pnpm install", "docker compose up -d"]
     "postCreate": [],
 
-    // Commands to run before worktree deletion
+    // Commands evaluated during worktree_delete and deferred to session.idle cleanup
+    // Only approved hooks are snapshotted; config edits require re-approval
     // Example: ["docker compose down"]
     "preDelete": []
   }
@@ -967,6 +1052,7 @@ export const WorktreePlugin: Plugin = async (ctx) => {
 					}
 
 					const worktreePath = result.value
+					const hookOutputLines: string[] = []
 
 					// Sync files from main worktree
 					const mainWorktreePath = directory // The repo root is the main worktree
@@ -981,9 +1067,34 @@ export const WorktreePlugin: Plugin = async (ctx) => {
 						await symlinkDirs(mainWorktreePath, worktreePath, worktreeConfig.sync.symlinkDirs, log)
 					}
 
-					// Run postCreate hooks
-					if (worktreeConfig.hooks.postCreate.length > 0) {
-						await runHooks(worktreePath, worktreeConfig.hooks.postCreate, log)
+					// Resolve and run postCreate hooks only when explicitly approved.
+					const parsedPostCreateHooks = parseHookCommands(
+						"postCreate",
+						worktreeConfig.hooks.postCreate,
+					)
+					if (parsedPostCreateHooks.length > 0) {
+						const { resolutions, runnableHooks } = await resolveHooksForInvocation(
+							database,
+							parsedPostCreateHooks,
+							toolCtx,
+							log,
+						)
+
+						for (const resolution of resolutions) {
+							if (resolution.outcome === "run-once" || resolution.outcome === "run-and-persist") {
+								continue
+							}
+
+							log.warn(
+								`[worktree] ${resolution.hook.hookType} hook ${shortCommandHash(resolution.hook.commandHash)} skipped (${resolution.reason})`,
+							)
+						}
+
+						hookOutputLines.push(...summarizeHookResolutionSkips("postCreate", resolutions))
+
+						if (runnableHooks.length > 0) {
+							await runHooks(worktreePath, runnableHooks, log)
+						}
 					}
 
 					// Fork session with context (replaces --session resume)
@@ -1036,7 +1147,13 @@ export const WorktreePlugin: Plugin = async (ctx) => {
 						return `❌ Failed to launch worktree terminal: ${terminalResult.error ?? "unknown error"}\nWorktree created at ${worktreePath}. Verify launch settings and retry.`
 					}
 
-					return `Worktree created at ${worktreePath}\n\nA new terminal has been opened with OpenCode.`
+					const outputLines = [`Worktree created at ${worktreePath}`]
+					if (hookOutputLines.length > 0) {
+						outputLines.push("", ...hookOutputLines)
+					}
+					outputLines.push("", "A new terminal has been opened with OpenCode.")
+
+					return outputLines.join("\n")
 				},
 			}),
 
@@ -1055,10 +1172,55 @@ export const WorktreePlugin: Plugin = async (ctx) => {
 						return `No worktree associated with this session`
 					}
 
-					// Set pending delete for session.idle (atomic operation)
-					setPendingDelete(database, { branch: session.branch, path: session.path }, client)
+					const hookOutputLines: string[] = []
+					const worktreeConfig = await loadWorktreeConfig(directory, log)
+					const parsedPreDeleteHooks = parseHookCommands(
+						"preDelete",
+						worktreeConfig.hooks.preDelete,
+					)
+					let approvedHookSnapshot = createHookApprovalSnapshot([])
 
-					return `Worktree marked for cleanup. It will be removed when this session ends.`
+					if (parsedPreDeleteHooks.length > 0) {
+						const { resolutions, runnableHooks } = await resolveHooksForInvocation(
+							database,
+							parsedPreDeleteHooks,
+							toolCtx,
+							log,
+						)
+
+						for (const resolution of resolutions) {
+							if (resolution.outcome === "run-once" || resolution.outcome === "run-and-persist") {
+								continue
+							}
+
+							log.warn(
+								`[worktree] ${resolution.hook.hookType} hook ${shortCommandHash(resolution.hook.commandHash)} excluded from delete snapshot (${resolution.reason})`,
+							)
+						}
+
+						hookOutputLines.push(...summarizeHookResolutionSkips("preDelete", resolutions))
+						approvedHookSnapshot = createHookApprovalSnapshot(runnableHooks)
+					}
+
+					// Set pending delete for session.idle (atomic operation)
+					setPendingDelete(
+						database,
+						{
+							branch: session.branch,
+							path: session.path,
+							approvedPreDeleteHooks: approvedHookSnapshot,
+						},
+						client,
+					)
+
+					const outputLines = [
+						"Worktree marked for cleanup. It will be removed when this session ends.",
+					]
+					if (hookOutputLines.length > 0) {
+						outputLines.push("", ...hookOutputLines)
+					}
+
+					return outputLines.join("\n")
 				},
 			}),
 		},
@@ -1071,10 +1233,31 @@ export const WorktreePlugin: Plugin = async (ctx) => {
 			if (pendingDelete) {
 				const { path: worktreePath, branch } = pendingDelete
 
-				// Run preDelete hooks before cleanup
+				// Run only the approved preDelete hook snapshot from delete scheduling.
 				const config = await loadWorktreeConfig(directory, log)
-				if (config.hooks.preDelete.length > 0) {
-					await runHooks(worktreePath, config.hooks.preDelete, log)
+				const parsedPreDeleteHooks = parseHookCommands("preDelete", config.hooks.preDelete)
+				const pendingDeleteSnapshotResult = readPendingDeleteSnapshot(database)
+
+				if (!pendingDeleteSnapshotResult.ok) {
+					log.warn(
+						`[worktree] Pending delete hook snapshot read failed; skipping preDelete hooks: ${pendingDeleteSnapshotResult.error.message}`,
+					)
+				} else if (!pendingDeleteSnapshotResult.value) {
+					log.warn(
+						`[worktree] Missing pending delete hook snapshot; skipping ${parsedPreDeleteHooks.length} preDelete hook(s).`,
+					)
+				} else {
+					const snapshotMatch = matchHooksToApprovalSnapshot(
+						parsedPreDeleteHooks,
+						pendingDeleteSnapshotResult.value,
+					)
+					if (!snapshotMatch.ok) {
+						log.warn(
+							`[worktree] Pending delete hook snapshot mismatch (${snapshotMatch.reason}); skipping preDelete hooks.`,
+						)
+					} else if (snapshotMatch.hooks.length > 0) {
+						await runHooks(worktreePath, snapshotMatch.hooks, log)
+					}
 				}
 
 				// Commit any uncommitted changes

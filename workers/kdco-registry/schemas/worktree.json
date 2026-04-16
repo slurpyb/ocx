@@ -40,19 +40,19 @@
 		},
 		"hooks": {
 			"type": "object",
-			"description": "Lifecycle hooks",
+			"description": "Lifecycle hooks (approval-gated; commands run only after explicit consent)",
 			"properties": {
 				"postCreate": {
 					"type": "array",
 					"items": { "type": "string" },
 					"default": [],
-					"description": "Commands to run after worktree creation. Example: [\"bun install\"]"
+					"description": "Commands evaluated after worktree creation. Exact command text (including whitespace/newlines) is the approval identity hash. Selecting always stores durable approval for this project + exact text; selecting once allows only the current invocation. Example: [\"bun install\"]"
 				},
 				"preDelete": {
 					"type": "array",
 					"items": { "type": "string" },
 					"default": [],
-					"description": "Commands to run before worktree deletion. Example: [\"docker compose down\"]"
+					"description": "Commands evaluated during worktree_delete. Only hooks approved for that delete request are snapshotted and replayed at session.idle cleanup if current hashes still match exactly; config edits require re-approval. Example: [\"docker compose down\"]"
 				}
 			},
 			"additionalProperties": false

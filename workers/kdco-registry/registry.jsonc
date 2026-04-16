@@ -70,7 +70,8 @@
 				"plugins/worktree.ts",
 				"plugins/worktree/state.ts",
 				"plugins/worktree/terminal.ts",
-				"plugins/worktree/launch-context.ts"
+				"plugins/worktree/launch-context.ts",
+				"plugins/worktree/hooks.ts"
 			],
 			"dependencies": ["kdco-primitives"],
 			"npmDevDependencies": ["jsonc-parser@3.3.1", "zod@4.3.5"]
