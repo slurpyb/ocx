@@ -19,16 +19,15 @@ export type HookExecutionOutcome = "run-once" | "run-and-persist" | "skip" | "er
 export interface HookResolution {
 	hook: ParsedHookCommand
 	outcome: HookExecutionOutcome
+	reasonDetail?: string
 	reason:
 		| "durable-approved"
-		| "approved-once"
-		| "approved-always"
+		| "approved-by-permission"
 		| "rejected"
-		| "dismissed"
+		| "permission-denied"
 		| "prompt-unavailable"
 		| "prompt-error"
 		| "storage-read-error"
-		| "storage-write-error"
 }
 
 export interface HookApprovalReadResult {
@@ -43,101 +42,113 @@ export interface HookApprovalReadError {
 
 export type HookApprovalReadOutcome = HookApprovalReadResult | HookApprovalReadError
 
-export interface HookApprovalWriteResult {
-	ok: true
-}
-
-export interface HookApprovalWriteError {
-	ok: false
-	error: string
-}
-
-export type HookApprovalWriteOutcome = HookApprovalWriteResult | HookApprovalWriteError
-
 interface HookApprovalResolverOptions {
 	toolContext: ToolContext
 	readDurableApproval: (hook: ParsedHookCommand) => Promise<HookApprovalReadOutcome>
-	writeDurableApproval: (hook: ParsedHookCommand) => Promise<HookApprovalWriteOutcome>
 }
 
-type HookPromptDecision = "once" | "always" | "reject" | "dismissed" | "unavailable" | "error"
+type HookPromptDecision =
+	| { kind: "approved" }
+	| { kind: "rejected" }
+	| { kind: "denied"; detail?: string }
+	| { kind: "unavailable" }
+	| { kind: "error"; detail?: string }
 
-function toPromptMessage(hook: ParsedHookCommand): string {
-	return [
-		`Approve worktree ${hook.hookType} hook?`,
-		"",
-		"This command is defined in your repository config and will run locally:",
-		"",
-		hook.commandText,
-		"",
-		"Choose: once (run now), always (allow this exact command text for this project), or reject.",
-	].join("\n")
+function approvalPatternForHook(hook: ParsedHookCommand): string {
+	const visibleCommand = JSON.stringify(hook.commandText)
+		.replaceAll("*", "﹡")
+		.replaceAll("?", "﹖")
+	return `hash=${hook.commandHash}; command=${visibleCommand}`
 }
 
-function normalizePromptDecision(value: unknown): HookPromptDecision {
-	if (typeof value === "boolean") {
-		return value ? "once" : "reject"
+function getErrorMessage(error: unknown): string | undefined {
+	if (error instanceof Error && error.message.trim().length > 0) {
+		return error.message.trim()
 	}
 
-	if (typeof value === "string") {
-		const normalized = value.trim().toLowerCase()
-		if (normalized === "once") return "once"
-		if (normalized === "always") return "always"
-		if (normalized === "reject") return "reject"
-		if (normalized === "dismiss" || normalized === "dismissed" || normalized === "cancel") {
-			return "dismissed"
-		}
+	if (typeof error === "string" && error.trim().length > 0) {
+		return error.trim()
 	}
 
-	if (value && typeof value === "object") {
-		const record = value as Record<string, unknown>
-		const candidates = [record.value, record.choice, record.result, record.status, record.action]
-		for (const candidate of candidates) {
-			const normalizedCandidate = normalizePromptDecision(candidate)
-			if (normalizedCandidate !== "dismissed") {
-				return normalizedCandidate
-			}
-		}
+	return undefined
+}
 
-		if (record.dismissed === true || record.cancelled === true || record.canceled === true) {
-			return "dismissed"
-		}
+function getErrorIdentifier(error: unknown): string | undefined {
+	if (!error || typeof error !== "object") {
+		return undefined
 	}
 
-	return "dismissed"
+	if ("name" in error && typeof error.name === "string" && error.name.length > 0) {
+		return error.name
+	}
+
+	if ("_tag" in error && typeof error._tag === "string" && error._tag.length > 0) {
+		return error._tag
+	}
+
+	return undefined
+}
+
+function classifyAskError(error: unknown): HookPromptDecision {
+	const detail = getErrorMessage(error)
+	const identifier = getErrorIdentifier(error)
+	if (identifier === "PermissionRejectedError" || identifier === "PermissionCorrectedError") {
+		return { kind: "rejected" }
+	}
+
+	if (identifier === "PermissionDeniedError") {
+		return { kind: "denied", detail }
+	}
+
+	const loweredDetail = detail?.toLowerCase()
+	if (loweredDetail?.includes("rejected permission")) {
+		return { kind: "rejected" }
+	}
+
+	if (
+		loweredDetail?.includes("permission denied") ||
+		loweredDetail?.includes("prevents you from using this specific tool call")
+	) {
+		return { kind: "denied", detail }
+	}
+
+	return { kind: "error", detail }
 }
 
 async function askForHookApproval(
 	toolContext: ToolContext,
 	hook: ParsedHookCommand,
 ): Promise<HookPromptDecision> {
-	const ask = (toolContext as unknown as { ask?: (prompt: unknown) => Promise<unknown> }).ask
+	const ask = (
+		toolContext as unknown as {
+			ask?: (input: {
+				permission: string
+				patterns: string[]
+				always: string[]
+				metadata: Record<string, unknown>
+			}) => Promise<void>
+		}
+	).ask
 	if (typeof ask !== "function") {
-		return "unavailable"
+		return { kind: "unavailable" }
 	}
 
-	const promptPayload = {
-		type: "approval",
-		title: `Approve ${hook.hookType} hook`,
-		message: toPromptMessage(hook),
-		choices: [
-			{ value: "once", label: "Run once" },
-			{ value: "always", label: "Always run this exact command" },
-			{ value: "reject", label: "Reject" },
-		],
-		default: "reject",
-	}
+	const permissionPattern = approvalPatternForHook(hook)
 
 	try {
-		const response = await ask(promptPayload)
-		return normalizePromptDecision(response)
-	} catch {
-		try {
-			const fallbackResponse = await ask(toPromptMessage(hook))
-			return normalizePromptDecision(fallbackResponse)
-		} catch {
-			return "error"
-		}
+		await ask({
+			permission: `worktree.hook.${hook.hookType}`,
+			patterns: [permissionPattern],
+			always: [permissionPattern],
+			metadata: {
+				hookType: hook.hookType,
+				commandText: hook.commandText,
+				commandHash: hook.commandHash,
+			},
+		})
+		return { kind: "approved" }
+	} catch (error) {
+		return classifyAskError(error)
 	}
 }
 
@@ -160,50 +171,54 @@ export async function resolveHookApprovals(
 	const resolutions: HookResolution[] = []
 
 	for (const hook of parsedHooks) {
-		const durableApproval = await options.readDurableApproval(hook)
-		if (!durableApproval.ok) {
-			resolutions.push({ hook, outcome: "error-skip", reason: "storage-read-error" })
-			continue
-		}
-
-		if (durableApproval.approved) {
-			resolutions.push({ hook, outcome: "run-and-persist", reason: "durable-approved" })
-			continue
-		}
-
 		const promptDecision = await askForHookApproval(options.toolContext, hook)
-		if (promptDecision === "always") {
-			const persistResult = await options.writeDurableApproval(hook)
-			if (!persistResult.ok) {
-				resolutions.push({ hook, outcome: "error-skip", reason: "storage-write-error" })
+		if (promptDecision.kind === "approved") {
+			const durableApproval = await options.readDurableApproval(hook)
+			if (!durableApproval.ok) {
+				resolutions.push({
+					hook,
+					outcome: "error-skip",
+					reason: "storage-read-error",
+					reasonDetail: durableApproval.error,
+				})
 				continue
 			}
 
-			resolutions.push({ hook, outcome: "run-and-persist", reason: "approved-always" })
+			if (durableApproval.approved) {
+				resolutions.push({ hook, outcome: "run-and-persist", reason: "durable-approved" })
+				continue
+			}
+
+			resolutions.push({ hook, outcome: "run-once", reason: "approved-by-permission" })
 			continue
 		}
 
-		if (promptDecision === "once") {
-			resolutions.push({ hook, outcome: "run-once", reason: "approved-once" })
-			continue
-		}
-
-		if (promptDecision === "reject") {
+		if (promptDecision.kind === "rejected") {
 			resolutions.push({ hook, outcome: "skip", reason: "rejected" })
 			continue
 		}
 
-		if (promptDecision === "dismissed") {
-			resolutions.push({ hook, outcome: "skip", reason: "dismissed" })
+		if (promptDecision.kind === "denied") {
+			resolutions.push({
+				hook,
+				outcome: "skip",
+				reason: "permission-denied",
+				reasonDetail: promptDecision.detail,
+			})
 			continue
 		}
 
-		if (promptDecision === "unavailable") {
+		if (promptDecision.kind === "unavailable") {
 			resolutions.push({ hook, outcome: "error-skip", reason: "prompt-unavailable" })
 			continue
 		}
 
-		resolutions.push({ hook, outcome: "error-skip", reason: "prompt-error" })
+		resolutions.push({
+			hook,
+			outcome: "error-skip",
+			reason: "prompt-error",
+			reasonDetail: promptDecision.detail,
+		})
 	}
 
 	return resolutions
@@ -278,4 +293,105 @@ export function matchHooksToApprovalSnapshot(
 
 export function shortCommandHash(commandHash: string): string {
 	return commandHash.slice(0, 12)
+}
+
+function formatHookCommandPreview(commandText: string): string {
+	const firstLine = commandText
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.find((line) => line.length > 0)
+
+	if (!firstLine) {
+		return "(empty command)"
+	}
+
+	if (firstLine.length <= 96) {
+		return firstLine
+	}
+
+	return `${firstLine.slice(0, 93)}...`
+}
+
+function summarizeReason(resolution: HookResolution): string {
+	if (resolution.reason === "rejected") {
+		return "user rejected approval"
+	}
+
+	if (resolution.reason === "permission-denied") {
+		return "blocked by permission rules"
+	}
+
+	if (resolution.reason === "prompt-unavailable") {
+		return "permission prompt unavailable"
+	}
+
+	if (resolution.reason === "prompt-error") {
+		return "permission request failed"
+	}
+
+	if (resolution.reason === "storage-read-error") {
+		return "approval storage read failed"
+	}
+
+	return resolution.reason
+}
+
+function hookToolName(hookType: HookType): string {
+	return hookType === "postCreate" ? "worktree_create" : "worktree_delete"
+}
+
+export function summarizeHookResolutionSkips(
+	hookType: HookType,
+	resolutions: HookResolution[],
+): string[] {
+	const skippedResolutions = resolutions.filter(
+		(resolution) => resolution.outcome === "skip" || resolution.outcome === "error-skip",
+	)
+	if (skippedResolutions.length === 0) {
+		return []
+	}
+
+	const hasPromptError = skippedResolutions.some(
+		(resolution) =>
+			resolution.reason === "prompt-unavailable" || resolution.reason === "prompt-error",
+	)
+	const hasStorageError = skippedResolutions.some(
+		(resolution) => resolution.reason === "storage-read-error",
+	)
+	const hasPermissionDenied = skippedResolutions.some(
+		(resolution) => resolution.reason === "permission-denied",
+	)
+
+	const lines = [
+		`⚠️ Skipped ${skippedResolutions.length} ${hookType} hook${skippedResolutions.length === 1 ? "" : "s"}.`,
+	]
+
+	if (hasPromptError) {
+		lines.push(
+			`   Approval could not be collected for at least one hook. Re-run ${hookToolName(hookType)} in an interactive session to approve these hooks (once or always).`,
+		)
+	}
+
+	if (hasPermissionDenied) {
+		lines.push(
+			`   At least one hook is blocked by existing permission rules (permission: worktree.hook.${hookType}).`,
+		)
+	}
+
+	if (hasStorageError) {
+		lines.push(
+			"   Local approval storage failed to read durable approvals; hooks stayed blocked for safety.",
+		)
+	}
+
+	for (const resolution of skippedResolutions) {
+		const hookRef = `${resolution.hook.hookType}:${shortCommandHash(resolution.hook.commandHash)}`
+		const commandPreview = formatHookCommandPreview(resolution.hook.commandText)
+		lines.push(`   - ${hookRef} (${summarizeReason(resolution)}): ${commandPreview}`)
+		if (resolution.reasonDetail) {
+			lines.push(`     detail: ${resolution.reasonDetail}`)
+		}
+	}
+
+	return lines
 }

@@ -50,7 +50,6 @@ import {
 	initStateDb,
 	removeSession,
 	setPendingDelete,
-	upsertHookApproval,
 } from "./worktree/state"
 import {
 	createHookApprovalSnapshot,
@@ -58,10 +57,10 @@ import {
 	matchHooksToApprovalSnapshot,
 	parseHookCommands,
 	resolveHookApprovals,
+	summarizeHookResolutionSkips,
 	shortCommandHash,
 	type HookResolution,
 	type ParsedHookCommand,
-	type HookType,
 } from "./worktree/hooks"
 import { openTerminal, type TerminalResult } from "./worktree/terminal"
 
@@ -819,28 +818,6 @@ async function runHooks(cwd: string, hooks: ParsedHookCommand[], log: Logger): P
 	}
 }
 
-function summarizeHookResolutionSkips(hookType: HookType, resolutions: HookResolution[]): string[] {
-	const skippedResolutions = resolutions.filter(
-		(resolution) => resolution.outcome === "skip" || resolution.outcome === "error-skip",
-	)
-	if (skippedResolutions.length === 0) {
-		return []
-	}
-
-	const skippedHashes = skippedResolutions
-		.map((resolution) => shortCommandHash(resolution.hook.commandHash))
-		.join(", ")
-	const hasErrorSkip = skippedResolutions.some((resolution) => resolution.outcome === "error-skip")
-	const reasonText = hasErrorSkip
-		? "approval unavailable or storage error"
-		: "approval rejected or dismissed"
-
-	return [
-		`⚠️ Skipped ${skippedResolutions.length} ${hookType} hook${skippedResolutions.length === 1 ? "" : "s"} (${reasonText}).`,
-		`   Hook hashes: ${skippedHashes}`,
-	]
-}
-
 async function resolveHooksForInvocation(
 	database: Database,
 	hooks: ParsedHookCommand[],
@@ -859,21 +836,6 @@ async function resolveHooksForInvocation(
 			}
 
 			return { ok: true, approved: approvalResult.value !== null }
-		},
-		writeDurableApproval: async (hook) => {
-			const writeResult = upsertHookApproval(database, {
-				hookType: hook.hookType,
-				commandHash: hook.commandHash,
-				commandText: hook.commandText,
-			})
-			if (!writeResult.ok) {
-				log.warn(
-					`[worktree] Hook approval persistence failed for ${hook.hookType}:${shortCommandHash(hook.commandHash)}: ${writeResult.error.message}`,
-				)
-				return { ok: false, error: writeResult.error.message }
-			}
-
-			return { ok: true }
 		},
 	})
 

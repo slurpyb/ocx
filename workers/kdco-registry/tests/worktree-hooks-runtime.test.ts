@@ -7,9 +7,10 @@ import {
 	matchHooksToApprovalSnapshot,
 	parseHookCommands,
 	resolveHookApprovals,
+	summarizeHookResolutionSkips,
 } from "../files/plugins/worktree/hooks"
 
-function createToolContext(ask?: (prompt: unknown) => Promise<unknown>): ToolContext {
+function createToolContext(ask?: (input: unknown) => Promise<void>): ToolContext {
 	const baseContext = {
 		sessionID: "session-1",
 		messageID: "message-1",
@@ -38,6 +39,12 @@ function approvalKey(hookType: "postCreate" | "preDelete", commandHash: string):
 	return `${hookType}:${commandHash}`
 }
 
+function permissionError(name: string, message: string): Error {
+	const error = new Error(message)
+	error.name = name
+	return error
+}
+
 describe("worktree hook runtime approvals", () => {
 	it("uses exact command text for command hash identity", () => {
 		const base = hashHookCommand("pnpm install")
@@ -55,96 +62,152 @@ describe("worktree hook runtime approvals", () => {
 		const approvals = new Set([approvalKey("postCreate", approvedHooks[0].commandHash)])
 
 		const resolutions = await resolveHookApprovals(updatedHooks, {
-			toolContext: createToolContext(async () => "reject"),
+			toolContext: createToolContext(async () => undefined),
 			readDurableApproval: async (hook) => ({
 				ok: true,
 				approved: approvals.has(approvalKey(hook.hookType, hook.commandHash)),
 			}),
-			writeDurableApproval: async () => ({ ok: true }),
 		})
 
-		expect(resolutions[0]?.outcome).toBe("skip")
-		expect(hooksForCurrentInvocation(resolutions)).toEqual([])
+		expect(resolutions[0]?.outcome).toBe("run-once")
+		expect(resolutions[0]?.reason).toBe("approved-by-permission")
+		expect(hooksForCurrentInvocation(resolutions)).toHaveLength(1)
 	})
 
 	it("skips unapproved hooks when user rejects", async () => {
 		const hooks = parseHookCommands("postCreate", ["docker compose up -d"])
 
 		const resolutions = await resolveHookApprovals(hooks, {
-			toolContext: createToolContext(async () => "reject"),
+			toolContext: createToolContext(async () => {
+				throw permissionError("PermissionRejectedError", "rejected")
+			}),
 			readDurableApproval: async () => ({ ok: true, approved: false }),
-			writeDurableApproval: async () => ({ ok: true }),
 		})
 
 		expect(resolutions[0]?.outcome).toBe("skip")
+		expect(resolutions[0]?.reason).toBe("rejected")
 		expect(hooksForCurrentInvocation(resolutions)).toHaveLength(0)
 	})
 
-	it("runs once only for the current invocation", async () => {
+	it("skips hooks denied by existing permission rules", async () => {
+		const hooks = parseHookCommands("preDelete", ["docker compose down"])
+
+		const resolutions = await resolveHookApprovals(hooks, {
+			toolContext: createToolContext(async () => {
+				throw permissionError(
+					"PermissionDeniedError",
+					"The user has specified a rule which prevents you from using this specific tool call.",
+				)
+			}),
+			readDurableApproval: async () => ({ ok: true, approved: false }),
+		})
+
+		expect(resolutions[0]?.outcome).toBe("skip")
+		expect(resolutions[0]?.reason).toBe("permission-denied")
+		expect(hooksForCurrentInvocation(resolutions)).toHaveLength(0)
+	})
+
+	it("gives permission deny precedence over legacy durable approvals", async () => {
 		const hooks = parseHookCommands("postCreate", ["pnpm install"])
-		const approvals = new Set<string>()
+		let readDurableApprovalInvocations = 0
+
+		const resolutions = await resolveHookApprovals(hooks, {
+			toolContext: createToolContext(async () => {
+				throw permissionError(
+					"PermissionDeniedError",
+					"The user has specified a rule which prevents you from using this specific tool call.",
+				)
+			}),
+			readDurableApproval: async () => {
+				readDurableApprovalInvocations += 1
+				return { ok: true, approved: true }
+			},
+		})
+
+		expect(readDurableApprovalInvocations).toBe(0)
+		expect(resolutions[0]?.outcome).toBe("skip")
+		expect(resolutions[0]?.reason).toBe("permission-denied")
+		expect(hooksForCurrentInvocation(resolutions)).toHaveLength(0)
+	})
+
+	it("requests approval with permission API payload", async () => {
+		const hooks = parseHookCommands("postCreate", ["pnpm install"])
+		let askPayload: Record<string, unknown> | undefined
+
+		const resolutions = await resolveHookApprovals(hooks, {
+			toolContext: createToolContext(async (payload) => {
+				askPayload = payload as Record<string, unknown>
+			}),
+			readDurableApproval: async () => ({ ok: true, approved: false }),
+		})
+
+		expect(askPayload).toBeDefined()
+		expect(askPayload?.permission).toBe("worktree.hook.postCreate")
+		expect(askPayload?.patterns).toEqual([`hash=${hooks[0].commandHash}; command="pnpm install"`])
+		expect(askPayload?.always).toEqual([`hash=${hooks[0].commandHash}; command="pnpm install"`])
+		expect(askPayload?.metadata).toEqual({
+			hookType: "postCreate",
+			commandText: "pnpm install",
+			commandHash: hooks[0].commandHash,
+		})
+		expect(resolutions[0]?.outcome).toBe("run-once")
+		expect(resolutions[0]?.reason).toBe("approved-by-permission")
+	})
+
+	it("includes readable command text in permission pattern for approval UI", async () => {
+		const hooks = parseHookCommands("postCreate", ["pnpm run check:* --scope ?core"])
+		let askPayload: Record<string, unknown> | undefined
+
+		await resolveHookApprovals(hooks, {
+			toolContext: createToolContext(async (payload) => {
+				askPayload = payload as Record<string, unknown>
+			}),
+			readDurableApproval: async () => ({ ok: true, approved: false }),
+		})
+
+		const pattern = (askPayload?.patterns as string[] | undefined)?.[0]
+		expect(pattern).toContain("pnpm run check:")
+		expect(pattern).toContain("--scope")
+		expect(pattern).toContain("﹡")
+		expect(pattern).toContain("﹖")
+	})
+
+	it("runs approved hooks and does not persist once approvals locally", async () => {
+		const hooks = parseHookCommands("postCreate", ["pnpm install"])
 
 		const firstInvocation = await resolveHookApprovals(hooks, {
-			toolContext: createToolContext(async () => "once"),
-			readDurableApproval: async (hook) => ({
-				ok: true,
-				approved: approvals.has(approvalKey(hook.hookType, hook.commandHash)),
-			}),
-			writeDurableApproval: async (hook) => {
-				approvals.add(approvalKey(hook.hookType, hook.commandHash))
-				return { ok: true }
-			},
+			toolContext: createToolContext(async () => undefined),
+			readDurableApproval: async () => ({ ok: true, approved: false }),
 		})
 
 		expect(firstInvocation[0]?.outcome).toBe("run-once")
 		expect(hooksForCurrentInvocation(firstInvocation)).toHaveLength(1)
-		expect(approvals.size).toBe(0)
 
 		const secondInvocation = await resolveHookApprovals(hooks, {
 			toolContext: createToolContext(),
-			readDurableApproval: async (hook) => ({
-				ok: true,
-				approved: approvals.has(approvalKey(hook.hookType, hook.commandHash)),
-			}),
-			writeDurableApproval: async () => ({ ok: true }),
+			readDurableApproval: async () => ({ ok: true, approved: false }),
 		})
 
 		expect(secondInvocation[0]?.outcome).toBe("error-skip")
+		expect(secondInvocation[0]?.reason).toBe("prompt-unavailable")
 		expect(hooksForCurrentInvocation(secondInvocation)).toHaveLength(0)
 	})
 
-	it("persists always approvals and reuses them on future invocations", async () => {
+	it("reuses durable approvals only after permission check", async () => {
 		const hooks = parseHookCommands("postCreate", ["pnpm install"])
-		const approvals = new Set<string>()
+		let askInvocations = 0
 
-		const firstInvocation = await resolveHookApprovals(hooks, {
-			toolContext: createToolContext(async () => "always"),
-			readDurableApproval: async (hook) => ({
-				ok: true,
-				approved: approvals.has(approvalKey(hook.hookType, hook.commandHash)),
-			}),
-			writeDurableApproval: async (hook) => {
-				approvals.add(approvalKey(hook.hookType, hook.commandHash))
-				return { ok: true }
-			},
-		})
-
-		expect(firstInvocation[0]?.outcome).toBe("run-and-persist")
-		expect(approvals.size).toBe(1)
-
-		const secondInvocation = await resolveHookApprovals(hooks, {
+		const resolutions = await resolveHookApprovals(hooks, {
 			toolContext: createToolContext(async () => {
-				throw new Error("prompt unavailable")
+				askInvocations += 1
 			}),
-			readDurableApproval: async (hook) => ({
-				ok: true,
-				approved: approvals.has(approvalKey(hook.hookType, hook.commandHash)),
-			}),
-			writeDurableApproval: async () => ({ ok: true }),
+			readDurableApproval: async () => ({ ok: true, approved: true }),
 		})
 
-		expect(secondInvocation[0]?.outcome).toBe("run-and-persist")
-		expect(hooksForCurrentInvocation(secondInvocation)).toHaveLength(1)
+		expect(askInvocations).toBe(1)
+		expect(resolutions[0]?.outcome).toBe("run-and-persist")
+		expect(resolutions[0]?.reason).toBe("durable-approved")
+		expect(hooksForCurrentInvocation(resolutions)).toHaveLength(1)
 	})
 
 	it("preserves hook order and multiplicity for mixed approvals", async () => {
@@ -153,12 +216,19 @@ describe("worktree hook runtime approvals", () => {
 		const approvedHash = hooks[0].commandHash
 
 		const resolutions = await resolveHookApprovals(hooks, {
-			toolContext: createToolContext(async () => "reject"),
+			toolContext: createToolContext(async (payload) => {
+				const record = payload as { patterns?: string[] }
+				const pattern = record.patterns?.[0] ?? ""
+				if (pattern.includes(approvedHash)) {
+					return
+				}
+
+				throw permissionError("PermissionRejectedError", "rejected")
+			}),
 			readDurableApproval: async (hook) => ({
 				ok: true,
 				approved: hook.commandHash === approvedHash,
 			}),
-			writeDurableApproval: async () => ({ ok: true }),
 		})
 
 		const runnable = hooksForCurrentInvocation(resolutions)
@@ -169,9 +239,8 @@ describe("worktree hook runtime approvals", () => {
 		const preDeleteHooks = parseHookCommands("preDelete", ["docker compose down"])
 
 		const resolutions = await resolveHookApprovals(preDeleteHooks, {
-			toolContext: createToolContext(async () => "once"),
+			toolContext: createToolContext(async () => undefined),
 			readDurableApproval: async () => ({ ok: true, approved: false }),
-			writeDurableApproval: async () => ({ ok: true }),
 		})
 
 		const approvedForDeleteInvocation = hooksForCurrentInvocation(resolutions)
@@ -194,31 +263,48 @@ describe("worktree hook runtime approvals", () => {
 		expect(matchResult.ok).toBe(false)
 	})
 
-	it("fails closed when storage read/write or prompt path errors", async () => {
+	it("fails closed when storage read or prompt path errors", async () => {
 		const hooks = parseHookCommands("postCreate", ["pnpm install"])
 
 		const readFailure = await resolveHookApprovals(hooks, {
-			toolContext: createToolContext(async () => "once"),
+			toolContext: createToolContext(async () => undefined),
 			readDurableApproval: async () => ({ ok: false, error: "db read failed" }),
-			writeDurableApproval: async () => ({ ok: true }),
 		})
 		expect(readFailure[0]?.outcome).toBe("error-skip")
+		expect(readFailure[0]?.reason).toBe("storage-read-error")
+		expect(readFailure[0]?.reasonDetail).toBe("db read failed")
 
-		const writeFailure = await resolveHookApprovals(hooks, {
-			toolContext: createToolContext(async () => "always"),
+		const promptUnavailable = await resolveHookApprovals(hooks, {
+			toolContext: createToolContext(),
 			readDurableApproval: async () => ({ ok: true, approved: false }),
-			writeDurableApproval: async () => ({ ok: false, error: "db write failed" }),
 		})
-		expect(writeFailure[0]?.outcome).toBe("error-skip")
+		expect(promptUnavailable[0]?.outcome).toBe("error-skip")
+		expect(promptUnavailable[0]?.reason).toBe("prompt-unavailable")
 
 		const promptFailure = await resolveHookApprovals(hooks, {
 			toolContext: createToolContext(async () => {
 				throw new Error("interactive unavailable")
 			}),
 			readDurableApproval: async () => ({ ok: true, approved: false }),
-			writeDurableApproval: async () => ({ ok: true }),
 		})
 		expect(promptFailure[0]?.outcome).toBe("error-skip")
+		expect(promptFailure[0]?.reason).toBe("prompt-error")
+		expect(promptFailure[0]?.reasonDetail).toBe("interactive unavailable")
 		expect(hooksForCurrentInvocation(promptFailure)).toHaveLength(0)
+	})
+
+	it("returns actionable skip guidance when approval prompt is unavailable", () => {
+		const hooks = parseHookCommands("postCreate", ["pnpm install"])
+		const lines = summarizeHookResolutionSkips("postCreate", [
+			{
+				hook: hooks[0],
+				outcome: "error-skip",
+				reason: "prompt-unavailable",
+			},
+		])
+
+		expect(lines.join("\n")).toContain("Re-run worktree_create in an interactive session")
+		expect(lines.join("\n")).toContain("postCreate")
+		expect(lines.join("\n")).toContain("pnpm install")
 	})
 })
