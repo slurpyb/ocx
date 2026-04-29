@@ -23,13 +23,11 @@ ocx add kdco/notify --from https://registry.kdco.dev
 
 If you don't have OCX installed, install it from the [OCX repository](https://github.com/kdcokenny/ocx).
 
-**Optional:** Get everything at once with `kdco/flow`:
+**Optional:** Get everything at once with `kdco-workspace`:
 
 ```bash
-ocx add kdco/flow --from https://registry.kdco.dev
+ocx add kdco/workspace --from https://registry.kdco.dev
 ```
-
-The old `kdco/workspace` bundle is legacy/deprecated and should be installed only when intentionally needed.
 
 ## How It Works
 
@@ -149,7 +147,7 @@ If you prefer not to use OCX, copy the plugin files into `.opencode/plugins/` an
 
 ## Part of the OCX Ecosystem
 
-This plugin is part of the [KDCO Registry](https://github.com/kdcokenny/ocx/tree/main/registry/src/kdco). For the full experience, use `kdco/flow`, which bundles notifications with background agents, specialist agents, planning tools, and review gates. `kdco/workspace` is legacy/deprecated.
+This plugin is part of the [KDCO Registry](https://github.com/kdcokenny/ocx/tree/main/registry/src/kdco). For the full experience, check out [kdco-workspace](https://github.com/kdcokenny/ocx) which bundles notifications with background agents, specialist agents, and planning tools.
 
 ## Contributing
 

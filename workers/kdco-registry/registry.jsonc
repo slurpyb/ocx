@@ -35,7 +35,7 @@
 		{
 			"name": "workspace-plugin",
 			"type": "plugin",
-			"description": "Legacy plan management and rule injection for workspace workflows",
+			"description": "Plan management and rule injection for workspace workflows",
 			"files": ["plugins/workspace-plugin.ts"],
 			"dependencies": ["background-agents", "kdco-primitives"],
 			"npmDevDependencies": ["zod@4.3.5"]
@@ -426,7 +426,7 @@
 		{
 			"name": "flow",
 			"type": "bundle",
-			"description": "Primary KDCO autonomous harness with six agents, gated planning, gated QA, and pr/commit/report terminal goals",
+			"description": "KDCO autonomous flow harness with six agents, gated planning, gated QA, and pr/commit/report terminal goals",
 			"files": [],
 			"dependencies": [
 				"flow-plugin",
@@ -487,7 +487,7 @@
 		{
 			"name": "workspace",
 			"type": "bundle",
-			"description": "LEGACY/DEPRECATED KDCO Workspace harness. Use kdco/flow for new installs.",
+			"description": "Full KDCO Workspace experience",
 			"files": [],
 			"dependencies": [
 				"workspace-plugin",

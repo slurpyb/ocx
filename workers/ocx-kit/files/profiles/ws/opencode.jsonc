@@ -6,12 +6,6 @@
 
 	"agent": {
 		// Orchestrators
-		"conductor": {
-			"model": "opencode/big-pickle",
-			"temperature": 0.2,
-			"reasoningEffort": "high",
-			"textVerbosity": "low"
-		},
 		"plan": {
 			"model": "opencode/big-pickle",
 			"temperature": 0.3,
@@ -34,12 +28,6 @@
 		},
 
 		// Specialists
-		"explorer": {
-			"model": "opencode/gpt-5-nano",
-			"temperature": 0.2,
-			"reasoningEffort": "low",
-			"textVerbosity": "low"
-		},
 		"explore": {
 			"model": "opencode/gpt-5-nano",
 			"temperature": 0.2,
@@ -59,18 +47,6 @@
 			"textVerbosity": "high"
 		},
 		"reviewer": {
-			"model": "opencode/gpt-5-nano",
-			"temperature": 0.1,
-			"reasoningEffort": "high",
-			"textVerbosity": "medium"
-		},
-		"plan-reviewer": {
-			"model": "opencode/gpt-5-nano",
-			"temperature": 0.1,
-			"reasoningEffort": "high",
-			"textVerbosity": "medium"
-		},
-		"qa-reviewer": {
 			"model": "opencode/gpt-5-nano",
 			"temperature": 0.1,
 			"reasoningEffort": "high",

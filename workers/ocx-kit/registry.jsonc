@@ -18,12 +18,12 @@
 		{
 			"name": "ws",
 			"type": "profile",
-			"description": "KDCO Flow profile with free OpenCode Zen models",
+			"description": "KDCO Workspace profile with free OpenCode Zen models",
 			"files": [
 				{ "path": "profiles/ws/ocx.jsonc", "target": "ocx.jsonc" },
 				{ "path": "profiles/ws/opencode.jsonc", "target": "opencode.jsonc" }
 			],
-			"dependencies": ["kdco/flow"]
+			"dependencies": ["kdco/workspace"]
 		}
 	]
 }

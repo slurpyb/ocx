@@ -41,14 +41,14 @@ Work in any repo without modifying it. Your config, their code.
 # One-time setup
 ocx init --global
 
-# Install the KDCO Flow profile (OpenCode Free Models Only)
-ocx profile add ws --source kit/ws --from https://ocx-kit.kdco.dev --global
+# Install the KDCO workspace profile (OpenCode Free Models Only)
+ocx profile add ws --source tweak/p-1vp4xoqv --from https://tweakoc.com/r --global
 
 # Launch OpenCode with the profile
 ocx oc -p ws
 ```
 
-The `ws` profile installs `kdco/flow`, the primary gated KDCO harness. The old `kdco/workspace` bundle is legacy/deprecated.
+Need a custom profile? Open the KDCO Workspace harness in TweakOC: https://tweakoc.com/h/kdco-workspace
 
 Profiles control what OpenCode sees through `exclude`/`include` patterns. Each profile has isolated registries for security. OpenCode config merges safely between profile and local settings.
 
@@ -86,7 +86,7 @@ ocx init
 ocx registry add https://registry.kdco.dev --name kdco
 
 # Install components using name/component syntax
-ocx add kdco/flow
+ocx add kdco/workspace
 ```
 
 See [Components & Registries](https://ocx.kdco.dev/docs/registries/create) for more.

@@ -1,11 +1,11 @@
 ---
-title: "KDCO Flow Setup"
-description: "Set up the KDCO Flow multi-agent harness with OCX profiles"
+title: "KDCO Workspace Setup"
+description: "Set up the KDCO Workspace multi-agent harness with OCX profiles"
 ---
 
 ## Overview
 
-Set up the KDCO Flow multi-agent harness with OCX profiles for a fully portable AI coding environment with planning, gated implementation, QA review, delegation, and notifications.
+Set up the KDCO Workspace multi-agent harness with OCX profiles for a fully portable AI coding environment with planning, code review, delegation, and notifications.
 
 **Prerequisites**: [OCX installed](/getting-started/installation) and [global profiles initialized](/profiles/overview)
 
@@ -26,16 +26,16 @@ ocx profile add ws --source kit/ws --global
 ocx oc -p ws
 ```
 
-The profile comes pre-configured with free [OpenCode Zen](https://opencode.ai/docs/zen/) models and the full `kdco/flow` bundle.
+The profile comes pre-configured with free [OpenCode Zen](https://opencode.ai/docs/zen/) models and the full workspace bundle.
 
 ## What's Included
 
-The `ws` profile installs the complete KDCO Flow harness:
+The `ws` profile installs the complete KDCO Workspace:
 
 | Category | Components |
 |----------|-----------|
-| Plugins | flow-plugin, workspace-plugin, background-agents, notify, worktree |
-| Agents | conductor, researcher, explorer, coder, plan-reviewer, qa-reviewer |
+| Plugins | workspace-plugin, background-agents, notify, worktree |
+| Agents | researcher, coder, scribe, reviewer |
 | Skills | plan-protocol, code-review, code-philosophy, frontend-philosophy |
 | Commands | /review |
 | MCP | Context7, Exa, GitHub Grep |
@@ -44,10 +44,8 @@ The `ws` profile installs the complete KDCO Flow harness:
 
 | Agent | Model |
 |-------|-------|
-| conductor, plan, build, coder | Big Pickle |
-| explorer, explore, researcher, scribe, reviewer, plan-reviewer, qa-reviewer | GPT-5 Nano |
-
-`kdco/workspace` is legacy/deprecated. Use `kdco/flow` for new installs.
+| plan, build, coder | Big Pickle |
+| explore, researcher, scribe, reviewer | GPT-5 Nano |
 
 ## Customize Models
 
