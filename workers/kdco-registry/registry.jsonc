@@ -35,10 +35,17 @@
 		{
 			"name": "workspace-plugin",
 			"type": "plugin",
-			"description": "Plan management and rule injection for workspace workflows",
+			"description": "Legacy plan management and rule injection for workspace workflows",
 			"files": ["plugins/workspace-plugin.ts"],
 			"dependencies": ["background-agents", "kdco-primitives"],
 			"npmDevDependencies": ["zod@4.3.5"]
+		},
+		{
+			"name": "flow-plugin",
+			"type": "plugin",
+			"description": "State-machine and gate-rule injection for the kdco/flow harness",
+			"files": ["plugins/flow-plugin.ts"],
+			"dependencies": ["workspace-plugin"]
 		},
 		{
 			"name": "background-agents",
@@ -127,6 +134,33 @@
 		// Specialized AI personas for different tasks
 		// ============================================================================
 		{
+			"name": "conductor",
+			"type": "agent",
+			"description": "Read-only kdco/flow orchestrator for autonomous gated delivery",
+			"files": ["agents/conductor.md"],
+			"dependencies": ["background-agents", "plan-protocol"],
+			"opencode": {
+				"agent": {
+					"conductor": {
+						"permission": {
+							"read": "allow",
+							"glob": "allow",
+							"grep": "allow",
+							"edit": "deny",
+							"write": "deny",
+							"bash": { "*": "deny" },
+							"task": "allow",
+							"delegate": "allow",
+							"delegation_read": "allow",
+							"delegation_list": "allow",
+							"plan_read": "allow",
+							"plan_save": "allow"
+						}
+					}
+				}
+			}
+		},
+		{
 			"name": "researcher",
 			"type": "agent",
 			"description": "Knowledge architect for external research",
@@ -203,6 +237,33 @@
 								"cut *": "allow",
 								"awk *": "allow",
 								"tr *": "allow"
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			"name": "explorer",
+			"type": "agent",
+			"description": "Read-only kdco/flow explorer for local and sandboxed external repository discovery",
+			"files": ["agents/explorer.md"],
+			"dependencies": ["background-agents"],
+			"opencode": {
+				"agent": {
+					"explorer": {
+						"permission": {
+							"flow_explorer_*": "allow",
+							"read": "allow",
+							"glob": "allow",
+							"grep": "allow",
+							"list": "allow",
+							"edit": "deny",
+							"write": "deny",
+							"task": "deny",
+							"question": "deny",
+							"bash": {
+								"*": "deny"
 							}
 						}
 					}
@@ -295,6 +356,56 @@
 				}
 			}
 		},
+		{
+			"name": "plan-reviewer",
+			"type": "agent",
+			"description": "Read-only kdco/flow gatekeeper for implementation plans and high-level logic",
+			"files": ["agents/plan-reviewer.md"],
+			"dependencies": ["plan-review", "code-philosophy"],
+			"opencode": {
+				"agent": {
+					"plan-reviewer": {
+						"temperature": 0.1,
+						"permission": {
+							"read": "allow",
+							"glob": "allow",
+							"grep": "allow",
+							"edit": "deny",
+							"write": "deny",
+							"bash": { "*": "deny", "git diff*": "allow", "git log*": "allow", "git show*": "allow", "rg *": "allow" },
+							"plan_read": "allow",
+							"delegation_read": "allow",
+							"delegation_list": "allow"
+						}
+					}
+				}
+			}
+		},
+		{
+			"name": "qa-reviewer",
+			"type": "agent",
+			"description": "Read-only kdco/flow QA gate for installability, boundaries, gates, and autonomy evidence",
+			"files": ["agents/qa-reviewer.md"],
+			"dependencies": ["code-review", "code-philosophy"],
+			"opencode": {
+				"agent": {
+					"qa-reviewer": {
+						"temperature": 0.1,
+						"permission": {
+							"read": "allow",
+							"glob": "allow",
+							"grep": "allow",
+							"edit": "deny",
+							"write": "deny",
+							"bash": { "*": "deny", "git diff*": "allow", "git log*": "allow", "git show*": "allow", "rg *": "allow" },
+							"plan_read": "allow",
+							"delegation_read": "allow",
+							"delegation_list": "allow"
+						}
+					}
+				}
+			}
+		},
 
 		// ============================================================================
 		// COMMANDS
@@ -313,9 +424,70 @@
 		// Pre-configured collections of components for common use cases
 		// ============================================================================
 		{
+			"name": "flow",
+			"type": "bundle",
+			"description": "Primary KDCO autonomous harness with six agents, gated planning, gated QA, and pr/commit/report terminal goals",
+			"files": [],
+			"dependencies": [
+				"flow-plugin",
+				"plan-protocol",
+				"conductor",
+				"researcher",
+				"explorer",
+				"coder",
+				"plan-reviewer",
+				"qa-reviewer",
+				"review",
+				"notify",
+				"worktree",
+				"philosophy"
+			],
+			"opencode": {
+				"plugin": ["@tarquinen/opencode-dcp@3.1.3", "@franlol/opencode-md-table-formatter@0.0.6"],
+				"permission": {
+					"webfetch": "deny",
+					"worktree_*": "deny",
+					"flow_explorer_*": "deny"
+				},
+				"agent": {
+					"conductor": {
+						"prompt": "You are the kdco/flow conductor. Follow Intake -> Research/Exploration -> Plan Draft -> Plan Review -> Implementation -> QA Review -> Finalize -> Done. Stop only for Done or Blocked. Do not implement directly. Implementation requires plan-reviewer APPROVE. Final commit, PR, or report requires qa-reviewer APPROVE. Terminal goals are pr, commit, and report.",
+						"permission": {
+							"edit": "deny",
+							"write": "deny",
+							"bash": { "*": "deny" },
+							"task": "allow",
+							"delegate": "allow",
+							"worktree_*": "allow"
+						}
+					},
+					"plan": {
+						"permission": {
+							"edit": "deny",
+							"write": "deny",
+							"bash": { "*": "deny" },
+							"task": "allow",
+							"delegate": "allow",
+							"worktree_*": "allow"
+						}
+					},
+					"build": {
+						"permission": {
+							"edit": "deny",
+							"write": "deny",
+							"bash": { "*": "deny" },
+							"task": "allow",
+							"delegate": "allow",
+							"worktree_*": "allow"
+						}
+					}
+				}
+			}
+		},
+		{
 			"name": "workspace",
 			"type": "bundle",
-			"description": "Full KDCO Workspace experience",
+			"description": "LEGACY/DEPRECATED KDCO Workspace harness. Use kdco/flow for new installs.",
 			"files": [],
 			"dependencies": [
 				"workspace-plugin",

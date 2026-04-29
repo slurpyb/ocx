@@ -128,7 +128,7 @@ not-started → in-progress → complete
 
 Citations reference delegation research. The flow is:
 
-1. You delegate research: `delegate` to `researcher` or `explore`
+1. You delegate research: `delegate` to `researcher` or `explorer`
 2. Delegation completes with a readable ID (e.g., `swift-amber-falcon`)
 3. You cite that research in the plan: `ref:swift-amber-falcon`
 

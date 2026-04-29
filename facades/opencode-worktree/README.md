@@ -52,11 +52,13 @@ ocx add kdco/worktree --from https://registry.kdco.dev
 
 If you don't have OCX installed, install it from the [OCX repository](https://github.com/kdcokenny/ocx).
 
-**Optional:** Install `kdco-workspace` for the full experience—it bundles worktrees with background agents, planning tools, and notifications:
+**Optional:** Install `kdco/flow` for the full experience—it bundles worktrees with background agents, planning tools, plan/QA gates, and notifications:
 
 ```bash
-ocx add kdco/workspace --from https://registry.kdco.dev
+ocx add kdco/flow --from https://registry.kdco.dev
 ```
+
+The old `kdco/workspace` bundle is legacy/deprecated and should be installed only when intentionally needed.
 
 ## Usage
 

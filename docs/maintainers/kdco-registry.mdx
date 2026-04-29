@@ -27,11 +27,11 @@ bun run deploy
 
 ```bash
 # Add a component directly
-ocx add kdco/workspace --from https://registry.kdco.dev
+ocx add kdco/flow --from https://registry.kdco.dev
 
 # Or add the registry permanently
 ocx registry add https://registry.kdco.dev --name kdco
-ocx add kdco/workspace
+ocx add kdco/flow
 ```
 
 ## Available Components
@@ -40,21 +40,29 @@ ocx add kdco/workspace
 
 | Name | Description |
 |------|-------------|
-| workspace | Full KDCO experience |
+| flow | Primary autonomous KDCO harness |
+| workspace | Legacy/deprecated KDCO Workspace harness |
 | philosophy | Code quality philosophies |
+
+Migration pointer: new installs and profile defaults should target `kdco/flow`; keep `kdco/workspace` only for existing users or explicit legacy validation.
 
 ### Agents
 
 | Name | Description |
 |------|-------------|
+| conductor | Read-only flow orchestrator |
 | researcher | External research via MCP |
+| explorer | Temp-root clone only; read/git-metadata/cleanup through dedicated tools; no package managers/interpreters/build/test/executable runs from clones |
 | scribe | Documentation specialist |
 | coder | Code implementation |
+| plan-reviewer | Approves the saved plan before implementation |
+| qa-reviewer | Approves the final result before commit/PR/report |
 
 ### Plugins
 
 | Name | Description |
 |------|-------------|
+| flow-plugin | Flow state machine and gate rules |
 | background-agents | Async task execution |
 | notify | OS notifications |
 | workspace-plugin | Plan management |

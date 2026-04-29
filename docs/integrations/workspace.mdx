@@ -1,11 +1,11 @@
 ---
-title: "Workspace Bundle"
-description: "Bundled multi-agent orchestration harness for OpenCode — one install, complete control"
+title: "Flow Bundle"
+description: "Gated multi-agent orchestration harness for OpenCode — one install, complete control"
 ---
 
 ## Overview
 
-A curated collection of 16 components that work together as a complete AI development harness. Installing `kdco/workspace` gives you specialist agents, planning tools, code review workflows, notifications, and worktree isolation.
+A curated component bundle that works as a complete AI development harness. Installing `kdco/flow` gives you six distinct flow agents, planning tools, plan and QA gates, notifications, and worktree isolation. `kdco/workspace` remains available as a legacy/deprecated bundle only.
 
 ## Quick Start
 
@@ -18,7 +18,7 @@ ocx oc -p ws
 Or install directly into a project:
 
 ```bash
-ocx add kdco/workspace --from https://registry.kdco.dev
+ocx add kdco/flow --from https://registry.kdco.dev
 ```
 
 See the [KDCO Workspace Guide](/guides/kdco-workspace) for full installation and customization.
@@ -27,31 +27,29 @@ See the [KDCO Workspace Guide](/guides/kdco-workspace) for full installation and
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                          ORCHESTRATORS                           │
-│            ┌──────┐                    ┌───────┐                 │
-│            │ plan │                    │ build │                 │
-│            └──┬───┘                    └───┬───┘                 │
-└───────────────┼────────────────────────────┼─────────────────────┘
-                │                            │
-        ┌───────┴───────┐            ┌───────┴───────┐
-        ▼       ▼       ▼            ▼       ▼       ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                           SPECIALISTS                            │
-│  ┌─────────┐ ┌────────────┐ ┌───────┐ ┌────────┐ ┌──────────┐    │
-│  │ explore │ │ researcher │ │ coder │ │ scribe │ │ reviewer │    │
-│  └─────────┘ └────────────┘ └───────┘ └────────┘ └──────────┘    │
+│                         conductor                                │
+│  Intake → Research/Exploration → Plan Draft → Plan Review        │
+│  → Implementation → QA Review → Finalize → Done                  │
+└───────────────┬──────────────────────────────────────────────────┘
+                │ delegates through gated states
+┌───────────────┴──────────────────────────────────────────────────┐
+│                         FLOW AGENTS                              │
+│ researcher │ explorer │ plan-reviewer │ coder │ qa-reviewer      │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 | Role | Agents |
 |------|--------|
-| Orchestrators | `plan`, `build` |
-| Specialists | `explore`, `researcher`, `coder`, `scribe`, `reviewer` |
+| Flow orchestrator | `conductor` |
+| Flow specialists | `researcher`, `explorer`, `coder` |
+| Flow gates | `plan-reviewer`, `qa-reviewer` |
+| Legacy/internal compatibility phases | `plan`, `build` are configured for compatibility but are not counted as flow agents |
 
 ## Components
 
 | Category | Component | Description |
 |----------|-----------|-------------|
+| Plugin | flow-plugin | Flow state machine and gate-rule injection |
 | Plugin | workspace-plugin | Plan management, agent rule injection |
 | Plugin | [background-agents](/integrations/background-agents) | Capability-based background lifecycle (`delegate` for read-only sub-agents, `task` for write-capable) with durable markdown outputs |
 | Plugin | [notify](/integrations/notify) | OS notifications on completion |
@@ -62,10 +60,12 @@ See the [KDCO Workspace Guide](/guides/kdco-workspace) for full installation and
 | Skill | code-review | Review methodology + severity classification |
 | Skill | code-philosophy | Internal logic philosophy (5 Laws) |
 | Skill | frontend-philosophy | Visual/UI philosophy (5 Pillars) |
+| Agent | conductor | Main read-only orchestrator |
 | Agent | researcher | External research (MCP tools, read-only) |
+| Agent | explorer | Temp-root clone only; read/git-metadata/cleanup through dedicated tools; no package managers, interpreters, build/test tools, scripts, or arbitrary executables from clones |
 | Agent | coder | Implementation (full file + bash) |
-| Agent | scribe | Documentation (write, no bash) |
-| Agent | reviewer | Code review (read-only + git) |
+| Agent | plan-reviewer | Approves the saved plan before implementation (read-only) |
+| Agent | qa-reviewer | Approves the final result before commit/PR/report (read-only) |
 | Command | review | `/review` slash command |
 | MCP | context7, exa, gh_grep | Library docs, web search, GitHub code search |
 
@@ -76,13 +76,21 @@ The bundle configures security boundaries:
 | Scope | Setting |
 |-------|---------|
 | Global | `webfetch: deny` — no direct web fetching |
+| conductor | Main read-only orchestrator, delegates via `task`/`delegate` |
 | plan | Read-only orchestrator, delegates via `task` tool |
 | build | Read-only orchestrator, delegates via `task` tool |
-| explore | Read-only specialist, filesystem + git inspection only |
+| explorer | Read-only specialist, local and temp-root clone inspection only through `flow_explorer_*`; bash denied |
+| explore | Legacy compatibility specialist, filesystem + git inspection only |
 | researcher | Read-only, MCP tools only (Context7, Exa, GitHub Grep) |
 | coder | Full file + bash access |
 | scribe | File write only, no bash |
 | reviewer | Read-only + git inspection |
+| plan-reviewer | Read-only saved-plan approval gate before implementation |
+| qa-reviewer | Read-only QA gate before final report/commit/PR |
+
+## Fully Autonomous Mode
+
+When users intentionally launch OpenCode with a permission-skipping mode such as `--dangerously-skip-permissions`, the flow contract still applies: no human checkpoint occurs until `Done` or `Blocked`, terminal goals are `pr`, `commit`, or `report`, and explicit agent denies remain part of the harness boundary. A `pr` terminal goal targets `main` unless the user explicitly overrides the target branch.
 
 ## See Also
 

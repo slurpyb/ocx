@@ -22,10 +22,10 @@ ocx add kdco/background-agents --from https://registry.kdco.dev
 
 If you don't have OCX installed, install it from the [OCX repository](https://github.com/kdcokenny/ocx).
 
-**Optional:** Install `kdco-workspace` for the full experience—it bundles background agents with specialist agents, planning tools, and research protocols:
+**Optional:** Install `kdco/flow` for the full experience—it bundles background agents with specialist agents, planning tools, gated implementation, and QA protocols:
 
 ```bash
-ocx add kdco/workspace --from https://registry.kdco.dev
+ocx add kdco/flow --from https://registry.kdco.dev
 ```
 
 ## How It Works
@@ -127,7 +127,7 @@ If you prefer not to use OCX, copy the source files from [`src/`](./src) to `.op
 
 ## Part of the OCX Ecosystem
 
-This plugin is part of the [KDCO Registry](https://github.com/kdcokenny/ocx/tree/main/registry/src/kdco). For the full experience, check out [kdco-workspace](https://github.com/kdcokenny/ocx) which bundles background agents with specialist agents, planning tools, and notification support.
+This plugin is part of the [KDCO Registry](https://github.com/kdcokenny/ocx/tree/main/registry/src/kdco). For the full experience, use `kdco/flow`, which bundles background agents with specialist agents, planning tools, gate reviews, and notification support. The old `kdco/workspace` bundle is legacy/deprecated.
 
 ## Contributing
 

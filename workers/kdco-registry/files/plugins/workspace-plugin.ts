@@ -639,11 +639,13 @@ Today is ${today}. When searching for documentation, APIs, or external resources
 			// Plan save triggers reviewer delegation reminder
 			if (input.tool === "plan_save") {
 				output.output += `\n\n<system-reminder>
-Plan saved successfully. You MUST now delegate to the reviewer:
-1. Use the \`delegate\` tool to send the plan to the \`reviewer\` agent
-2. The reviewer will load \`plan-review\` and \`code-philosophy\` skills
-3. Use \`plan_read\` to get the plan content for the delegation prompt
-4. This is NON-BLOCKING - continue work while review runs in background
+Plan saved successfully. You MUST now request the appropriate plan gate before implementation:
+1. kdco/flow sessions: use \`plan_read\` and delegate the saved plan to \`plan-reviewer\`; implementation is BLOCKED until \`plan-reviewer\` returns \`APPROVE\`
+2. legacy kdco/workspace sessions: delegate to the \`reviewer\` agent for plan review
+3. The plan reviewer will load \`plan-review\` and \`code-philosophy\` skills
+4. If the reviewer returns \`REQUEST_CHANGES\`, update and save the plan, then review again
+
+Gate rule: do not start implementation from an unsaved plan or before plan approval.
 </system-reminder>`
 				return
 			}
@@ -656,10 +658,10 @@ Plan saved successfully. You MUST now delegate to the reviewer:
 
 			if (activeCoderCalls.size === 0) {
 				output.output += `\n\n<system-reminder>
-Coder task complete. Proceed to code review:
-1. Delegate to \`reviewer\` agent with the changed files
-2. Include findings in your completion report
-3. Offer to fix any critical/major issues found
+Coder task complete. Proceed to the appropriate final review gate:
+1. kdco/flow sessions: delegate to \`qa-reviewer\` with changed files and verification evidence; final commit, PR, or report is BLOCKED until \`qa-reviewer\` returns \`APPROVE\`
+2. legacy kdco/workspace sessions: delegate to \`reviewer\` agent with the changed files
+3. If critical/major issues or \`REQUEST_CHANGES\` are returned, delegate fixes before finalizing
 </system-reminder>`
 			}
 		},

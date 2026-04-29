@@ -8,8 +8,8 @@
 # One-time local setup
 ocx init
 
-# Install component directly from registry
-ocx add kdco/workspace --from https://registry.kdco.dev
+# Install the primary KDCO flow harness directly from registry
+ocx add kdco/flow --from https://registry.kdco.dev
 ```
 
 Or install a profile:
@@ -36,8 +36,11 @@ ocx search kdco/
 
 | Name | Description | Command |
 |------|-------------|---------|
-| workspace | Full KDCO experience | `ocx add kdco/workspace --from https://registry.kdco.dev` |
+| flow | Primary autonomous KDCO harness | `ocx add kdco/flow --from https://registry.kdco.dev` |
+| workspace | Legacy/deprecated KDCO Workspace harness | `ocx add kdco/workspace --from https://registry.kdco.dev` |
 | philosophy | Code quality philosophies | `ocx add kdco/philosophy --from https://registry.kdco.dev` |
+
+`kdco/workspace` remains available for existing users, but new installs should use `kdco/flow` or the `kit/ws` profile, which now depends on `kdco/flow`.
 
 ## Components
 
@@ -47,9 +50,13 @@ Install individually if you don't want the full bundle.
 
 | Name | Description | Command |
 |------|-------------|---------|
+| conductor | Read-only flow orchestrator | `ocx add kdco/conductor --from https://registry.kdco.dev` |
 | researcher | External research via MCP | `ocx add kdco/researcher --from https://registry.kdco.dev` |
+| explorer | Temp-root clone only; read/git-metadata/cleanup through dedicated tools; no package managers/interpreters/build/test/executable runs from clones | `ocx add kdco/explorer --from https://registry.kdco.dev` |
 | scribe | Documentation specialist | `ocx add kdco/scribe --from https://registry.kdco.dev` |
 | coder | Code implementation | `ocx add kdco/coder --from https://registry.kdco.dev` |
+| plan-reviewer | Approves the saved plan before implementation | `ocx add kdco/plan-reviewer --from https://registry.kdco.dev` |
+| qa-reviewer | Approves the final result before commit/PR/report | `ocx add kdco/qa-reviewer --from https://registry.kdco.dev` |
 
 ### Plugins
 
@@ -57,6 +64,7 @@ Install individually if you don't want the full bundle.
 |------|-------------|---------|
 | background-agents | Async task execution | `ocx add kdco/background-agents --from https://registry.kdco.dev` |
 | notify | OS notifications | `ocx add kdco/notify --from https://registry.kdco.dev` |
+| flow-plugin | Flow state machine and gate rules | `ocx add kdco/flow-plugin --from https://registry.kdco.dev` |
 | workspace-plugin | Plan management | `ocx add kdco/workspace-plugin --from https://registry.kdco.dev` |
 | worktree | Auto-manages Git worktrees for isolated AI sessions with seamless terminal spawning | `ocx add kdco/worktree --from https://registry.kdco.dev` |
 
