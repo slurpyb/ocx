@@ -284,9 +284,6 @@ async function runGitWithoutShell(args: string[], cwd?: string): Promise<string>
 
 	return [stdout, stderr].filter(Boolean).join("\n").trim()
 }
-
-// Explorer tool support for the conductor-led kdco/flow harness. Harness policy
-// lives in the conductor prompt; this plugin only exposes hardened sandbox tools.
 export const FlowPlugin: Plugin = async () => {
 	return {
 		tool: {

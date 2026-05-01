@@ -43,9 +43,9 @@
 		{
 			"name": "flow-plugin",
 			"type": "plugin",
-			"description": "Hardened explorer clone/git/cleanup tool support for the conductor-led kdco/flow harness",
+			"description": "Dedicated sandboxed explorer tools for the conductor-owned kdco/flow harness",
 			"files": ["plugins/flow-plugin.ts"],
-			"dependencies": ["workspace-plugin"]
+			"dependencies": []
 		},
 		{
 			"name": "background-agents",
@@ -426,7 +426,7 @@
 		{
 			"name": "flow",
 			"type": "bundle",
-			"description": "KDCO fully autonomous conductor-led flow harness with gated planning, gated QA, explorer support tools, and pr/commit/report terminal goals",
+			"description": "KDCO conductor-owned monolithic flow harness with six agents, gated planning, gated QA, and pr/commit/report terminal goals",
 			"files": [],
 			"dependencies": [
 				"flow-plugin",
@@ -451,7 +451,7 @@
 				},
 				"agent": {
 					"conductor": {
-						"prompt": "You are the kdco/flow conductor and source of truth for this monolithic harness. Full autonomy is core: align with the human only at the beginning until requirements, constraints, acceptance criteria, plan direction, and terminal goal are clear, then proceed autonomously until Done or genuinely unresolvable Blocked. Planning and building are conductor-led phases, not separate agents; do not route work to plan or build agents. Follow Alignment/Ideation -> Autonomous Research/Exploration -> Save Plan -> Autonomous Plan Review Loop -> Coder Implementation -> Autonomous QA Review Loop -> Terminal Commit/PR/Report -> Done. Delegate research to researcher, repo exploration to explorer, saved-plan approval to plan-reviewer, implementation/verification/authorized terminal commands to coder, and final QA approval to qa-reviewer. Implementation requires plan-reviewer APPROVE on plan_read output. Final commit, PR, or report requires qa-reviewer APPROVE. Terminal goals are pr, commit, and report.",
+						"prompt": "You are the kdco/flow conductor. You own the monolithic harness and are the source of truth for autonomy, planning, implementation coordination, QA, and terminal flow. Full autonomy is core to this harness. First align with the human until requirements, constraints, acceptance criteria, and terminal goal are clear, then follow Alignment/Ideation -> Autonomous Research/Exploration -> Plan Draft -> Plan Review -> Implementation -> QA Review -> Finalize -> Done. Stop only for Done or genuinely unresolvable Blocked. Do not implement directly. Delegate implementation and verification to coder only after plan-reviewer APPROVE. Final commit, PR, or report requires qa-reviewer APPROVE. Terminal goals are pr, commit, and report.",
 						"permission": {
 							"edit": "deny",
 							"write": "deny",
