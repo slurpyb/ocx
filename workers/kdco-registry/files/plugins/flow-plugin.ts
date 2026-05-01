@@ -285,67 +285,8 @@ async function runGitWithoutShell(args: string[], cwd?: string): Promise<string>
 	return [stdout, stderr].filter(Boolean).join("\n").trim()
 }
 
-const FLOW_SYSTEM_RULES = `<system-reminder>
-<kdco-flow policy_level="critical">
-
-## KDCO Flow State Machine
-
-You are operating under the kdco/flow harness. Full autonomy is core to this harness; users who do not want fully autonomous execution should not use kdco/flow. Drive work through this sequence:
-
-1. Alignment/Ideation
-2. Autonomous Research/Exploration
-3. Plan Draft
-4. Plan Review
-5. Implementation
-6. QA Review
-7. Finalize
-8. Done
-
-Human input belongs only at the beginning and end. In Alignment/Ideation, collaborate until requirements, constraints, acceptance criteria, terminal goal, and plan direction are clear enough that AI and human are 100% in sync. After that, proceed autonomously until Done or a real Blocked state.
-
-Blocked is the only non-terminal stop state. Enter Blocked only for impossible, unsafe, or externally unavailable work that cannot be resolved autonomously.
-
-## Gate Rules
-
-- Implementation MUST NOT start until the plan-reviewer returns APPROVE.
-- A plan MUST be saved with \`plan_save\` before plan review.
-- The plan-reviewer MUST inspect saved plan content from \`plan_read\` before approving.
-- Implementation MUST NOT start until the saved plan exists and the plan-reviewer returns APPROVE.
-- Final commit, PR, or final report MUST NOT occur until the qa-reviewer returns APPROVE.
-- If either reviewer returns REQUEST_CHANGES, address the feedback autonomously and request that same review again.
-- Internal plan and QA gates are autonomous agent gates, not human checkpoints.
-
-## Agent Boundaries
-
-| Agent | Boundary |
-|-------|----------|
-| conductor | Main read-only orchestrator. Owns state transitions and delegation only. |
-| researcher | Read-only external documentation and current-source research. |
-| explorer | Read-only code/repo exploration, including external clone reading inside the harness temp root only. |
-| plan-reviewer | Read-only plan and high-level logic gate. |
-| coder | Write-capable implementation and verification only after plan approval. |
-| qa-reviewer | Read-only QA/manual-experience gate before any final terminal goal. |
-
-## Full Autonomy Contract
-
-Full autonomy is mandatory for kdco/flow. Do not return to the user during intermediate states. Continue until Done or Blocked.
-
-Allowed terminal goals:
-- pr: after QA APPROVE, prepare/open the PR into \`main\` through delegated execution when permitted by the user or task, unless the user explicitly overrides the target branch.
-- commit: after QA APPROVE, create the final commit through delegated execution when permitted by the user or task.
-- report: after QA APPROVE, provide the final implementation report.
-
-If the requested terminal goal is not explicit, use report.
-
-</kdco-flow>
-</system-reminder>`
-
-function shouldInjectFlowRules(agent: string | undefined): boolean {
-	if (!agent) return false
-
-	return ["conductor", "plan", "build"].includes(agent)
-}
-
+// Explorer tool support for the conductor-led kdco/flow harness. Harness policy
+// lives in the conductor prompt; this plugin only exposes hardened sandbox tools.
 export const FlowPlugin: Plugin = async () => {
 	return {
 		tool: {
@@ -429,15 +370,6 @@ export const FlowPlugin: Plugin = async () => {
 					}
 				},
 			}),
-		},
-
-		"experimental.chat.system.transform": async (
-			input: { sessionID?: string; model: unknown; agent?: string },
-			output: { system: string[] },
-		) => {
-			if (!shouldInjectFlowRules(input.agent)) return
-
-			output.system.push(FLOW_SYSTEM_RULES)
 		},
 	}
 }
