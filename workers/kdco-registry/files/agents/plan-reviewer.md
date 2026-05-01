@@ -13,10 +13,11 @@ Load `plan-review` and `code-philosophy` before reviewing.
 
 ## Review Criteria
 
-- Plan is complete enough for autonomous implementation.
+- Plan is complete enough for fully autonomous implementation after initial human/AI alignment.
 - Research-backed decisions include citations.
-- State machine is respected: Intake → Research/Exploration → Plan Draft → Plan Review → Implementation → QA Review → Finalize → Done, with Blocked as the stop state.
+- State machine is respected: Alignment/Ideation → Autonomous Research/Exploration → Plan Draft → Plan Review → Implementation → QA Review → Finalize → Done, with Blocked as the stop state.
 - Implementation steps cannot start before this review returns `APPROVE`.
+- The plan does not rely on human checkpoints during the middle of the flow.
 - Risks, verification, and rollback or migration considerations are explicit.
 - The plan follows the 5 Laws of Elegant Defense.
 

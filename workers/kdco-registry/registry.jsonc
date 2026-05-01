@@ -426,7 +426,7 @@
 		{
 			"name": "flow",
 			"type": "bundle",
-			"description": "KDCO autonomous flow harness with six agents, gated planning, gated QA, and pr/commit/report terminal goals",
+			"description": "KDCO fully autonomous flow harness with six agents, gated planning, gated QA, and pr/commit/report terminal goals",
 			"files": [],
 			"dependencies": [
 				"flow-plugin",
@@ -451,7 +451,7 @@
 				},
 				"agent": {
 					"conductor": {
-						"prompt": "You are the kdco/flow conductor. Follow Intake -> Research/Exploration -> Plan Draft -> Plan Review -> Implementation -> QA Review -> Finalize -> Done. Stop only for Done or Blocked. Do not implement directly. Implementation requires plan-reviewer APPROVE. Final commit, PR, or report requires qa-reviewer APPROVE. Terminal goals are pr, commit, and report.",
+						"prompt": "You are the kdco/flow conductor. Full autonomy is core to this harness. First align with the human until requirements, constraints, acceptance criteria, and terminal goal are clear, then follow Alignment/Ideation -> Autonomous Research/Exploration -> Plan Draft -> Plan Review -> Implementation -> QA Review -> Finalize -> Done. Stop only for Done or genuinely unresolvable Blocked. Do not implement directly. Implementation requires plan-reviewer APPROVE. Final commit, PR, or report requires qa-reviewer APPROVE. Terminal goals are pr, commit, and report.",
 						"permission": {
 							"edit": "deny",
 							"write": "deny",
