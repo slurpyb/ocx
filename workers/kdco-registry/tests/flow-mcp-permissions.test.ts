@@ -1,0 +1,108 @@
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import { describe, expect, it } from "bun:test"
+import { parse } from "jsonc-parser"
+
+const registryPath = join(import.meta.dir, "..", "registry.jsonc")
+
+function readRegistry(): Record<string, unknown> {
+	const registryContents = readFileSync(registryPath, "utf8")
+	return parse(registryContents) as Record<string, unknown>
+}
+
+function readComponent(name: string): Record<string, unknown> {
+	const registry = readRegistry()
+	const components = registry.components
+
+	if (!Array.isArray(components)) {
+		throw new Error("Registry must define a components array.")
+	}
+
+	const component = components.find((candidate) => {
+		return typeof candidate === "object" && candidate !== null && (candidate as { name?: unknown }).name === name
+	})
+
+	if (!component || typeof component !== "object") {
+		throw new Error(`Registry component not found: ${name}`)
+	}
+
+	return component as Record<string, unknown>
+}
+
+function readNestedRecord(parent: Record<string, unknown>, key: string): Record<string, unknown> {
+	const child = parent[key]
+
+	if (!child || typeof child !== "object" || Array.isArray(child)) {
+		throw new Error(`Expected ${key} to be an object.`)
+	}
+
+	return child as Record<string, unknown>
+}
+
+const allowedGithubTools = [
+	"github_get_me",
+	"github_get_repository_tree",
+	"github_get_file_contents",
+	"github_search_code",
+	"github_search_repositories",
+	"github_get_commit",
+	"github_list_branches",
+	"github_list_commits",
+	"github_list_tags",
+	"github_search_issues",
+	"github_search_pull_requests",
+	"github_issue_read",
+	"github_pull_request_read",
+] as const
+
+describe("kdco/flow GitHub MCP explorer permissions", () => {
+	it("uses hosted GitHub MCP in read-only mode with exact tool narrowing", () => {
+		const explorer = readComponent("explorer")
+		const opencode = readNestedRecord(explorer, "opencode")
+		const mcp = readNestedRecord(opencode, "mcp")
+		const github = readNestedRecord(mcp, "github")
+		const headers = readNestedRecord(github, "headers")
+
+		expect(github.type).toBe("remote")
+		expect(github.url).toBe("https://api.githubcopilot.com/mcp/")
+		expect(headers["X-MCP-Readonly"]).toBe("true")
+		expect(headers["X-MCP-Tools"]).toBe(
+			allowedGithubTools.map((tool) => tool.replace(/^github_/, "")).join(","),
+		)
+	})
+
+	it("denies GitHub MCP globally and allows only documented read-only explorer tools", () => {
+		const explorer = readComponent("explorer")
+		const opencode = readNestedRecord(explorer, "opencode")
+		const globalPermission = readNestedRecord(opencode, "permission")
+		const agents = readNestedRecord(opencode, "agent")
+		const explorerAgent = readNestedRecord(agents, "explorer")
+		const explorerPermission = readNestedRecord(explorerAgent, "permission")
+
+		expect(globalPermission["github_*"]).toBe("deny")
+
+		const githubPermissions = Object.entries(explorerPermission).filter(([toolName]) => toolName.startsWith("github_"))
+		expect(githubPermissions).toEqual(allowedGithubTools.map((toolName) => [toolName, "allow"]))
+	})
+
+	it("keeps the flow bundle free of the removed custom explorer plugin", () => {
+		const registry = readRegistry()
+		const components = registry.components
+
+		if (!Array.isArray(components)) {
+			throw new Error("Registry must define a components array.")
+		}
+
+		const componentNames = components.map((component) => (component as { name?: unknown }).name)
+		const flow = readComponent("flow")
+		const dependencies = flow.dependencies
+		const removedCustomExplorerPluginName = ["flow", "plugin"].join("-")
+
+		if (!Array.isArray(dependencies)) {
+			throw new Error("Flow bundle must define dependencies.")
+		}
+
+		expect(componentNames).not.toContain(removedCustomExplorerPluginName)
+		expect(dependencies).not.toContain(removedCustomExplorerPluginName)
+	})
+})

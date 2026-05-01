@@ -41,13 +41,6 @@
 			"npmDevDependencies": ["zod@4.3.5"]
 		},
 		{
-			"name": "flow-plugin",
-			"type": "plugin",
-			"description": "Dedicated sandboxed explorer tools for the conductor-owned kdco/flow harness",
-			"files": ["plugins/flow-plugin.ts"],
-			"dependencies": []
-		},
-		{
 			"name": "background-agents",
 			"type": "plugin",
 			"description": "Background agent execution - run async tasks while you work",
@@ -246,14 +239,39 @@
 		{
 			"name": "explorer",
 			"type": "agent",
-			"description": "Read-only kdco/flow explorer for local and sandboxed external repository discovery",
+			"description": "Read-only kdco/flow explorer for local and GitHub MCP repository discovery",
 			"files": ["agents/explorer.md"],
 			"dependencies": ["background-agents"],
 			"opencode": {
+				"mcp": {
+					"github": {
+						"type": "remote",
+						"url": "https://api.githubcopilot.com/mcp/",
+						"headers": {
+							"X-MCP-Readonly": "true",
+							"X-MCP-Tools": "get_me,get_repository_tree,get_file_contents,search_code,search_repositories,get_commit,list_branches,list_commits,list_tags,search_issues,search_pull_requests,issue_read,pull_request_read"
+						}
+					}
+				},
+				"permission": {
+					"github_*": "deny"
+				},
 				"agent": {
 					"explorer": {
 						"permission": {
-							"flow_explorer_*": "allow",
+							"github_get_me": "allow",
+							"github_get_repository_tree": "allow",
+							"github_get_file_contents": "allow",
+							"github_search_code": "allow",
+							"github_search_repositories": "allow",
+							"github_get_commit": "allow",
+							"github_list_branches": "allow",
+							"github_list_commits": "allow",
+							"github_list_tags": "allow",
+							"github_search_issues": "allow",
+							"github_search_pull_requests": "allow",
+							"github_issue_read": "allow",
+							"github_pull_request_read": "allow",
 							"read": "allow",
 							"glob": "allow",
 							"grep": "allow",
@@ -429,7 +447,6 @@
 			"description": "KDCO conductor-owned monolithic flow harness with six agents, gated planning, gated QA, and pr/commit/report terminal goals",
 			"files": [],
 			"dependencies": [
-				"flow-plugin",
 				"plan-protocol",
 				"conductor",
 				"researcher",
@@ -447,7 +464,7 @@
 				"permission": {
 					"webfetch": "deny",
 					"worktree_*": "deny",
-					"flow_explorer_*": "deny"
+					"github_*": "deny"
 				},
 				"agent": {
 					"conductor": {
