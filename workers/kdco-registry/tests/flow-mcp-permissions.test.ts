@@ -135,6 +135,8 @@ describe("kdco/flow GitHub MCP explorer permissions", () => {
 
 		expect(github.type).toBe("remote")
 		expect(github.url).toBe("https://api.githubcopilot.com/mcp/")
+		expect(github.oauth).toBe(false)
+		expect(headers.Authorization).toBe("Bearer {env:GITHUB_PERSONAL_ACCESS_TOKEN}")
 		expect(headers["X-MCP-Readonly"]).toBe("true")
 		expect(headers["X-MCP-Tools"]).toBe(
 			allowedGithubTools.map((tool) => tool.replace(/^github_/, "")).join(","),

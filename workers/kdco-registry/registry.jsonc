@@ -257,7 +257,9 @@
 					"github": {
 						"type": "remote",
 						"url": "https://api.githubcopilot.com/mcp/",
+						"oauth": false,
 						"headers": {
+							"Authorization": "Bearer {env:GITHUB_PERSONAL_ACCESS_TOKEN}",
 							"X-MCP-Readonly": "true",
 							"X-MCP-Tools": "get_me,get_repository_tree,get_file_contents,search_code,search_repositories,get_commit,list_branches,list_commits,list_tags,search_issues,search_pull_requests,issue_read,pull_request_read"
 						}
