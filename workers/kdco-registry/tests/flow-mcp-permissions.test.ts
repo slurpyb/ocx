@@ -85,6 +85,40 @@ describe("kdco/flow GitHub MCP explorer permissions", () => {
 		expect(githubPermissions).toEqual(allowedGithubTools.map((toolName) => [toolName, "allow"]))
 	})
 
+	it("allows only explorer to use the minimal clone cleanup primitive", () => {
+		const explorer = readComponent("explorer")
+		const opencode = readNestedRecord(explorer, "opencode")
+		const globalPermission = readNestedRecord(opencode, "permission")
+		const agents = readNestedRecord(opencode, "agent")
+		const explorerAgent = readNestedRecord(agents, "explorer")
+		const explorerPermission = readNestedRecord(explorerAgent, "permission")
+
+		expect(globalPermission["explorer_clone*"]).toBe("deny")
+		expect(explorerPermission.explorer_clone).toBe("allow")
+		expect(explorerPermission.explorer_clone_cleanup).toBe("allow")
+
+		const clonePermissions = Object.keys(explorerPermission).filter((toolName) => toolName.startsWith("explorer_clone"))
+		expect(clonePermissions.sort()).toEqual(["explorer_clone", "explorer_clone_cleanup"])
+	})
+
+	it("ships the narrow explorer clone plugin in kdco/flow without a broad git wrapper", () => {
+		const explorerClone = readComponent("explorer-clone")
+		const flow = readComponent("flow")
+		const explorer = readComponent("explorer")
+		const dependencies = flow.dependencies
+		const explorerDependencies = explorer.dependencies
+
+		if (!Array.isArray(dependencies) || !Array.isArray(explorerDependencies)) {
+			throw new Error("Flow and explorer components must define dependencies.")
+		}
+
+		expect(explorerClone.files).toEqual(["plugins/explorer-clone.ts"])
+		expect(dependencies).toContain("explorer-clone")
+		expect(explorerDependencies).toContain("explorer-clone")
+		expect(dependencies).not.toContain(["flow", "plugin"].join("-"))
+		expect(dependencies).not.toContain(["flow", "explorer", "git"].join("_"))
+	})
+
 	it("keeps the flow bundle free of the removed custom explorer plugin", () => {
 		const registry = readRegistry()
 		const components = registry.components

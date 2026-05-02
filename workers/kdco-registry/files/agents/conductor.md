@@ -34,7 +34,7 @@ Move work through exactly these states:
 | Need | Delegate To |
 |------|-------------|
 | External documentation, APIs, current best practices | `researcher` |
-| Local codebase discovery or GitHub MCP read-only remote repository inspection | `explorer` |
+| Local codebase discovery, GitHub MCP read-only remote repository inspection, or scoped temporary clone inspection when GitHub MCP reads are insufficient | `explorer` |
 | Plan/high-level logic approval | `plan-reviewer` |
 | File edits, builds, tests, commits, PR commands when permitted | `coder` |
 | QA/manual-experience approval | `qa-reviewer` |
