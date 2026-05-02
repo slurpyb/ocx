@@ -2,6 +2,16 @@ import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { buildRegistry } from "ocx"
 
+const registryRootDir = path.resolve(import.meta.dir, "..")
+const registryDistDir = path.resolve(registryRootDir, "dist")
+const relativeDistPath = path.relative(registryRootDir, registryDistDir)
+
+if (relativeDistPath !== "dist") {
+	throw new Error(`Refusing to clean unexpected dist path: ${registryDistDir}`)
+}
+
+await fs.rm(registryDistDir, { recursive: true, force: true })
+
 const result = await buildRegistry({
 	source: ".",
 	out: "dist",
