@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process"
 import { lstat, mkdir, realpath, rm } from "node:fs/promises"
+import type { Stats } from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
 import { promisify } from "node:util"
@@ -23,6 +24,11 @@ export interface ParsedCloneRequest extends ParsedRepository {
 export interface ResolvedCloneTarget extends ParsedRepository {
 	readonly tempRoot: string
 	readonly clonePath: string
+}
+
+interface SafePathCheck {
+	readonly absolutePath: string
+	readonly kind: "explorer temp root" | "owner directory" | "clone directory"
 }
 
 function rejectInvalidGitHubName(kind: "owner" | "repo", value: string): void {
@@ -106,6 +112,65 @@ export function parseExplorerCloneRequest(owner: string, repo: string, ref?: str
 	}
 }
 
+function isNotFoundError(error: unknown): boolean {
+	return error instanceof Error && "code" in error && error.code === "ENOENT"
+}
+
+async function lstatIfExists(absolutePath: string): Promise<Stats | undefined> {
+	try {
+		return await lstat(absolutePath)
+	} catch (error) {
+		if (isNotFoundError(error)) return undefined
+
+		throw error
+	}
+}
+
+async function assertExistingRealDirectory({ absolutePath, kind }: SafePathCheck): Promise<void> {
+	const stats = await lstat(absolutePath)
+
+	if (stats.isSymbolicLink()) {
+		throw new Error(`${kind} cannot be a symbolic link.`)
+	}
+
+	if (!stats.isDirectory()) {
+		throw new Error(`${kind} must be a directory.`)
+	}
+
+	const realDirectoryPath = await realpath(absolutePath)
+	if (realDirectoryPath !== absolutePath) {
+		throw new Error(`${kind} must realpath to its exact scoped path.`)
+	}
+}
+
+async function assertOptionalRealDirectory({ absolutePath, kind }: SafePathCheck): Promise<void> {
+	const stats = await lstatIfExists(absolutePath)
+	if (!stats) return
+
+	if (stats.isSymbolicLink()) {
+		throw new Error(`${kind} cannot be a symbolic link.`)
+	}
+
+	if (!stats.isDirectory()) {
+		throw new Error(`${kind} must be a directory.`)
+	}
+
+	const realDirectoryPath = await realpath(absolutePath)
+	if (realDirectoryPath !== absolutePath) {
+		throw new Error(`${kind} must realpath to its exact scoped path.`)
+	}
+}
+
+async function ensureSafeTempRoot(requestedTempRoot: string): Promise<string> {
+	const existingTempRoot = await lstatIfExists(requestedTempRoot)
+	if (!existingTempRoot) {
+		await mkdir(requestedTempRoot, { recursive: false })
+	}
+
+	await assertExistingRealDirectory({ absolutePath: requestedTempRoot, kind: "explorer temp root" })
+	return requestedTempRoot
+}
+
 function ensureExactCloneDepth(tempRoot: string, clonePath: string): void {
 	const relativeClonePath = path.relative(tempRoot, clonePath)
 	const pathSegments = relativeClonePath.split(path.sep)
@@ -121,10 +186,9 @@ function ensureExactCloneDepth(tempRoot: string, clonePath: string): void {
 
 export async function resolveExplorerCloneTarget(owner: string, repo: string): Promise<ResolvedCloneTarget> {
 	const parsedRepository = parseExplorerRepository(owner, repo)
-	const requestedTempRoot = path.join(os.tmpdir(), TEMP_ROOT_NAME)
-	await mkdir(requestedTempRoot, { recursive: true })
-
-	const tempRoot = await realpath(requestedTempRoot)
+	const requestedTempRoot = path.join(await realpath(os.tmpdir()), TEMP_ROOT_NAME)
+	const tempRoot = await ensureSafeTempRoot(requestedTempRoot)
+	const ownerPath = path.join(tempRoot, parsedRepository.owner)
 	const clonePath = path.join(tempRoot, parsedRepository.owner, parsedRepository.repo)
 	const normalizedClonePath = path.normalize(clonePath)
 
@@ -133,6 +197,8 @@ export async function resolveExplorerCloneTarget(owner: string, repo: string): P
 	}
 
 	ensureExactCloneDepth(tempRoot, clonePath)
+	await assertOptionalRealDirectory({ absolutePath: ownerPath, kind: "owner directory" })
+	await assertOptionalRealDirectory({ absolutePath: clonePath, kind: "clone directory" })
 
 	return { ...parsedRepository, tempRoot, clonePath }
 }
@@ -154,16 +220,7 @@ export async function assertSafeCleanupTarget(target: ResolvedCloneTarget): Prom
 }
 
 async function pathExists(absolutePath: string): Promise<boolean> {
-	try {
-		await lstat(absolutePath)
-		return true
-	} catch (error) {
-		if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-			return false
-		}
-
-		throw error
-	}
+	return (await lstatIfExists(absolutePath)) !== undefined
 }
 
 async function runGit(args: readonly string[], cwd?: string): Promise<void> {
@@ -174,13 +231,37 @@ async function runGit(args: readonly string[], cwd?: string): Promise<void> {
 	})
 }
 
-async function cloneRepository(request: ParsedCloneRequest, target: ResolvedCloneTarget): Promise<void> {
-	await mkdir(path.dirname(target.clonePath), { recursive: true })
+export async function prepareFreshCloneDirectory(target: ResolvedCloneTarget): Promise<void> {
+	await assertExistingRealDirectory({ absolutePath: target.tempRoot, kind: "explorer temp root" })
+
+	const ownerPath = path.dirname(target.clonePath)
+	await assertOptionalRealDirectory({ absolutePath: ownerPath, kind: "owner directory" })
+	await assertOptionalRealDirectory({ absolutePath: target.clonePath, kind: "clone directory" })
+
+	if (!(await pathExists(ownerPath))) {
+		await mkdir(ownerPath, { recursive: false })
+		await assertExistingRealDirectory({ absolutePath: ownerPath, kind: "owner directory" })
+	}
 
 	if (!(await pathExists(target.clonePath))) {
-		const githubUrl = `https://github.com/${request.owner}/${request.repo}.git`
-		await runGit(["clone", "--", githubUrl, target.clonePath])
+		return
 	}
+
+	const cleanupPath = await assertSafeCleanupTarget(target)
+	await rm(cleanupPath, { recursive: true, force: false })
+
+	if (await pathExists(target.clonePath)) {
+		throw new Error("clone directory still exists after cleanup.")
+	}
+}
+
+async function cloneRepository(request: ParsedCloneRequest, target: ResolvedCloneTarget): Promise<void> {
+	await prepareFreshCloneDirectory(target)
+
+	const githubUrl = `https://github.com/${request.owner}/${request.repo}.git`
+	await runGit(["clone", "--", githubUrl, target.clonePath])
+
+	await assertExistingRealDirectory({ absolutePath: target.clonePath, kind: "clone directory" })
 
 	if (!request.ref) return
 
