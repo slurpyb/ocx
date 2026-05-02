@@ -56,7 +56,21 @@ const allowedGithubTools = [
 	"github_pull_request_read",
 ] as const
 
+const allowedExternalResearchPermissions = ["context7_*", "exa_*", "gh_grep_*"] as const
+
 describe("kdco/flow GitHub MCP explorer permissions", () => {
+	it("uses explorer as the only flow discovery and research agent", () => {
+		const flow = readComponent("flow")
+		const dependencies = flow.dependencies
+
+		if (!Array.isArray(dependencies)) {
+			throw new Error("Flow bundle must define dependencies.")
+		}
+
+		expect(dependencies).toContain("explorer")
+		expect(dependencies).not.toContain("researcher")
+	})
+
 	it("keeps the conductor prompt in the agent markdown instead of the flow bundle config", () => {
 		const flow = readComponent("flow")
 		const opencode = readNestedRecord(flow, "opencode")
@@ -70,6 +84,31 @@ describe("kdco/flow GitHub MCP explorer permissions", () => {
 		expect(conductorMarkdown).toContain("GitHub MCP read-only tools first")
 		expect(conductorMarkdown).toContain("plan-reviewer")
 		expect(conductorMarkdown).toContain("qa-reviewer")
+	})
+
+	it("moves external research MCP access onto the read-only explorer", () => {
+		const explorer = readComponent("explorer")
+		const flow = readComponent("flow")
+		const opencode = readNestedRecord(explorer, "opencode")
+		const mcp = readNestedRecord(opencode, "mcp")
+		const globalPermission = readNestedRecord(opencode, "permission")
+		const flowOpencode = readNestedRecord(flow, "opencode")
+		const flowGlobalPermission = readNestedRecord(flowOpencode, "permission")
+		const agents = readNestedRecord(opencode, "agent")
+		const explorerAgent = readNestedRecord(agents, "explorer")
+		const explorerPermission = readNestedRecord(explorerAgent, "permission")
+
+		expect(mcp.context7).toBe("https://mcp.context7.com/mcp")
+		expect(mcp.exa).toBe("https://mcp.exa.ai/mcp")
+		expect(mcp.gh_grep).toBe("https://mcp.grep.app")
+		expect(flowGlobalPermission.webfetch).toBe("deny")
+		expect(explorerPermission.webfetch).toBe("allow")
+		expect(explorerPermission["kagi_*"]).toBe("deny")
+
+		for (const permissionName of allowedExternalResearchPermissions) {
+			expect(globalPermission[permissionName]).toBe("deny")
+			expect(explorerPermission[permissionName]).toBe("allow")
+		}
 	})
 
 	it("uses hosted GitHub MCP in read-only mode with exact tool narrowing", () => {

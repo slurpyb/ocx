@@ -246,11 +246,14 @@
 		{
 			"name": "explorer",
 			"type": "agent",
-			"description": "Read-only kdco/flow explorer for local and GitHub MCP repository discovery",
+			"description": "Read-only kdco/flow explorer for local, external research, and GitHub MCP discovery",
 			"files": ["agents/explorer.md"],
 			"dependencies": ["background-agents", "explorer-clone"],
 			"opencode": {
 				"mcp": {
+					"context7": "https://mcp.context7.com/mcp",
+					"exa": "https://mcp.exa.ai/mcp",
+					"gh_grep": "https://mcp.grep.app",
 					"github": {
 						"type": "remote",
 						"url": "https://api.githubcopilot.com/mcp/",
@@ -261,12 +264,21 @@
 					}
 				},
 				"permission": {
+					"context7_*": "deny",
+					"exa_*": "deny",
+					"gh_grep_*": "deny",
+					"kagi_*": "deny",
 					"github_*": "deny",
 					"explorer_clone*": "deny"
 				},
 				"agent": {
 					"explorer": {
 						"permission": {
+							"context7_*": "allow",
+							"exa_*": "allow",
+							"gh_grep_*": "allow",
+							"kagi_*": "deny",
+							"webfetch": "allow",
 							"explorer_clone": "allow",
 							"explorer_clone_cleanup": "allow",
 							"github_get_me": "allow",
@@ -454,13 +466,12 @@
 		{
 			"name": "flow",
 			"type": "bundle",
-			"description": "KDCO conductor-owned monolithic flow harness with six agents, gated planning, gated QA, and pr/commit/report terminal goals",
+			"description": "KDCO conductor-owned monolithic flow harness with five agents, gated planning, gated QA, and pr/commit/report terminal goals",
 			"files": [],
 			"dependencies": [
 				"plan-protocol",
 				"explorer-clone",
 				"conductor",
-				"researcher",
 				"explorer",
 				"coder",
 				"plan-reviewer",
