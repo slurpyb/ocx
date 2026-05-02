@@ -4,6 +4,7 @@ import { describe, expect, it } from "bun:test"
 import { parse } from "jsonc-parser"
 
 const registryPath = join(import.meta.dir, "..", "registry.jsonc")
+const conductorAgentPath = join(import.meta.dir, "..", "files", "agents", "conductor.md")
 
 function readRegistry(): Record<string, unknown> {
 	const registryContents = readFileSync(registryPath, "utf8")
@@ -56,6 +57,21 @@ const allowedGithubTools = [
 ] as const
 
 describe("kdco/flow GitHub MCP explorer permissions", () => {
+	it("keeps the conductor prompt in the agent markdown instead of the flow bundle config", () => {
+		const flow = readComponent("flow")
+		const opencode = readNestedRecord(flow, "opencode")
+		const agents = readNestedRecord(opencode, "agent")
+		const conductor = readNestedRecord(agents, "conductor")
+		const conductorMarkdown = readFileSync(conductorAgentPath, "utf8")
+
+		expect(conductor.prompt).toBeUndefined()
+		expect(conductorMarkdown).toContain("You are the kdco/flow conductor")
+		expect(conductorMarkdown).toContain("full autonomy after the initial human/AI alignment phase")
+		expect(conductorMarkdown).toContain("GitHub MCP read-only tools first")
+		expect(conductorMarkdown).toContain("plan-reviewer")
+		expect(conductorMarkdown).toContain("qa-reviewer")
+	})
+
 	it("uses hosted GitHub MCP in read-only mode with exact tool narrowing", () => {
 		const explorer = readComponent("explorer")
 		const opencode = readNestedRecord(explorer, "opencode")

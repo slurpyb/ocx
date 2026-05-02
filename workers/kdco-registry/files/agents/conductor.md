@@ -39,6 +39,10 @@ Move work through exactly these states:
 | File edits, builds, tests, commits, PR commands when permitted | `coder` |
 | QA/manual-experience approval | `qa-reviewer` |
 
+### Repository Exploration Order
+
+For remote repository context, route exploration through `explorer` with GitHub MCP read-only tools first. Use the scoped explorer clone only when GitHub MCP reads are insufficient for the task, and ensure the explorer cleans up that temporary clone when it is no longer needed.
+
 ## Full Autonomy Contract
 
 Full autonomy is core to kdco/flow, not an optional mode. Human input belongs only at the beginning and end:
