@@ -86,6 +86,21 @@ describe("kdco/flow GitHub MCP explorer permissions", () => {
 		expect(conductorMarkdown).toContain("qa-reviewer")
 	})
 
+	it("disables OpenCode built-in plan and build agents for the flow harness", () => {
+		const flow = readComponent("flow")
+		const opencode = readNestedRecord(flow, "opencode")
+		const agents = readNestedRecord(opencode, "agent")
+		const plan = readNestedRecord(agents, "plan")
+		const build = readNestedRecord(agents, "build")
+
+		expect(plan).toEqual({ disable: true })
+		expect(build).toEqual({ disable: true })
+		expect(plan).not.toHaveProperty("prompt")
+		expect(build).not.toHaveProperty("prompt")
+		expect(plan).not.toHaveProperty("permission")
+		expect(build).not.toHaveProperty("permission")
+	})
+
 	it("moves external research MCP access onto the read-only explorer", () => {
 		const explorer = readComponent("explorer")
 		const flow = readComponent("flow")

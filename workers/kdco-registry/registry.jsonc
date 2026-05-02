@@ -490,6 +490,12 @@
 					"explorer_clone*": "deny"
 				},
 				"agent": {
+					"plan": {
+						"disable": true
+					},
+					"build": {
+						"disable": true
+					},
 					"conductor": {
 						"permission": {
 							"edit": "deny",
