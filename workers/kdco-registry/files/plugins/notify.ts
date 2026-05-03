@@ -26,8 +26,6 @@ import type { Plugin } from "@opencode-ai/plugin"
 import type { Event } from "@opencode-ai/sdk"
 // @ts-expect-error - installed at runtime by OCX
 import detectTerminal from "detect-terminal"
-// @ts-expect-error - installed at runtime by OCX
-import notifier from "node-notifier"
 import type { OpencodeClient } from "./kdco-primitives/types"
 import { sendNotificationWithFallback } from "./notify/backend"
 import {
@@ -42,6 +40,11 @@ import {
 	getCmuxSessionStatusText,
 	type CmuxSessionStatusTransition,
 } from "./notify/status"
+import {
+	isTermuxEnvironment,
+	sendTermuxNotification,
+	type TermuxNotificationConfig,
+} from "./notify/termux"
 import { parseOscTitleContext, writeOscTitleBestEffort } from "./notify/title"
 
 interface NotifyConfig {
@@ -62,6 +65,8 @@ interface NotifyConfig {
 	}
 	/** Override terminal detection (optional) */
 	terminal?: string
+	/** Android Termux notification integration */
+	termux: TermuxNotificationConfig
 }
 
 interface TerminalInfo {
@@ -81,6 +86,13 @@ const DEFAULT_CONFIG: NotifyConfig = {
 		enabled: false,
 		start: "22:00",
 		end: "08:00",
+	},
+	termux: {
+		enabled: true,
+		notificationCommand: "termux-notification",
+		launchCommand: "am",
+		launchActivity: "com.termux/com.termux.app.TermuxActivity",
+		timeoutMs: 1500,
 	},
 }
 
@@ -122,6 +134,10 @@ async function loadConfig(): Promise<NotifyConfig> {
 			quietHours: {
 				...DEFAULT_CONFIG.quietHours,
 				...userConfig.quietHours,
+			},
+			termux: {
+				...DEFAULT_CONFIG.termux,
+				...userConfig.termux,
 			},
 		}
 	} catch {
@@ -245,7 +261,14 @@ interface NotificationOptions {
 
 interface NotificationRuntime {
 	preferCmux: boolean
+	preferTermux: boolean
 }
+
+type NodeNotifier = {
+	notify: (options: Record<string, unknown>) => void
+}
+
+let nodeNotifierPromise: Promise<NodeNotifier | null> | null = null
 
 const QUESTION_DEDUPE_WINDOW_MS = 1500
 const READY_DEDUPE_WINDOW_MS = 1500
@@ -384,8 +407,30 @@ function buildPermissionEventDedupeKey(properties: unknown): string | null {
 	return `permission:request:${normalizedRequestID}`
 }
 
-function sendNodeNotification(options: NotificationOptions): void {
+async function loadNodeNotifier(): Promise<NodeNotifier | null> {
+	if (nodeNotifierPromise) return nodeNotifierPromise
+
+	nodeNotifierPromise = (async () => {
+		try {
+			// @ts-expect-error - installed at runtime by OCX; lazy-loaded so Termux/manual installs do not fail at plugin import time
+			const module = await import("node-notifier")
+			const candidate = module.default ?? module
+
+			if (!candidate || typeof candidate.notify !== "function") return null
+
+			return candidate as NodeNotifier
+		} catch {
+			return null
+		}
+	})()
+
+	return nodeNotifierPromise
+}
+
+async function sendNodeNotification(options: NotificationOptions): Promise<void> {
 	const { title, message, sound, terminalInfo } = options
+	const nodeNotifier = await loadNodeNotifier()
+	if (!nodeNotifier) return
 
 	// Base notification options
 	const notifyOptions: Record<string, unknown> = {
@@ -399,15 +444,29 @@ function sendNodeNotification(options: NotificationOptions): void {
 		notifyOptions.activate = terminalInfo.bundleId
 	}
 
-	notifier.notify(notifyOptions)
+	try {
+		nodeNotifier.notify(notifyOptions)
+	} catch {
+		// Notification delivery is best-effort; event handling must remain stable.
+	}
 }
 
 async function sendNotification(
 	options: NotificationOptions,
+	config: NotifyConfig,
 	runtime: NotificationRuntime,
 ): Promise<void> {
 	await sendNotificationWithFallback({
+		preferTermux: runtime.preferTermux,
 		preferCmux: runtime.preferCmux,
+		tryTermuxNotify: () =>
+			sendTermuxNotification(
+				{
+					title: options.title,
+					body: options.message,
+				},
+				config.termux,
+			),
 		tryCmuxNotify: () =>
 			sendCmuxNotification({
 				title: options.title,
@@ -461,6 +520,7 @@ async function handleSessionIdle(
 			sound: config.sounds.idle,
 			terminalInfo,
 		},
+		config,
 		notificationRuntime,
 	)
 }
@@ -494,6 +554,7 @@ async function handleSessionError(
 			sound: config.sounds.error,
 			terminalInfo,
 		},
+		config,
 		notificationRuntime,
 	)
 }
@@ -519,6 +580,7 @@ async function handlePermissionUpdated(
 			sound: config.sounds.permission,
 			terminalInfo,
 		},
+		config,
 		notificationRuntime,
 	)
 }
@@ -540,6 +602,7 @@ async function handleQuestionAsked(
 			sound,
 			terminalInfo,
 		},
+		config,
 		notificationRuntime,
 	)
 }
@@ -558,6 +621,7 @@ export const NotifyPlugin: Plugin = async (ctx) => {
 	const terminalInfo = await detectTerminalInfo(config)
 	const notificationRuntime: NotificationRuntime = {
 		preferCmux: canUseCmuxNotification(),
+		preferTermux: isTermuxEnvironment(),
 	}
 	const oscTitleContext = parseOscTitleContext()
 	const shouldSuppressCmuxSessionStatusWrites = oscTitleContext?.mayWriteOscTitle === true

@@ -63,6 +63,7 @@
 				"plugins/notify/backend.ts",
 				"plugins/notify/cmux.ts",
 				"plugins/notify/status.ts",
+				"plugins/notify/termux.ts",
 				"plugins/notify/title.ts"
 			],
 			"dependencies": ["kdco-primitives"],

@@ -1,12 +1,23 @@
 interface NotifyBackendOptions {
+	preferTermux?: boolean
 	preferCmux: boolean
+	tryTermuxNotify?: () => Promise<boolean>
 	tryCmuxNotify: () => Promise<boolean>
-	sendNodeNotify: () => void
+	sendNodeNotify: () => Promise<void> | void
 }
 
 export async function sendNotificationWithFallback(options: NotifyBackendOptions): Promise<void> {
+	if (options.preferTermux && options.tryTermuxNotify) {
+		try {
+			const sentViaTermux = await options.tryTermuxNotify()
+			if (sentViaTermux) return
+		} catch {
+			// Fall through to cmux/node-notifier fallback
+		}
+	}
+
 	if (!options.preferCmux) {
-		options.sendNodeNotify()
+		await options.sendNodeNotify()
 		return
 	}
 
@@ -17,5 +28,5 @@ export async function sendNotificationWithFallback(options: NotifyBackendOptions
 		// Fall through to node-notifier fallback
 	}
 
-	options.sendNodeNotify()
+	await options.sendNodeNotify()
 }

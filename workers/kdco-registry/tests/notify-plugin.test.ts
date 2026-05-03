@@ -54,6 +54,8 @@ beforeEach(() => {
 	delete process.env.CMUX_SOCKET_PATH
 	delete process.env.CMUX_SOCKET_MODE
 	delete process.env.OCX_TITLE_CONTEXT
+	delete process.env.TERMUX_VERSION
+	delete process.env.PREFIX
 })
 
 afterEach(() => {
@@ -152,6 +154,74 @@ function decodeOscTitleWrite(chunk: unknown): string | null {
 }
 
 describe("notify plugin event compatibility and dedupe", () => {
+	it("routes notifications through termux-notification before desktop notifier in Termux", async () => {
+		process.env.TERMUX_VERSION = "0.118.1"
+		process.env.PREFIX = "/data/data/com.termux/files/usr"
+
+		const commands: string[][] = []
+		spyOn(Bun, "spawn").mockImplementation((command: string[]) => {
+			commands.push(command)
+			return {
+				exited: Promise.resolve(0),
+			} as ReturnType<typeof Bun.spawn>
+		})
+
+		const { hooks } = await createPlugin()
+
+		await emitEvent(hooks, {
+			type: "permission.asked",
+			properties: {
+				id: "perm-termux",
+				sessionID: "session-a",
+				permission: "bash",
+				patterns: [],
+				metadata: {},
+				always: [],
+			},
+		})
+
+		expect(commands).toEqual([
+			[
+				"termux-notification",
+				"--title",
+				"Waiting for you",
+				"--content",
+				"OpenCode needs your input",
+				"--action",
+				"am start -n com.termux/com.termux.app.TermuxActivity",
+			],
+		])
+		expect(notificationPayloads).toHaveLength(0)
+	})
+
+	it("falls back to desktop notifier when termux-notification fails", async () => {
+		process.env.TERMUX_VERSION = "0.118.1"
+		process.env.PREFIX = "/data/data/com.termux/files/usr"
+
+		spyOn(Bun, "spawn").mockImplementation(() =>
+			({
+				exited: Promise.resolve(1),
+			}) as ReturnType<typeof Bun.spawn>
+		)
+
+		const { hooks } = await createPlugin()
+
+		await emitEvent(hooks, {
+			type: "permission.asked",
+			properties: {
+				id: "perm-termux-fallback",
+				sessionID: "session-a",
+				permission: "bash",
+				patterns: [],
+				metadata: {},
+				always: [],
+			},
+		})
+
+		expect(notificationPayloads).toHaveLength(1)
+		expect(notificationPayloads[0]?.title).toBe("Waiting for you")
+	})
+
 	it("dedupes permission notification when permission.asked and permission.updated describe same request", async () => {
 		const { hooks } = await createPlugin()
 

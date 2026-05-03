@@ -2,7 +2,7 @@
 
 > Native OS notifications for OpenCode.
 
-A plugin for [OpenCode](https://github.com/sst/opencode) that delivers Native OS notifications when tasks complete, errors occur, or the AI needs your input. It uses native OS notification delivery on macOS, Windows, and Linux, with an additional [cmux](https://www.cmux.dev/)-native path when available.
+A plugin for [OpenCode](https://github.com/sst/opencode) that delivers Native OS notifications when tasks complete, errors occur, or the AI needs your input. It uses native OS notification delivery on macOS, Windows, Linux, and Android Termux, with an additional [cmux](https://www.cmux.dev/)-native path when available.
 
 ## Why This Exists
 
@@ -12,6 +12,7 @@ This plugin solves that:
 
 - **Stay focused** - Work in other apps. A notification arrives when the AI needs you.
 - **Native OS notifications first** - Uses macOS Notification Center, Windows Toast, or Linux notify-send via `node-notifier`.
+- **Android Termux support** - Detects Termux and sends through `termux-notification` when available.
 - **Smart defaults** - Won't spam you. Only notifies for meaningful events, with parent-session filtering and quiet-hours support.
 - **Additional [cmux](https://www.cmux.dev/)-native path** - When running in [cmux](https://www.cmux.dev/), can route through `cmux notify` and still falls back safely to desktop notifications.
 
@@ -55,6 +56,23 @@ By default, notifications go through the native OS desktop notification path:
 - **macOS:** Notification Center (`terminal-notifier` backend)
 - **Windows:** Toast notifications (`SnoreToast` backend)
 - **Linux:** `notify-send`
+- **Android Termux:** `termux-notification` from Termux:API
+
+### Android Termux
+
+When running under Termux (`TERMUX_VERSION` plus a Termux `PREFIX`), notifications are sent via:
+
+```bash
+termux-notification --title "..." --content "..." --action "am start -n com.termux/com.termux.app.TermuxActivity"
+```
+
+Install the Termux:API app and package first:
+
+```bash
+pkg install termux-api
+```
+
+If `termux-notification` is unavailable, exits non-zero, or times out, the plugin falls back to the existing cmux/desktop notification paths.
 
 ### Additional [cmux](https://www.cmux.dev/)-native path
 
@@ -68,13 +86,13 @@ If [cmux](https://www.cmux.dev/) is unavailable or invocation fails, notificatio
 
 ## Platform Support
 
-| Feature | macOS | Windows | Linux |
-|---------|-------|---------|-------|
-| Native OS notifications | Yes | Yes | Yes |
-| Custom sounds | Yes | No | No |
-| Focus detection | Yes | No | No |
-| Click-to-focus | Yes | No | No |
-| Terminal detection | Yes | Yes | Yes |
+| Feature | macOS | Windows | Linux | Android Termux |
+|---------|-------|---------|-------|----------------|
+| Native OS notifications | Yes | Yes | Yes | Yes, via Termux:API |
+| Custom sounds | Yes | No | No | No |
+| Focus detection | Yes | No | No | No |
+| Click-to-focus | Yes | No | No | Yes, opens Termux activity |
+| Terminal detection | Yes | Yes | Yes | Yes |
 
 ## Configuration (Optional)
 
@@ -94,6 +112,13 @@ Works out of the box. To customize, create `~/.config/opencode/kdco-notify.json`
     "enabled": false,
     "start": "22:00",
     "end": "08:00"
+  },
+  "termux": {
+    "enabled": true,
+    "notificationCommand": "termux-notification",
+    "launchCommand": "am",
+    "launchActivity": "com.termux/com.termux.app.TermuxActivity",
+    "timeoutMs": 1500
   }
 }
 ```
@@ -104,6 +129,11 @@ Configuration keys:
 - `terminal` (optional): override terminal auto-detection.
 - `sounds`: per-event sounds (`idle`, `error`, `permission`, optional `question`).
 - `quietHours`: scheduled suppression window.
+- `termux.enabled` (default `true`): enable Termux delivery when the environment is detected.
+- `termux.notificationCommand` (default `termux-notification`): command used for Termux notifications.
+- `termux.launchCommand` (default `am`): Android activity-manager command used for notification tap actions.
+- `termux.launchActivity` (default `com.termux/com.termux.app.TermuxActivity`): activity opened when a Termux notification is tapped.
+- `termux.timeoutMs` (default `1500`): timeout before falling back to cmux/desktop notification paths.
 
 **Available macOS sounds:** Basso, Blow, Bottle, Frog, Funk, Glass, Hero, Morse, Ping, Pop, Purr, Sosumi, Submarine, Tink
 
@@ -138,6 +168,7 @@ If you prefer not to use OCX, copy the plugin files into `.opencode/plugins/` an
 - `.opencode/plugins/notify/backend.ts`
 - `.opencode/plugins/notify/cmux.ts`
 - `.opencode/plugins/notify/status.ts`
+- `.opencode/plugins/notify/termux.ts`
 - `.opencode/plugins/notify/title.ts`
 - `.opencode/plugins/worktree/terminal.ts`
 - `.opencode/plugins/kdco-primitives/index.ts`
@@ -153,6 +184,7 @@ If you prefer not to use OCX, copy the plugin files into `.opencode/plugins/` an
 **Caveats:**
 - Manually install dependencies (`node-notifier`, `detect-terminal`, `zod`)
 - Install [cmux](https://www.cmux.dev/) if you want the additional [cmux](https://www.cmux.dev/)-native notification path
+- On Android Termux, install Termux:API and `pkg install termux-api`; no extra npm dependency is required for Termux notifications
 - Updates require manual re-copying
 
 ## Part of the OCX Ecosystem

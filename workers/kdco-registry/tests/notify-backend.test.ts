@@ -3,6 +3,42 @@ import { sendNotificationWithFallback } from "../files/plugins/notify/backend"
 import { sendCmuxNotification } from "../files/plugins/notify/cmux"
 
 describe("notify backend fallback behavior", () => {
+	it("prefers Termux before cmux and node notifier when Termux delivery succeeds", async () => {
+		const tryTermuxNotify = mock(async () => true)
+		const tryCmuxNotify = mock(async () => true)
+		const sendNodeNotify = mock(() => {})
+
+		await sendNotificationWithFallback({
+			preferTermux: true,
+			preferCmux: true,
+			tryTermuxNotify,
+			tryCmuxNotify,
+			sendNodeNotify,
+		})
+
+		expect(tryTermuxNotify).toHaveBeenCalledTimes(1)
+		expect(tryCmuxNotify).not.toHaveBeenCalled()
+		expect(sendNodeNotify).not.toHaveBeenCalled()
+	})
+
+	it("falls back to cmux when Termux delivery fails", async () => {
+		const tryTermuxNotify = mock(async () => false)
+		const tryCmuxNotify = mock(async () => true)
+		const sendNodeNotify = mock(() => {})
+
+		await sendNotificationWithFallback({
+			preferTermux: true,
+			preferCmux: true,
+			tryTermuxNotify,
+			tryCmuxNotify,
+			sendNodeNotify,
+		})
+
+		expect(tryTermuxNotify).toHaveBeenCalledTimes(1)
+		expect(tryCmuxNotify).toHaveBeenCalledTimes(1)
+		expect(sendNodeNotify).not.toHaveBeenCalled()
+	})
+
 	it("uses node notifier directly when cmux is not preferred", async () => {
 		const tryCmuxNotify = mock(async () => true)
 		const sendNodeNotify = mock(() => {})
