@@ -50,7 +50,7 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
 	registerUpdateCheckHook(program)
 
 	if (argv.length <= 2) {
-		program.outputHelp()
+		process.stdout.write(program.helpInformation())
 		return
 	}
 

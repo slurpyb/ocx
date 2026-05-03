@@ -98,9 +98,7 @@ jobs:
             ${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
       - name: Build Windows binaries
-        run: |
-          bun run scripts/build-binary.ts --target=windows-x64
-          bun run scripts/build-binary.ts --target=windows-x64-baseline
+        run: bun run build:binary:windows
         working-directory: packages/cli
       - name: Upload Windows binary artifacts
         uses: actions/upload-artifact@v6
@@ -133,23 +131,8 @@ jobs:
         with:
           name: ocx-windows-binaries
           path: packages/cli/dist/bin
-      - name: Exercise Windows binaries in PowerShell
-        run: |
-          .\packages\cli\dist\bin\ocx-windows-x64.exe --version
-          .\packages\cli\dist\bin\ocx-windows-x64.exe --help
-          .\packages\cli\dist\bin\ocx-windows-x64.exe help
-          .\packages\cli\dist\bin\ocx-windows-x64.exe
-          .\packages\cli\dist\bin\ocx-windows-x64-baseline.exe --version
-          .\packages\cli\dist\bin\ocx-windows-x64-baseline.exe --help
-          .\packages\cli\dist\bin\ocx-windows-x64-baseline.exe help
-          .\packages\cli\dist\bin\ocx-windows-x64-baseline.exe
-      - name: Exercise Windows baseline binary in cmd.exe
-        run: |
-          cmd.exe /c ".\packages\cli\dist\bin\ocx-windows-x64-baseline.exe --version"
-          cmd.exe /c ".\packages\cli\dist\bin\ocx-windows-x64-baseline.exe help"
-      - name: Assert Windows binary smoke output
-        run: bun test tests/binary-smoke.test.ts
+      - name: Run Windows binary smoke tests
+        run: bun run test:binary-smoke
         working-directory: packages/cli
         env:
-          OCX_DIST_TESTS: "1"
           OCX_BINARY_SMOKE_TARGETS: ${{ github.workspace }}\packages\cli\dist\bin\ocx-windows-x64.exe;${{ github.workspace }}\packages\cli\dist\bin\ocx-windows-x64-baseline.exe

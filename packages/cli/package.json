@@ -39,13 +39,16 @@
 	"scripts": {
 		"build": "bun run scripts/build.ts",
 		"build:binary": "bun run scripts/build-binary.ts",
+		"build:binary:all": "bun run scripts/build-binary.ts --all",
+		"build:binary:windows": "bun run scripts/build-binary.ts --target=windows-x64 && bun run scripts/build-binary.ts --target=windows-x64-baseline",
 		"release:tag": "bun run scripts/release-tag.ts",
 		"check": "bun check:biome && bun check:types",
 		"check:biome": "biome check .",
 		"check:types": "tsc --noEmit",
 		"dev": "bun run src/index.ts",
 		"prepublishOnly": "bun run build",
-		"test": "bun test"
+		"test": "bun test",
+		"test:binary-smoke": "OCX_DIST_TESTS=1 bun test tests/binary-smoke.test.ts"
 	},
 	"dependencies": {
 		"commander": "^14.0.3",

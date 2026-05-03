@@ -182,6 +182,29 @@ continuing registry-dependent tests.
 Before publishing a release, validate the exact Windows standalone artifacts from
 `packages/cli/dist/bin` on Windows:
 
+```bash
+cd "$OCX_REPO/packages/cli"
+bun run build:binary:windows
+bun run test:binary-smoke
+```
+
+For full release artifact validation, build every target before running the same
+smoke command:
+
+```bash
+cd "$OCX_REPO/packages/cli"
+bun run build:binary:all
+bun run test:binary-smoke
+```
+
+The Windows smoke suite validates both standalone artifact names:
+
+- `ocx-windows-x64.exe`
+- `ocx-windows-x64-baseline.exe`
+
+On Windows, the automated smoke command executes both `.exe` artifacts. The
+equivalent manual commands are:
+
 ```powershell
 .\packages\cli\dist\bin\ocx-windows-x64.exe --version
 .\packages\cli\dist\bin\ocx-windows-x64.exe --help

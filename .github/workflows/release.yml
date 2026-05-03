@@ -34,7 +34,7 @@ jobs:
         working-directory: packages/cli
 
       - name: Build binaries
-        run: bun run scripts/build-binary.ts --all
+        run: bun run build:binary:all
         working-directory: packages/cli
 
       - name: Upload binary artifacts
@@ -63,27 +63,10 @@ jobs:
           name: ocx-binaries
           path: packages/cli/dist/bin
 
-      - name: Exercise release Windows binaries in PowerShell
-        run: |
-          .\packages\cli\dist\bin\ocx-windows-x64.exe --version
-          .\packages\cli\dist\bin\ocx-windows-x64.exe --help
-          .\packages\cli\dist\bin\ocx-windows-x64.exe help
-          .\packages\cli\dist\bin\ocx-windows-x64.exe
-          .\packages\cli\dist\bin\ocx-windows-x64-baseline.exe --version
-          .\packages\cli\dist\bin\ocx-windows-x64-baseline.exe --help
-          .\packages\cli\dist\bin\ocx-windows-x64-baseline.exe help
-          .\packages\cli\dist\bin\ocx-windows-x64-baseline.exe
-
-      - name: Exercise release Windows baseline binary in cmd.exe
-        run: |
-          cmd.exe /c ".\packages\cli\dist\bin\ocx-windows-x64-baseline.exe --version"
-          cmd.exe /c ".\packages\cli\dist\bin\ocx-windows-x64-baseline.exe help"
-
-      - name: Assert release Windows binary smoke output
-        run: bun test tests/binary-smoke.test.ts
+      - name: Run release Windows binary smoke tests
+        run: bun run test:binary-smoke
         working-directory: packages/cli
         env:
-          OCX_DIST_TESTS: "1"
           OCX_BINARY_SMOKE_TARGETS: ${{ github.workspace }}\packages\cli\dist\bin\ocx-windows-x64.exe;${{ github.workspace }}\packages\cli\dist\bin\ocx-windows-x64-baseline.exe
 
   release:

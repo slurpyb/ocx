@@ -1,13 +1,13 @@
 /**
  * Smoke tests against compiled standalone binaries.
  *
- * Prerequisites: Run `bun run scripts/build-binary.ts` first, or pass explicit
- * targets with OCX_BINARY_SMOKE_TARGETS separated by path.delimiter.
- * To run: OCX_DIST_TESTS=1 bun test tests/binary-smoke.test.ts
+ * Prerequisites: Run `bun run build:binary:all` first, or pass explicit targets
+ * with OCX_BINARY_SMOKE_TARGETS separated by path.delimiter.
+ * To run: bun run test:binary-smoke
  */
 import { describe, expect, it } from "bun:test"
 import { existsSync, readFileSync } from "node:fs"
-import { delimiter, join } from "node:path"
+import { basename, delimiter, join } from "node:path"
 
 interface SmokeTarget {
 	label: string
@@ -21,34 +21,45 @@ const REQUIRED_ERROR_TEXT = /required|missing required/i
 const UNHANDLED_ERROR_TEXT = /(?:unhandled|uncaught|exception|\n\s*at\s+)/i
 
 const packageVersion = JSON.parse(readFileSync(PACKAGE_JSON, "utf-8")).version as string
+const WINDOWS_BINARY_NAMES = ["ocx-windows-x64.exe", "ocx-windows-x64-baseline.exe"] as const
 
 function getDefaultBinaryName(): string {
-	if (process.platform === "win32") return "ocx-windows-x64-baseline.exe"
 	if (process.platform === "darwin" && process.arch === "arm64") return "ocx-darwin-arm64"
 	if (process.platform === "darwin") return "ocx-darwin-x64"
 	if (process.platform === "linux" && process.arch === "arm64") return "ocx-linux-arm64"
 	return "ocx-linux-x64"
 }
 
+function getWindowsSmokeTargets(): SmokeTarget[] {
+	return WINDOWS_BINARY_NAMES.map((name) => ({
+		label: name,
+		path: join(DIST_BIN_DIR, name),
+	}))
+}
+
 function getSmokeTargets(): SmokeTarget[] {
 	const explicitTargets = process.env.OCX_BINARY_SMOKE_TARGETS
 	if (explicitTargets) {
-		return explicitTargets.split(delimiter).map((targetPath) => ({
-			label: targetPath,
-			path: targetPath,
-		}))
+		return explicitTargets
+			.split(delimiter)
+			.filter(Boolean)
+			.map((targetPath) => ({
+				label: basename(targetPath),
+				path: targetPath,
+			}))
+	}
+
+	if (process.platform === "win32") {
+		return getWindowsSmokeTargets()
 	}
 
 	const defaultPath = join(DIST_BIN_DIR, getDefaultBinaryName())
-	if (existsSync(defaultPath)) {
-		return [{ label: defaultPath, path: defaultPath }]
-	}
+	const defaultTargets = existsSync(defaultPath)
+		? [{ label: basename(defaultPath), path: defaultPath }]
+		: []
+	const windowsTargets = getWindowsSmokeTargets().filter((target) => existsSync(target.path))
 
-	const windowsTargets = ["ocx-windows-x64.exe", "ocx-windows-x64-baseline.exe"]
-		.map((name) => join(DIST_BIN_DIR, name))
-		.filter((targetPath) => existsSync(targetPath))
-
-	return windowsTargets.map((targetPath) => ({ label: targetPath, path: targetPath }))
+	return [...defaultTargets, ...windowsTargets]
 }
 
 function runBinary(binaryPath: string, args: string[] = []) {
@@ -75,6 +86,20 @@ function expectHelpOutput(result: ReturnType<typeof runBinary>): void {
 	expect(stderr).not.toMatch(UNHANDLED_ERROR_TEXT)
 }
 
+function assertBinaryExists(target: SmokeTarget): void {
+	if (existsSync(target.path)) return
+
+	throw new Error(
+		`Missing compiled binary for smoke target ${target.label} at ${target.path}. Run bun run build:binary:all or bun run build:binary:windows before bun run test:binary-smoke.`,
+	)
+}
+
+function canExecuteSmokeTarget(target: SmokeTarget): boolean {
+	if (process.platform === "win32") return true
+
+	return !target.path.toLowerCase().endsWith(".exe")
+}
+
 ;(SKIP ? describe.skip : describe)("compiled binary smoke", () => {
 	const smokeTargets = getSmokeTargets()
 
@@ -84,8 +109,20 @@ function expectHelpOutput(result: ReturnType<typeof runBinary>): void {
 
 	for (const target of smokeTargets) {
 		describe(target.label, () => {
-			it("prints version", () => {
-				expect(existsSync(target.path)).toBe(true)
+			const runExecutableTest = canExecuteSmokeTarget(target) ? it : it.skip
+
+			it("exists before smoke execution", () => {
+				assertBinaryExists(target)
+			})
+
+			if (!canExecuteSmokeTarget(target)) {
+				it.skip(
+					`${target.label} execution requires a Windows runner; CI release smoke executes this .exe on windows-latest`,
+				)
+			}
+
+			runExecutableTest("prints version", () => {
+				assertBinaryExists(target)
 
 				const result = runBinary(target.path, ["--version"])
 				const stdout = outputText(result.stdout)
@@ -98,17 +135,17 @@ function expectHelpOutput(result: ReturnType<typeof runBinary>): void {
 				expect(stderr).not.toMatch(UNHANDLED_ERROR_TEXT)
 			})
 
-			it("prints help", () => {
+			runExecutableTest("prints help", () => {
 				const result = runBinary(target.path, ["--help"])
 				expectHelpOutput(result)
 			})
 
-			it("prints help subcommand", () => {
+			runExecutableTest("prints help subcommand", () => {
 				const result = runBinary(target.path, ["help"])
 				expectHelpOutput(result)
 			})
 
-			it("prints no-argument help", () => {
+			runExecutableTest("prints no-argument help", () => {
 				const result = runBinary(target.path)
 				const stdout = outputText(result.stdout)
 				const stderr = outputText(result.stderr)
