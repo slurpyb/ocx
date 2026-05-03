@@ -9,7 +9,7 @@ import {
 	resolveStableOpenCodeLauncherPath,
 } from "../src/commands/opencode"
 import { EXIT_CODES } from "../src/utils/errors"
-import { cleanupTempDir, createTempDir, runCLI, runCLIIsolated } from "./helpers"
+import { cleanupTempDir, createIsolatedEnv, createTempDir, runCLI, runCLIIsolated } from "./helpers"
 
 async function createProfile(testDir: string, name: string): Promise<void> {
 	const profileDir = join(testDir, "opencode", "profiles", name)
@@ -40,6 +40,128 @@ async function createConfigContentCaptureScript(testDir: string): Promise<{
 	)
 
 	return { scriptPath, outputPath }
+}
+
+async function waitForFile(filePath: string, timeoutMs = 3000): Promise<void> {
+	const startedAt = Date.now()
+
+	while (Date.now() - startedAt < timeoutMs) {
+		if (await Bun.file(filePath).exists()) {
+			return
+		}
+
+		await Bun.sleep(25)
+	}
+
+	throw new Error(`Timed out waiting for file: ${filePath}`)
+}
+
+async function createArgCaptureOpenCodeScript(testDir: string): Promise<{
+	scriptPath: string
+	outputPath: string
+}> {
+	const scriptPath = join(testDir, "capture-opencode-args.ts")
+	const outputPath = join(testDir, "captured-opencode-args.json")
+
+	await Bun.write(
+		scriptPath,
+		[
+			"const outputPath = process.argv[2]",
+			"if (!outputPath) {",
+			'  throw new Error("missing output path")',
+			"}",
+			"await Bun.write(outputPath, JSON.stringify({ args: process.argv.slice(3) }, null, 2))",
+		].join("\n"),
+	)
+
+	return { scriptPath, outputPath }
+}
+
+async function createSignalAwareOpenCodeScript(testDir: string): Promise<{
+	scriptPath: string
+	signalPath: string
+	readyPath: string
+}> {
+	const scriptPath = join(testDir, "signal-aware-opencode.ts")
+	const signalPath = join(testDir, "captured-signals.json")
+	const readyPath = join(testDir, "signal-aware-opencode-ready")
+
+	await Bun.write(
+		scriptPath,
+		[
+			"const signalPath = process.argv[2]",
+			"const readyPath = process.argv[3]",
+			"const mode = process.argv[4] ?? 'ignore'",
+			"if (!signalPath || !readyPath) {",
+			'  throw new Error("missing signal or ready path")',
+			"}",
+			"const receivedSignals = []",
+			"async function recordSignal(signal) {",
+			"  receivedSignals.push(signal)",
+			"  await Bun.write(signalPath, JSON.stringify(receivedSignals, null, 2))",
+			"}",
+			"process.on('SIGINT', async () => {",
+			"  await recordSignal('SIGINT')",
+			"  if (mode === 'cooperative') process.exit(130)",
+			"})",
+			"process.on('SIGTERM', async () => {",
+			"  await recordSignal('SIGTERM')",
+			"  if (mode === 'cooperative') process.exit(143)",
+			"})",
+			"await Bun.write(readyPath, 'ready')",
+			"setInterval(() => {}, 1000)",
+		].join("\n"),
+	)
+
+	return { scriptPath, signalPath, readyPath }
+}
+
+async function runOcUntilReadyThenSignal(args: {
+	testDir: string
+	readyPath: string
+	signal: "SIGINT" | "SIGTERM"
+	cliArgs: string[]
+}): Promise<{ exitCode: number; output: string }> {
+	const indexPath = join(import.meta.dir, "..", "src/index.ts")
+	const proc = Bun.spawn(["bun", "run", indexPath, ...args.cliArgs], {
+		cwd: args.testDir,
+		env: createIsolatedEnv(args.testDir, {
+			XDG_CONFIG_HOME: args.testDir,
+			OPENCODE_BIN: "bun",
+		}),
+		stdout: "pipe",
+		stderr: "pipe",
+	})
+	const outputPromise = Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+	])
+
+	await waitForFile(args.readyPath)
+	proc.kill(args.signal)
+
+	let timedOut = false
+	let timeoutId: ReturnType<typeof setTimeout> | null = null
+	const exitCode = await Promise.race([
+		proc.exited,
+		new Promise<number>(
+			(resolve) =>
+				(timeoutId = setTimeout(() => {
+					timedOut = true
+					proc.kill("SIGKILL")
+					resolve(124)
+				}, 6000)),
+		),
+	])
+	if (timeoutId) {
+		clearTimeout(timeoutId)
+	}
+	const [stdout, stderr] = await outputPromise.catch(() => ["", ""])
+
+	return {
+		exitCode,
+		output: `${stdout}${stderr}${timedOut ? "\n[TIMEOUT after 6000ms]" : ""}`,
+	}
 }
 
 describe("dedupeLastWins", () => {
@@ -446,7 +568,88 @@ describe("oc command CLI contract", () => {
 		const result = await runCLI(["oc", "--help"], process.cwd())
 		expect(result.stdout).toContain("--profile")
 		expect(result.stdout).toContain("--no-rename")
+		expect(result.stdout).toContain("--verbose")
 		expect(result.stdout).not.toContain("[path]")
+	})
+
+	it("consumes OCX verbose flag before forwarding OpenCode args", async () => {
+		const testDir = await createTempDir("oc-contract-verbose-consumed")
+		try {
+			const { scriptPath, outputPath } = await createArgCaptureOpenCodeScript(testDir)
+
+			const result = await runCLIIsolated(
+				["oc", "--no-rename", "--verbose", "run", scriptPath, outputPath, "--model", "test-model"],
+				testDir,
+				{ OPENCODE_BIN: "bun" },
+			)
+
+			expect(result.exitCode).toBe(0)
+			const captured = JSON.parse(await Bun.file(outputPath).text()) as { args: string[] }
+			expect(captured.args).toEqual(["--model", "test-model"])
+			expect(captured.args).not.toContain("--verbose")
+		} finally {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("forwards SIGINT then escalates and exits with interrupt code", async () => {
+		const testDir = await createTempDir("oc-signal-sigint-escalates")
+		try {
+			const { scriptPath, signalPath, readyPath } = await createSignalAwareOpenCodeScript(testDir)
+
+			const result = await runOcUntilReadyThenSignal({
+				testDir,
+				readyPath,
+				signal: "SIGINT",
+				cliArgs: ["oc", "--no-rename", "run", scriptPath, signalPath, readyPath, "ignore"],
+			})
+
+			expect(result.exitCode).toBe(130)
+			expect(result.output).not.toContain("[TIMEOUT")
+			expect(JSON.parse(await Bun.file(signalPath).text())).toEqual(["SIGINT"])
+		} finally {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("forwards SIGTERM then escalates and exits with termination code", async () => {
+		const testDir = await createTempDir("oc-signal-sigterm-escalates")
+		try {
+			const { scriptPath, signalPath, readyPath } = await createSignalAwareOpenCodeScript(testDir)
+
+			const result = await runOcUntilReadyThenSignal({
+				testDir,
+				readyPath,
+				signal: "SIGTERM",
+				cliArgs: ["oc", "--no-rename", "run", scriptPath, signalPath, readyPath, "ignore"],
+			})
+
+			expect(result.exitCode).toBe(143)
+			expect(result.output).not.toContain("[TIMEOUT")
+			expect(JSON.parse(await Bun.file(signalPath).text())).toEqual(["SIGTERM"])
+		} finally {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("allows cooperative child SIGINT shutdown to exit cleanly", async () => {
+		const testDir = await createTempDir("oc-signal-sigint-cooperative")
+		try {
+			const { scriptPath, signalPath, readyPath } = await createSignalAwareOpenCodeScript(testDir)
+
+			const result = await runOcUntilReadyThenSignal({
+				testDir,
+				readyPath,
+				signal: "SIGINT",
+				cliArgs: ["oc", "--no-rename", "run", scriptPath, signalPath, readyPath, "cooperative"],
+			})
+
+			expect(result.exitCode).toBe(130)
+			expect(result.output).not.toContain("[TIMEOUT")
+			expect(JSON.parse(await Bun.file(signalPath).text())).toEqual(["SIGINT"])
+		} finally {
+			await cleanupTempDir(testDir)
+		}
 	})
 
 	it("does not interpret positional args as path (regression #112)", async () => {
