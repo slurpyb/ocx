@@ -47,7 +47,7 @@ This document provides a complete testing checklist for OCX. Use it to verify fu
 
 - **Performance benchmarking** - Not covered by manual testing
 - **Load testing** - Not applicable to CLI tool
-- **Windows-specific testing** - Focus on macOS (primary platform)
+- **Full Windows feature testing** - Focus on macOS (primary platform), with release-critical standalone Windows smoke checks covered below
 - **Automated integration tests** - See `packages/cli/tests/`
 
 ---
@@ -176,6 +176,54 @@ continuing registry-dependent tests.
 
 > **REMINDER:** If a registry server died during testing, restart it with `bun run dev`
 > (port 8787 for KDCO, port 8788 for Kit) before resuming tests.
+
+### Windows Standalone Binary Validation
+
+Before publishing a release, validate the exact Windows standalone artifacts from
+`packages/cli/dist/bin` on Windows:
+
+```bash
+cd "$OCX_REPO/packages/cli"
+bun run build:binary:windows
+bun run test:binary-smoke
+```
+
+For full release artifact validation, build every target before running the same
+smoke command:
+
+```bash
+cd "$OCX_REPO/packages/cli"
+bun run build:binary:all
+bun run test:binary-smoke
+```
+
+The Windows smoke suite validates both standalone artifact names:
+
+- `ocx-windows-x64.exe`
+- `ocx-windows-x64-baseline.exe`
+
+On Windows, the automated smoke command executes both `.exe` artifacts. The
+equivalent manual commands are:
+
+```powershell
+.\packages\cli\dist\bin\ocx-windows-x64.exe --version
+.\packages\cli\dist\bin\ocx-windows-x64.exe --help
+.\packages\cli\dist\bin\ocx-windows-x64.exe help
+.\packages\cli\dist\bin\ocx-windows-x64.exe
+.\packages\cli\dist\bin\ocx-windows-x64-baseline.exe --version
+.\packages\cli\dist\bin\ocx-windows-x64-baseline.exe --help
+.\packages\cli\dist\bin\ocx-windows-x64-baseline.exe help
+.\packages\cli\dist\bin\ocx-windows-x64-baseline.exe
+cmd.exe /c ".\packages\cli\dist\bin\ocx-windows-x64-baseline.exe --version"
+cmd.exe /c ".\packages\cli\dist\bin\ocx-windows-x64-baseline.exe help"
+```
+
+Expected: each command exits `0`; `--version` prints the package semver without
+required-argument errors; `--help` and `help` print `Usage:` and `ocx`; no-arg
+execution prints non-empty help/usage text; stderr has no unhandled exception or
+stack trace. If Bun standalone compilation regresses, do not publish the
+binaries; publish npm only if needed and document Windows users should install
+via npm until compiled artifacts pass the smoke checks.
 
 ### Verify Dev Build
 

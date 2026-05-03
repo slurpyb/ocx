@@ -49,5 +49,10 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
 	// Register update check hook (runs after each command)
 	registerUpdateCheckHook(program)
 
+	if (argv.length <= 2) {
+		process.stdout.write(program.helpInformation())
+		return
+	}
+
 	await program.parseAsync(argv)
 }

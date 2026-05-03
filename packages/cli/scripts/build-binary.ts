@@ -36,7 +36,7 @@ async function buildBinary(build: { name: string; target: Bun.Build.Target }) {
 	console.log(`Building ${build.target}...`)
 
 	const result = await Bun.build({
-		entrypoints: ["./src/index.ts"],
+		entrypoints: ["./src/cli/launcher.ts"],
 		compile: {
 			target: build.target,
 			outfile: outfile,
