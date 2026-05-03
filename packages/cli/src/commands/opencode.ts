@@ -23,6 +23,7 @@ import { getGitInfo } from "../utils/git-context"
 import { handleError } from "../utils/handle-error"
 import { logger } from "../utils/logger"
 import { getGlobalConfigPath } from "../utils/paths"
+import { addVerboseOption } from "../utils/shared-options"
 import {
 	canWriteOscTerminalTitle,
 	formatTerminalName,
@@ -39,6 +40,15 @@ import {
 interface OpencodeOptions {
 	profile?: string
 	rename?: boolean
+	verbose?: boolean
+}
+
+type OpenCodeShutdownSignal = "SIGINT" | "SIGTERM"
+
+const OPENCODE_SIGNAL_GRACE_MS = 2500
+const OPENCODE_SIGNAL_EXIT_CODES: Record<OpenCodeShutdownSignal, number> = {
+	SIGINT: 130,
+	SIGTERM: 143,
 }
 
 type OpencodeLeafOrigin = "profile" | "local"
@@ -578,7 +588,7 @@ export function buildOpenCodeEnv(opts: {
 }
 
 export function registerOpencodeCommand(program: Command): void {
-	program
+	const command = program
 		.command("oc")
 		.alias("opencode")
 		.description("Launch OpenCode with resolved configuration")
@@ -586,13 +596,86 @@ export function registerOpencodeCommand(program: Command): void {
 		.option("--no-rename", "Disable terminal/tmux window renaming")
 		.allowUnknownOption()
 		.allowExcessArguments(true)
-		.action(async (options: OpencodeOptions, command: Command) => {
-			try {
-				await runOpencode(command.args, options)
-			} catch (error) {
-				handleError(error)
-			}
-		})
+
+	addVerboseOption(command)
+	command.action(async (options: OpencodeOptions, command: Command) => {
+		try {
+			await runOpencode(command.args, options)
+		} catch (error) {
+			handleError(error)
+		}
+	})
+}
+
+function createOpenCodeShutdownSupervisor() {
+	let childProcess: ReturnType<typeof Bun.spawn> | null = null
+	let graceTimer: ReturnType<typeof setTimeout> | null = null
+	let rememberedSignalExitCode: number | null = null
+	let hasEscalatedToKill = false
+
+	const clearGraceTimer = () => {
+		if (!graceTimer) {
+			return
+		}
+
+		clearTimeout(graceTimer)
+		graceTimer = null
+	}
+
+	const killChildImmediately = () => {
+		if (!childProcess) {
+			return
+		}
+
+		if (hasEscalatedToKill) {
+			return
+		}
+
+		hasEscalatedToKill = true
+		childProcess.kill("SIGKILL")
+	}
+
+	const startSignalGraceTimer = () => {
+		if (graceTimer) {
+			return
+		}
+
+		graceTimer = setTimeout(() => {
+			killChildImmediately()
+		}, OPENCODE_SIGNAL_GRACE_MS)
+	}
+
+	const requestShutdown = (signal: OpenCodeShutdownSignal) => {
+		rememberedSignalExitCode ??= OPENCODE_SIGNAL_EXIT_CODES[signal]
+
+		if (!childProcess) {
+			return
+		}
+
+		if (graceTimer || hasEscalatedToKill) {
+			killChildImmediately()
+			return
+		}
+
+		childProcess.kill(signal)
+		startSignalGraceTimer()
+	}
+
+	return {
+		attachChild(processToSupervise: ReturnType<typeof Bun.spawn>) {
+			childProcess = processToSupervise
+		},
+		clearGraceTimer,
+		getRememberedSignalExitCode() {
+			return rememberedSignalExitCode
+		},
+		handleSigint() {
+			requestShutdown("SIGINT")
+		},
+		handleSigterm() {
+			requestShutdown("SIGTERM")
+		},
+	}
 }
 
 async function runOpencode(args: string[], options: OpencodeOptions): Promise<void> {
@@ -659,23 +742,10 @@ async function runOpencode(args: string[], options: OpencodeOptions): Promise<vo
 	let mergedConfig: PreparedMergedConfigDir | null = null
 	let primaryFailure: Error | null = null
 	let childExitCode: number | null = null
-	let preSpawnSignalExitCode: number | null = null
+	const shutdownSupervisor = createOpenCodeShutdownSupervisor()
 
-	const sigintHandler = () => {
-		if (proc) {
-			proc.kill("SIGINT")
-		} else {
-			preSpawnSignalExitCode = 130
-		}
-	}
-
-	const sigtermHandler = () => {
-		if (proc) {
-			proc.kill("SIGTERM")
-		} else {
-			preSpawnSignalExitCode = 143
-		}
-	}
+	const sigintHandler = () => shutdownSupervisor.handleSigint()
+	const sigtermHandler = () => shutdownSupervisor.handleSigterm()
 
 	const exitHandler = () => {
 		if (shouldRename) {
@@ -688,8 +758,8 @@ async function runOpencode(args: string[], options: OpencodeOptions): Promise<vo
 		process.on("SIGTERM", sigtermHandler)
 		process.on("exit", exitHandler)
 
-		if (preSpawnSignalExitCode !== null) {
-			childExitCode = preSpawnSignalExitCode
+		if (shutdownSupervisor.getRememberedSignalExitCode() !== null) {
+			childExitCode = shutdownSupervisor.getRememberedSignalExitCode()
 			return
 		}
 
@@ -700,14 +770,14 @@ async function runOpencode(args: string[], options: OpencodeOptions): Promise<vo
 			})
 		}
 
-		if (preSpawnSignalExitCode !== null) {
-			childExitCode = preSpawnSignalExitCode
+		if (shutdownSupervisor.getRememberedSignalExitCode() !== null) {
+			childExitCode = shutdownSupervisor.getRememberedSignalExitCode()
 			return
 		}
 
 		const gitInfo = shouldRename ? await getGitInfo(projectDir) : { repoName: null, branch: null }
-		if (preSpawnSignalExitCode !== null) {
-			childExitCode = preSpawnSignalExitCode
+		if (shutdownSupervisor.getRememberedSignalExitCode() !== null) {
+			childExitCode = shutdownSupervisor.getRememberedSignalExitCode()
 			return
 		}
 
@@ -723,8 +793,8 @@ async function runOpencode(args: string[], options: OpencodeOptions): Promise<vo
 			setTerminalName(baseTitle)
 		}
 
-		if (preSpawnSignalExitCode !== null) {
-			childExitCode = preSpawnSignalExitCode
+		if (shutdownSupervisor.getRememberedSignalExitCode() !== null) {
+			childExitCode = shutdownSupervisor.getRememberedSignalExitCode()
 			return
 		}
 
@@ -774,6 +844,7 @@ async function runOpencode(args: string[], options: OpencodeOptions): Promise<vo
 				`Failed to launch OpenCode binary "${configuredBin}": ${error instanceof Error ? error.message : String(error)}`,
 			)
 		}
+		shutdownSupervisor.attachChild(proc)
 
 		// Wait for child to exit
 		childExitCode = await proc.exited
@@ -783,6 +854,8 @@ async function runOpencode(args: string[], options: OpencodeOptions): Promise<vo
 				? error
 				: createOpencodeOcError("spawn", `OpenCode process failed: ${String(error)}`)
 	} finally {
+		shutdownSupervisor.clearGraceTimer()
+
 		// Cleanup signal handlers
 		process.off("SIGINT", sigintHandler)
 		process.off("SIGTERM", sigtermHandler)
@@ -798,7 +871,7 @@ async function runOpencode(args: string[], options: OpencodeOptions): Promise<vo
 			} catch (cleanupError: unknown) {
 				const hasPrimaryFailure =
 					primaryFailure !== null ||
-					preSpawnSignalExitCode !== null ||
+					shutdownSupervisor.getRememberedSignalExitCode() !== null ||
 					(childExitCode !== null && childExitCode !== 0)
 
 				if (hasPrimaryFailure) {
@@ -821,6 +894,11 @@ async function runOpencode(args: string[], options: OpencodeOptions): Promise<vo
 
 	if (primaryFailure) {
 		throw primaryFailure
+	}
+
+	const rememberedSignalExitCode = shutdownSupervisor.getRememberedSignalExitCode()
+	if (rememberedSignalExitCode !== null) {
+		process.exit(rememberedSignalExitCode)
 	}
 
 	if (childExitCode !== null) {
