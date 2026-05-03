@@ -45,6 +45,8 @@ interface OpencodeOptions {
 
 type OpenCodeShutdownSignal = "SIGINT" | "SIGTERM"
 
+// Give OpenCode 2.5s to handle SIGINT/SIGTERM itself before escalating to SIGKILL.
+// Keeps shutdown deterministic and avoids hanging if the child ignores the signal.
 const OPENCODE_SIGNAL_GRACE_MS = 2500
 const OPENCODE_SIGNAL_EXIT_CODES: Record<OpenCodeShutdownSignal, number> = {
 	SIGINT: 130,
