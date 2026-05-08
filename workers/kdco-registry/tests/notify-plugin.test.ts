@@ -17,10 +17,34 @@ const notificationPayloads: Array<Record<string, unknown>> = []
 const notifyMock = mock((payload: Record<string, unknown>) => {
 	notificationPayloads.push(payload)
 })
+const readActualFile = fsPromises.readFile
+
+function pushAlerterNotificationPayload(command: string[]): void {
+	if (!command[0]?.includes("alerter")) return
+
+	const payload: Record<string, unknown> = {}
+	for (let index = 1; index < command.length; index += 2) {
+		const flag = command[index]
+		const value = command[index + 1]
+		if (!flag || value === undefined) continue
+
+		if (flag === "--title") payload.title = value
+		if (flag === "--message") payload.message = value
+		if (flag === "--subtitle") payload.subtitle = value
+		if (flag === "--sound") payload.sound = value
+		if (flag === "--sender") payload.sender = value
+	}
+
+	notificationPayloads.push(payload)
+}
 
 mock.module("node:fs/promises", () => ({
 	...fsPromises,
-	readFile: async () => {
+	readFile: async (filePath: Parameters<typeof fsPromises.readFile>[0], options?: Parameters<typeof fsPromises.readFile>[1]) => {
+		if (filePath !== `${process.env.HOME}/.config/opencode/kdco-notify.json`) {
+			return readActualFile(filePath, options)
+		}
+
 		if (mockedConfig === undefined) {
 			throw Object.assign(new Error("ENOENT"), { code: "ENOENT" })
 		}
@@ -39,10 +63,10 @@ mock.module("node-notifier", () => ({
 	},
 }))
 
-let NotifyPlugin: typeof import("../files/plugins/notify").NotifyPlugin
+let NotifyPlugin: typeof import("../files/plugins/notify").default
 
 beforeAll(async () => {
-	;({ NotifyPlugin } = await import("../files/plugins/notify"))
+	;({ default: NotifyPlugin } = await import("../files/plugins/notify"))
 })
 
 beforeEach(() => {
@@ -50,6 +74,24 @@ beforeEach(() => {
 	mockedTerminalName = null
 	notificationPayloads.length = 0
 	notifyMock.mockClear()
+	spyOn(Bun, "which").mockImplementation((command: string) =>
+		command === "alerter" ? "/usr/local/bin/alerter" : null,
+	)
+	spyOn(Bun, "spawn").mockImplementation((...args: unknown[]) => {
+		const command = args[0]
+		if (Array.isArray(command) && typeof command[0] === "string" && command[0].includes("alerter")) {
+			pushAlerterNotificationPayload(command.map(String))
+			return {
+				exited: Promise.resolve(0),
+			} as ReturnType<typeof Bun.spawn>
+		}
+
+		return {
+			stdout: new Blob([""]).stream(),
+			stderr: new Blob([""]).stream(),
+			exited: Promise.resolve(0),
+		} as ReturnType<typeof Bun.spawn>
+	})
 	delete process.env.CMUX_WORKSPACE_ID
 	delete process.env.CMUX_SOCKET_PATH
 	delete process.env.CMUX_SOCKET_MODE
@@ -85,6 +127,13 @@ function mockFocusedTerminal(): void {
 
 	spyOn(Bun, "spawn").mockImplementation((...args: unknown[]) => {
 		const command = args[0]
+		if (Array.isArray(command) && typeof command[0] === "string" && command[0].includes("alerter")) {
+			pushAlerterNotificationPayload(command.map(String))
+			return {
+				exited: Promise.resolve(0),
+			} as ReturnType<typeof Bun.spawn>
+		}
+
 		const script = Array.isArray(command) && typeof command[2] === "string" ? command[2] : ""
 		const output = script.includes("frontmost") ? "Ghostty\n" : "com.mitchellh.ghostty\n"
 
@@ -198,11 +247,18 @@ describe("notify plugin event compatibility and dedupe", () => {
 		process.env.TERMUX_VERSION = "0.118.1"
 		process.env.PREFIX = "/data/data/com.termux/files/usr"
 
-		spyOn(Bun, "spawn").mockImplementation(() =>
-			({
+		spyOn(Bun, "spawn").mockImplementation((command: string[]) => {
+			if (Array.isArray(command) && command[0]?.includes("alerter")) {
+				pushAlerterNotificationPayload(command.map(String))
+				return {
+					exited: Promise.resolve(0),
+				} as ReturnType<typeof Bun.spawn>
+			}
+
+			return {
 				exited: Promise.resolve(1),
-			}) as ReturnType<typeof Bun.spawn>
-		)
+			} as ReturnType<typeof Bun.spawn>
+		})
 
 		const { hooks } = await createPlugin()
 

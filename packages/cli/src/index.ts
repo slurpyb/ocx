@@ -5,13 +5,8 @@ if (import.meta.main) {
 }
 
 async function runCliEntryPoint(): Promise<void> {
-	try {
-		const { runCli } = await import("./cli/bootstrap")
-		await runCli()
-	} catch (error) {
-		const { handleError } = await import("./utils/handle-error")
-		handleError(error)
-	}
+	const { runCliEntryPoint: runCli } = await import("./cli/entrypoint")
+	await runCli()
 }
 
 export {

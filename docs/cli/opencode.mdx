@@ -19,10 +19,11 @@ Launch OpenCode with resolved configuration and profile support. OCX merges prof
 | Flag | Shorthand | Default | Description |
 |------|-----------|---------|-------------|
 | `--profile <name>` | `-p` | | Use specific global profile |
+| `--verbose` | `-v` | `false` | Enable verbose OCX output |
 | `--no-rename` | | `false` | Skip automatic window/terminal renaming |
 
 <Note>
-Only `-p`/`--profile` and `--no-rename` are OCX flags. All other arguments and flags pass through to OpenCode. Use `--` to pass flags that conflict with OCX (e.g., `ocx oc -- --help` forwards help to OpenCode).
+`-p`/`--profile`, `-v`/`--verbose`, and `--no-rename` are OCX-owned flags. Other arguments and flags pass through to OpenCode. Use `--` to pass OpenCode flags that conflict with OCX (e.g., `ocx oc -- --help` forwards help to OpenCode).
 </Note>
 
 ## Examples

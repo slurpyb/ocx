@@ -11,10 +11,10 @@
  * - Click notification to focus terminal
  * - Parent session only by default (no spam from sub-tasks)
  *
- * Uses cmux CLI first (if available), then node-notifier fallback:
+ * Uses cmux CLI first (if available), then desktop notification fallback:
  * - cmux: `cmux notify --title ... --subtitle ... --body ...`
  * - cmux status: `cmux set-status <key> <value>` / `cmux clear-status <key>`
- * - macOS: terminal-notifier (native NSUserNotificationCenter)
+ * - macOS: alerter (native Notification Center, requires alerter on PATH)
  * - Windows: SnoreToast (native toast notifications)
  * - Linux: notify-send (native desktop notifications)
  */
@@ -27,7 +27,7 @@ import type { Event } from "@opencode-ai/sdk"
 // @ts-expect-error - installed at runtime by OCX
 import detectTerminal from "detect-terminal"
 import type { OpencodeClient } from "./kdco-primitives/types"
-import { sendNotificationWithFallback } from "./notify/backend"
+import { sendDesktopNotificationByPlatform, sendNotificationWithFallback } from "./notify/backend"
 import {
 	canUseCmuxNotification,
 	clearCmuxStatus,
@@ -427,7 +427,7 @@ async function loadNodeNotifier(): Promise<NodeNotifier | null> {
 	return nodeNotifierPromise
 }
 
-async function sendNodeNotification(options: NotificationOptions): Promise<void> {
+async function sendDesktopNotification(options: NotificationOptions): Promise<void> {
 	const { title, message, sound, terminalInfo } = options
 	const nodeNotifier = await loadNodeNotifier()
 	if (!nodeNotifier) return
@@ -438,17 +438,15 @@ async function sendNodeNotification(options: NotificationOptions): Promise<void>
 		message,
 		sound,
 	}
-
-	// macOS-specific: click notification to focus terminal
-	if (process.platform === "darwin" && terminalInfo.bundleId) {
-		notifyOptions.activate = terminalInfo.bundleId
-	}
-
-	try {
-		nodeNotifier.notify(notifyOptions)
-	} catch {
-		// Notification delivery is best-effort; event handling must remain stable.
-	}
+	await sendDesktopNotificationByPlatform({
+		platform: process.platform,
+		title,
+		message,
+		subtitle: options.subtitle,
+		sound,
+		senderBundleId: terminalInfo.bundleId,
+		sendNodeNotifierNotification: () => nodeNotifier.notify(notifyOptions),
+	})
 }
 
 async function sendNotification(
@@ -473,7 +471,7 @@ async function sendNotification(
 				subtitle: options.subtitle,
 				body: options.cmuxBody ?? options.message,
 			}),
-		sendNodeNotify: () => sendNodeNotification(options),
+		sendDesktopNotification: () => sendDesktopNotification(options),
 	})
 }
 
@@ -611,7 +609,7 @@ async function handleQuestionAsked(
 // PLUGIN EXPORT
 // ==========================================
 
-export const NotifyPlugin: Plugin = async (ctx) => {
+const NotifyPlugin: Plugin = async (ctx) => {
 	const { client } = ctx
 
 	// Load config once at startup
