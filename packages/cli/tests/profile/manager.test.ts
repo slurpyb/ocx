@@ -9,7 +9,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
-import { mkdir, rm, stat } from "node:fs/promises"
+import { mkdir, rm, stat, symlink, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { ProfileManager } from "../../src/profile/manager"
 import { getProfileDir, getProfilesDir } from "../../src/profile/paths"
@@ -178,6 +178,44 @@ describe("ProfileManager.list", () => {
 		const profiles = await manager.list()
 
 		expect(profiles).not.toContain(".hidden")
+	})
+
+	it("should include symlinks that resolve to directories", async () => {
+		const manager = ProfileManager.create()
+		await manager.initialize()
+		await manager.add("zebra")
+
+		const targetDir = join(testDir, "external-profiles", "alpha-link-target")
+		await mkdir(targetDir, { recursive: true })
+		await symlink(targetDir, join(getProfilesDir(), "alpha-link"))
+
+		const profiles = await manager.list()
+
+		expect(profiles).toEqual(["alpha-link", "default", "zebra"])
+	})
+
+	it("should exclude broken symlinks", async () => {
+		const manager = ProfileManager.create()
+		await manager.initialize()
+
+		await symlink(join(testDir, "missing-profile-target"), join(getProfilesDir(), "broken-link"))
+
+		const profiles = await manager.list()
+
+		expect(profiles).not.toContain("broken-link")
+	})
+
+	it("should exclude symlinks that resolve to regular files", async () => {
+		const manager = ProfileManager.create()
+		await manager.initialize()
+
+		const targetFile = join(testDir, "not-a-profile")
+		await writeFile(targetFile, "not a directory")
+		await symlink(targetFile, join(getProfilesDir(), "file-link"))
+
+		const profiles = await manager.list()
+
+		expect(profiles).not.toContain("file-link")
 	})
 
 	it("should not include current symlink in list", async () => {

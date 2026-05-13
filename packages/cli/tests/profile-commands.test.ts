@@ -7,7 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import { existsSync } from "node:fs"
-import { mkdir } from "node:fs/promises"
+import { mkdir, symlink } from "node:fs/promises"
 import { join } from "node:path"
 import { cleanupTempDir, createTempDir, runCLI } from "./helpers"
 
@@ -237,6 +237,28 @@ describe("ocx profile list", () => {
 		expect(payload.initialized).toBe(true)
 		expect(payload.profiles).toContain(GLOBAL_ONLY_PROFILE)
 		expect(payload.profiles).not.toContain(LOCAL_ONLY_PROFILE)
+	})
+
+	it("should list and show symlinked global profiles", async () => {
+		const configDir = join(testDir, "opencode")
+		const targetDir = join(testDir, "external-profiles", "symlinked-profile-target")
+		await mkdir(targetDir, { recursive: true })
+		await Bun.write(
+			join(targetDir, "ocx.jsonc"),
+			JSON.stringify({ componentPath: "components/symlinked-profile-999" }, null, 2),
+		)
+		await symlink(targetDir, join(configDir, "profiles", "symlinked-profile"))
+
+		const listResult = await runCLI(["profile", "list", "--global"], testDir)
+
+		expect(listResult.exitCode).toBe(0)
+		expect(listResult.stdout).toContain("symlinked-profile")
+
+		const showResult = await runCLI(["profile", "show", "symlinked-profile", "--global"], testDir)
+
+		expect(showResult.exitCode).toBe(0)
+		expect(showResult.stdout).toContain("symlinked-profile")
+		expect(showResult.stdout).toContain("components/symlinked-profile-999")
 	})
 })
 
