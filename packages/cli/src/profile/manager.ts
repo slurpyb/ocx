@@ -197,10 +197,31 @@ export class ProfileManager {
 		await this.ensureInitialized()
 
 		const entries = await readdir(this.profilesDir, { withFileTypes: true, encoding: "utf8" })
-		return entries
-			.filter((e) => e.isDirectory() && !e.name.startsWith("."))
-			.map((e) => e.name)
-			.sort()
+		const profiles: string[] = []
+
+		for (const entry of entries) {
+			if (entry.name.startsWith(".") || entry.name === "current") {
+				continue
+			}
+
+			if (entry.isDirectory()) {
+				profiles.push(entry.name)
+				continue
+			}
+
+			if (entry.isSymbolicLink()) {
+				try {
+					const stats = await stat(getProfileDir(entry.name))
+					if (stats.isDirectory()) {
+						profiles.push(entry.name)
+					}
+				} catch {
+					// Broken symlinks and inaccessible targets are not profile directories.
+				}
+			}
+		}
+
+		return profiles.sort()
 	}
 
 	/**
