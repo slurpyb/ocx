@@ -16,6 +16,7 @@ import {
 	applyOverlayCopyOperations,
 	loadProjectOverlayPolicy,
 	OPENCODE_MERGED_DIR_PREFIX,
+	OPENCODE_OVERLAY_SOURCE_SCOPES,
 	planOverlayCopyOperations,
 	prepareMergedConfigDirForProfile,
 } from "../src/commands/opencode-overlay"
@@ -203,6 +204,13 @@ async function listMergedDirs(tmpRoot: string): Promise<string[]> {
 }
 
 describe("opencode overlay planner", () => {
+	it("does not discover executable tool scopes for project profile overlays", () => {
+		expect(OPENCODE_OVERLAY_SOURCE_SCOPES).toContain("command")
+		expect(OPENCODE_OVERLAY_SOURCE_SCOPES).toContain("commands")
+		expect(OPENCODE_OVERLAY_SOURCE_SCOPES).not.toContain("tool")
+		expect(OPENCODE_OVERLAY_SOURCE_SCOPES).not.toContain("tools")
+	})
+
 	it("uses TypeScript-style include/exclude matrix with include-wins overlap", () => {
 		const candidates = [
 			{ sourcePath: "/tmp/agents/alpha.md", overlayRelativePath: "agents/alpha.md" },
@@ -922,7 +930,7 @@ describe("ocx oc profile overlay integration", () => {
 		}
 	})
 
-	it("merges project command and tool scopes over profile config", async () => {
+	it("merges project command scopes over profile config but excludes tool scopes", async () => {
 		const testDir = await createTempDir("oc-overlay-commands-tools")
 		try {
 			await createProfile(testDir, "work")
@@ -947,12 +955,40 @@ describe("ocx oc profile overlay integration", () => {
 			const payload = await readCapturePayload(payloadPath)
 			expect(payload.files).toContain("command/singular-command.md")
 			expect(payload.files).toContain("commands/plural-command.md")
-			expect(payload.files).toContain("tool/singular-tool.ts")
-			expect(payload.files).toContain("tools/plural-tool.ts")
+			expect(payload.files).not.toContain("tool/singular-tool.ts")
+			expect(payload.files).not.toContain("tools/plural-tool.ts")
 			expect(payload.fileContents["command/singular-command.md"]).toBe("singular command")
 			expect(payload.fileContents["commands/plural-command.md"]).toBe("plural command")
-			expect(payload.fileContents["tool/singular-tool.ts"]).toBe("singular tool")
-			expect(payload.fileContents["tools/plural-tool.ts"]).toBe("plural tool")
+			expect(payload.fileContents["tool/singular-tool.ts"]).toBeUndefined()
+			expect(payload.fileContents["tools/plural-tool.ts"]).toBeUndefined()
+		} finally {
+			await cleanupTempDir(testDir)
+		}
+	})
+
+	it("does not allow project policy includes to re-enable tool scopes", async () => {
+		const testDir = await createTempDir("oc-overlay-tools-policy-bypass")
+		try {
+			await createProfile(testDir, "work")
+
+			const localConfigDir = join(testDir, ".opencode")
+			await mkdir(join(localConfigDir, "tool"), { recursive: true })
+			await mkdir(join(localConfigDir, "tools"), { recursive: true })
+			await Bun.write(
+				join(localConfigDir, "ocx.jsonc"),
+				JSON.stringify({ profile: "work", include: ["tool/**", "tools/**"] }, null, 2),
+			)
+			await Bun.write(join(localConfigDir, "tool", "singular-tool.ts"), "singular tool")
+			await Bun.write(join(localConfigDir, "tools", "plural-tool.ts"), "plural tool")
+
+			const { result, payloadPath } = await runOcCapture({ testDir, profileName: "work" })
+			expect(result.exitCode).toBe(0)
+
+			const payload = await readCapturePayload(payloadPath)
+			expect(payload.files).not.toContain("tool/singular-tool.ts")
+			expect(payload.files).not.toContain("tools/plural-tool.ts")
+			expect(payload.fileContents["tool/singular-tool.ts"]).toBeUndefined()
+			expect(payload.fileContents["tools/plural-tool.ts"]).toBeUndefined()
 		} finally {
 			await cleanupTempDir(testDir)
 		}
