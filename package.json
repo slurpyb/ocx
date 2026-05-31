@@ -12,8 +12,7 @@
 		"url": "https://github.com/kdcokenny/ocx.git"
 	},
 	"workspaces": [
-		"packages/*",
-		"workers/*"
+		"packages/*"
 	],
 	"scripts": {
 		"build": "turbo run build",

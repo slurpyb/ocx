@@ -9,7 +9,6 @@ const REPO_ROOT = join(import.meta.dir, "..", "..", "..")
 
 const REGISTRY_CLI_DOC_PATH = join(REPO_ROOT, "docs", "cli", "registry.mdx")
 const REGISTRY_STARTER_AGENTS_PATH = join(REPO_ROOT, "examples", "registry-starter", "AGENTS.md")
-const OCX_KIT_AGENTS_PATH = join(REPO_ROOT, "workers", "ocx-kit", "AGENTS.md")
 
 function expectObject(value: unknown, label: string): Record<string, unknown> {
 	if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -567,10 +566,5 @@ describe("registry docs/runtime contracts", () => {
 	it("examples/registry-starter/AGENTS.md component types table matches runtime schema", async () => {
 		const markdown = await readFile(REGISTRY_STARTER_AGENTS_PATH, "utf-8")
 		assertComponentTypeTableParity(markdown, REGISTRY_STARTER_AGENTS_PATH)
-	})
-
-	it("workers/ocx-kit/AGENTS.md component types table matches runtime schema", async () => {
-		const markdown = await readFile(OCX_KIT_AGENTS_PATH, "utf-8")
-		assertComponentTypeTableParity(markdown, OCX_KIT_AGENTS_PATH)
 	})
 })
