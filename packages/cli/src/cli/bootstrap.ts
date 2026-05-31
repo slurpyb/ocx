@@ -1,4 +1,6 @@
 import { Command } from "commander"
+import { registerClaudeCommand } from "../claude/command"
+import { registerClaudeSyncHook } from "../claude/hook"
 import { registerAddCommand } from "../commands/add"
 import { registerBuildCommand } from "../commands/build"
 import { registerConfigCommand } from "../commands/config/index"
@@ -46,8 +48,14 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
 	registerConfigCommand(program)
 	registerOpencodeCommand(program)
 
+	// slurpyb: native Claude Code output (absorbs the standalone ccx shim)
+	registerClaudeCommand(program)
+
 	// Register update check hook (runs after each command)
 	registerUpdateCheckHook(program)
+
+	// slurpyb: auto-translate to Claude shape after mutating commands
+	registerClaudeSyncHook(program)
 
 	if (argv.length <= 2) {
 		process.stdout.write(program.helpInformation())

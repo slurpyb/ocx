@@ -50,6 +50,9 @@ export const ocxConfigSchema = object({
 
 	/** Skip version compatibility checks */
 	skipCompatCheck: boolean().default(false),
+
+	/** slurpyb: emit Claude Code files after mutating commands (default: enabled when omitted) */
+	claude: object({ enabled: boolean() }).optional(),
 })
 
 export type OcxConfig = ZodInfer<typeof ocxConfigSchema>
