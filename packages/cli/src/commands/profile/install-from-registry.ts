@@ -27,6 +27,7 @@ import {
 	NotFoundError,
 	ValidationError,
 } from "../../utils/errors"
+import { expandEnvVars } from "../../utils/expand-env"
 import { logger } from "../../utils/logger"
 import { PathValidationError, validatePath } from "../../utils/path-security"
 import { registerPlannedWriteOrThrow } from "../../utils/planned-writes"
@@ -48,6 +49,8 @@ export interface InstallProfileOptions {
 	profileName: string
 	/** Resolved registry URL */
 	registryUrl: string
+	/** slurpyb: per-registry auth headers (raw, ${ENV_VAR} unexpanded) */
+	headers?: Record<string, string>
 	/** Suppress output */
 	quiet?: boolean
 }
@@ -291,7 +294,16 @@ export function resolveEmbeddedProfileTarget(rawTarget: string, stagingDir: stri
  * @throws ConflictError if profile exists and force is not set
  */
 export async function installProfileFromRegistry(options: InstallProfileOptions): Promise<void> {
-	const { namespace: providedNamespace, component, profileName, registryUrl, quiet } = options
+	const {
+		namespace: providedNamespace,
+		component,
+		profileName,
+		registryUrl,
+		headers: rawHeaders,
+		quiet,
+	} = options
+	// slurpyb: expand ${ENV_VAR} header refs once (throws if a referenced var is unset)
+	const authHeaders = expandEnvVars(rawHeaders ?? {})
 
 	// ==========================================================================
 	// Guard: Validate profile name at boundary (Law 2: Parse Don't Validate)
@@ -344,7 +356,7 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 
 	let manifest: Awaited<ReturnType<typeof fetchComponent>>
 	try {
-		manifest = await fetchComponent(registryUrl, component)
+		manifest = await fetchComponent(registryUrl, component, authHeaders)
 	} catch (error) {
 		fetchSpin?.fail(`Failed to fetch ${qualifiedName}`)
 		if (error instanceof NetworkError) {
@@ -390,7 +402,7 @@ export async function installProfileFromRegistry(options: InstallProfileOptions)
 	const embeddedFiles: { path: string; target: string; content: Buffer }[] = []
 
 	for (const file of normalized.files) {
-		const content = await fetchFileContent(registryUrl, component, file.path)
+		const content = await fetchFileContent(registryUrl, component, file.path, authHeaders)
 		const fileEntry = {
 			path: file.path,
 			target: file.target,

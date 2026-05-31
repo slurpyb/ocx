@@ -144,9 +144,11 @@ async function readGlobalOcxConfig() {
  * @returns Global config and the registry URL
  * @throws ConfigError if registry is not configured globally
  */
-async function requireGlobalRegistry(
-	namespace: string,
-): Promise<{ config: ProfileOcxConfig; registryUrl: string }> {
+async function requireGlobalRegistry(namespace: string): Promise<{
+	config: ProfileOcxConfig
+	registryUrl: string
+	registryHeaders?: Record<string, string>
+}> {
 	let globalConfig: ProfileOcxConfig
 	try {
 		globalConfig = await readGlobalOcxConfig()
@@ -172,7 +174,7 @@ async function requireGlobalRegistry(
 		)
 	}
 
-	return { config: globalConfig, registryUrl: registry.url }
+	return { config: globalConfig, registryUrl: registry.url, registryHeaders: registry.headers }
 }
 
 // =============================================================================
@@ -386,6 +388,7 @@ async function runProfileAdd(name: string, options: ProfileAddOptions): Promise<
 				component,
 				profileName: name,
 				registryUrl,
+				headers: globalRegistry.registryHeaders,
 				quiet,
 			})
 		}
