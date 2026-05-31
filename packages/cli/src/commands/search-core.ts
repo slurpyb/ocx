@@ -5,6 +5,7 @@ import { LocalConfigProvider } from "../config/provider"
 import { ConfigResolver } from "../config/resolver"
 import { fetchRegistryIndex } from "../registry/fetcher"
 import { readReceipt } from "../schemas"
+import { expandEnvVars } from "../utils/expand-env"
 import { outputJson } from "../utils/json-output"
 import { logger } from "../utils/logger"
 import { createSpinner } from "../utils/spinner"
@@ -93,7 +94,10 @@ export async function runSearchCore(
 			if (options.verbose) {
 				logger.info(`Fetching index from ${registryName} (${registryConfig.url})...`)
 			}
-			const index = await fetchRegistryIndex(registryConfig.url)
+			const index = await fetchRegistryIndex(
+				registryConfig.url,
+				expandEnvVars(registryConfig.headers ?? {}),
+			)
 			if (options.verbose) {
 				logger.info(`Found ${index.components.length} components in ${registryName}`)
 			}

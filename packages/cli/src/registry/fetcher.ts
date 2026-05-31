@@ -28,6 +28,13 @@ const cache = new Map<string, Promise<unknown>>()
 type RegistrySchemaMode = "legacy-v1" | "v2"
 const registrySchemaModeCache = new Map<string, RegistrySchemaMode>()
 
+// slurpyb: hint appended when a registry rejects an unauthenticated request
+function authHint(status: number): string {
+	return status === 401 || status === 403
+		? " (registry requires auth - check the registry's headers, e.g. CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET)"
+		: ""
+}
+
 const LEGACY_COMPONENT_TYPE_ALIAS_MAP = {
 	"ocx:agent": "agent",
 	"ocx:skill": "skill",
@@ -398,9 +405,13 @@ async function fetchWithCache<T>(
 	options: {
 		phase?: string
 		requestUrl?: string
+		headers?: Record<string, string>
 	} = {},
 ): Promise<T> {
-	const cached = cache.get(cacheKey)
+	const effectiveKey = options.headers
+		? `${cacheKey}\u0000${JSON.stringify(Object.entries(options.headers).sort())}`
+		: cacheKey
+	const cached = cache.get(effectiveKey)
 	if (cached) {
 		return cached as Promise<T>
 	}
@@ -415,7 +426,7 @@ async function fetchWithCache<T>(
 
 		let response: Response
 		try {
-			response = await fetch(requestUrl)
+			response = await fetch(requestUrl, options.headers ? { headers: options.headers } : undefined)
 		} catch (error) {
 			throw new NetworkError(
 				`Network request failed for ${requestUrl}: ${error instanceof Error ? error.message : String(error)}`,
@@ -428,7 +439,7 @@ async function fetchWithCache<T>(
 				throw new NotFoundError(`Not found: ${requestUrl}`)
 			}
 			throw new NetworkError(
-				`Failed to fetch ${requestUrl}: ${response.status} ${response.statusText}`,
+				`Failed to fetch ${requestUrl}: ${response.status} ${response.statusText}${authHint(response.status)}`,
 				{
 					...networkErrorContext,
 					status: response.status,
@@ -450,10 +461,10 @@ async function fetchWithCache<T>(
 		return await parse(data)
 	})()
 
-	cache.set(cacheKey, promise)
+	cache.set(effectiveKey, promise)
 
 	// Clean up cache on error
-	promise.catch(() => cache.delete(cacheKey))
+	promise.catch(() => cache.delete(effectiveKey))
 
 	return promise
 }
@@ -484,7 +495,10 @@ export function classifyRegistryIndexIssue(data: unknown): {
 /**
  * Fetch registry index
  */
-export async function fetchRegistryIndex(baseUrl: string): Promise<RegistryIndex> {
+export async function fetchRegistryIndex(
+	baseUrl: string,
+	headers?: Record<string, string>,
+): Promise<RegistryIndex> {
 	const normalizedBaseUrl = normalizeRegistryUrl(baseUrl)
 	const url = `${normalizedBaseUrl}/index.json`
 
@@ -557,15 +571,19 @@ export async function fetchRegistryIndex(baseUrl: string): Promise<RegistryIndex
 			registrySchemaModeCache.set(normalizedBaseUrl, schemaMode)
 			return result.data
 		},
-		{ phase: "registry-index-fetch" },
+		{ phase: "registry-index-fetch", headers },
 	)
 }
 
 /**
  * Fetch a component from registry and return the latest manifest
  */
-export async function fetchComponent(baseUrl: string, name: string): Promise<ComponentManifest> {
-	const result = await fetchComponentVersion(baseUrl, name)
+export async function fetchComponent(
+	baseUrl: string,
+	name: string,
+	headers?: Record<string, string>,
+): Promise<ComponentManifest> {
+	const result = await fetchComponentVersion(baseUrl, name, undefined, headers)
 	return result.manifest
 }
 
@@ -577,6 +595,7 @@ export async function fetchComponentVersion(
 	baseUrl: string,
 	name: string,
 	version?: string,
+	headers?: Record<string, string>,
 ): Promise<{ manifest: ComponentManifest; version: string }> {
 	const url = `${normalizeRegistryUrl(baseUrl)}/components/${name}.json`
 
@@ -646,7 +665,7 @@ export async function fetchComponentVersion(
 
 			return { manifest: manifestResult.data, version: resolvedVersion }
 		},
-		{ phase: "packument-fetch", requestUrl: url },
+		{ phase: "packument-fetch", requestUrl: url, headers },
 	)
 }
 
@@ -657,6 +676,7 @@ export async function fetchFileContent(
 	baseUrl: string,
 	componentName: string,
 	filePath: string,
+	headers?: Record<string, string>,
 ): Promise<string> {
 	const url = `${normalizeRegistryUrl(baseUrl)}/components/${componentName}/${filePath}`
 	const networkErrorContext = {
@@ -667,7 +687,7 @@ export async function fetchFileContent(
 
 	let response: Response
 	try {
-		response = await fetch(url)
+		response = await fetch(url, headers ? { headers } : undefined)
 	} catch (error) {
 		throw new NetworkError(
 			`Network request failed for ${url}: ${error instanceof Error ? error.message : String(error)}`,
@@ -677,7 +697,7 @@ export async function fetchFileContent(
 
 	if (!response.ok) {
 		throw new NetworkError(
-			`Failed to fetch file ${filePath} for ${componentName} from ${url}: ${response.status} ${response.statusText}`,
+			`Failed to fetch file ${filePath} for ${componentName} from ${url}: ${response.status} ${response.statusText}${authHint(response.status)}`,
 			{
 				...networkErrorContext,
 				status: response.status,

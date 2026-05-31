@@ -14,6 +14,7 @@ import {
 	parseQualifiedComponent,
 } from "../schemas/registry"
 import { NetworkError, NotFoundError, OCXError, ValidationError } from "../utils/errors"
+import { expandEnvVars } from "../utils/expand-env"
 import { fetchComponent } from "./fetcher"
 import { mergeOpencodeConfig } from "./merge"
 
@@ -51,6 +52,8 @@ export interface ResolvedComponent extends NormalizedComponentManifest {
 	baseUrl: string
 	/** Qualified name (registryName/component) */
 	qualifiedName: string
+	/** slurpyb: expanded per-registry auth headers (empty when none configured) */
+	headers?: Record<string, string>
 }
 
 export interface ResolvedDependencies {
@@ -108,10 +111,13 @@ export async function resolveDependencies(
 			)
 		}
 
+		// slurpyb: expand ${ENV_VAR} header refs once per registry (throws if a ref is unset)
+		const headers = expandEnvVars(regConfig.headers ?? {})
+
 		// Fetch component from the specific registry
 		let component: ComponentManifest
 		try {
-			component = await fetchComponent(regConfig.url, componentName)
+			component = await fetchComponent(regConfig.url, componentName, headers)
 		} catch (err) {
 			// Re-throw network errors as-is (preserves exit code 69)
 			if (err instanceof NetworkError) {
@@ -150,6 +156,7 @@ export async function resolveDependencies(
 			registryName: componentNamespace,
 			baseUrl: regConfig.url,
 			qualifiedName,
+			headers,
 		})
 		visiting.delete(qualifiedName)
 

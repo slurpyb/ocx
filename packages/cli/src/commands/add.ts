@@ -40,6 +40,7 @@ import {
 } from "../utils/dep-invalidation"
 import { type DryRunAction, type DryRunResult, outputDryRun } from "../utils/dry-run"
 import { ConfigError, ConflictError, IntegrityError, ValidationError } from "../utils/errors"
+import { expandEnvVars } from "../utils/expand-env"
 import { handleError } from "../utils/handle-error"
 import { outputJson } from "../utils/json-output"
 import { logger } from "../utils/logger"
@@ -548,7 +549,7 @@ async function runRegistryAddCore(
 		for (const registryAlias of requestedRegistries) {
 			const registryConfig = effectiveRegistries[registryAlias]
 			if (registryConfig) {
-				await fetchRegistryIndex(registryConfig.url)
+				await fetchRegistryIndex(registryConfig.url, expandEnvVars(registryConfig.headers ?? {}))
 			}
 		}
 
@@ -573,7 +574,10 @@ async function runRegistryAddCore(
 		}
 
 		for (const [namespace, baseUrl] of uniqueBaseUrls) {
-			const index = await fetchRegistryIndex(baseUrl)
+			const index = await fetchRegistryIndex(
+				baseUrl,
+				expandEnvVars(effectiveRegistries[namespace]?.headers ?? {}),
+			)
 			registryIndexes.set(namespace, index)
 		}
 
@@ -651,7 +655,12 @@ async function runRegistryAddCore(
 			// Fetch component files and compute bundle hash
 			const files: { path: string; content: Buffer }[] = []
 			for (const file of component.files) {
-				const content = await fetchFileContent(component.baseUrl, component.name, file.path)
+				const content = await fetchFileContent(
+					component.baseUrl,
+					component.name,
+					file.path,
+					component.headers,
+				)
 				files.push({ path: file.path, content: Buffer.from(content) })
 			}
 
