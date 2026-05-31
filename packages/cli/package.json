@@ -1,7 +1,7 @@
 {
-	"name": "ocx",
+	"name": "@slurpyb/ocx",
 	"version": "2.0.11",
-	"description": "OCX CLI - OpenCode extension manager with portable, isolated profiles. Your setup, anywhere.",
+	"description": "OCX CLI (slurpyb fork) - OpenCode extension manager with private-registry auth and native Claude Code output.",
 	"author": "kdcokenny",
 	"license": "MIT",
 	"type": "module",
@@ -17,11 +17,11 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/kdcokenny/ocx.git"
+		"url": "https://github.com/slurpyb/ocx.git"
 	},
-	"homepage": "https://github.com/kdcokenny/ocx#readme",
+	"homepage": "https://github.com/slurpyb/ocx#readme",
 	"bugs": {
-		"url": "https://github.com/kdcokenny/ocx/issues"
+		"url": "https://github.com/slurpyb/ocx/issues"
 	},
 	"keywords": [
 		"opencode",

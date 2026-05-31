@@ -7,6 +7,12 @@
 
 Your OpenCode config, anywhere.
 
+> **slurpyb fork.** This is `@slurpyb/ocx`, a fork of [`kdcokenny/ocx`](https://github.com/kdcokenny/ocx)
+> (MIT). It adds private-registry authentication (per-registry `headers` with `${ENV_VAR}`
+> expansion) and native Claude Code output. The binary is still `ocx`. We track upstream and keep
+> our diff small; the auth fix is intended to go back upstream. See [`FORK.md`](./FORK.md) for the
+> branch model and upstream-sync routine, and [`NOTICE.md`](./NOTICE.md) for attribution.
+
 ## Why OCX?
 
 - 📁 **Profiles** — Work in any repo with YOUR config. Control exactly what OpenCode sees.
