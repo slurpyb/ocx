@@ -29,6 +29,9 @@ jobs:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
       - run: bun run check # turbo: biome check + tsc --noEmit across the workspace
-      - run: bun run build
+      # slurpyb: build only the CLI. Upstream's kdco workers still import the
+      # pre-rename "ocx" package, so they fail to build on a clean checkout. The
+      # fork ships the CLI; the workers are out of scope for this CI.
+      - run: bunx turbo run build --filter=@slurpyb/ocx
       - run: bun test
         working-directory: packages/cli
