@@ -28,7 +28,9 @@ type MockClientState = {
 type MockClientOptions = {
 	rootSessionID: string
 	childPromptMode?: "pending" | "resolve"
+	parentPromptMode?: "resolve" | "reject"
 	agentPermissions?: Record<string, "readonly" | "write">
+	onChildPrompt?: (sessionID: string, prompt: string) => Promise<void> | void
 	onParentPrompt?: (text: string) => Promise<void> | void
 }
 
@@ -50,6 +52,35 @@ function createMockClient(options: MockClientOptions): {
 
 	const permissionMode = (agent: string): "readonly" | "write" => {
 		return options.agentPermissions?.[agent] ?? "readonly"
+	}
+
+	const handlePrompt = async ({
+		path: { id },
+		body,
+	}: {
+		path: { id: string }
+		body: PromptCall["body"]
+	}) => {
+		state.promptCalls.push({ sessionID: id, body })
+
+		if (id === options.rootSessionID) {
+			if (options.parentPromptMode === "reject") {
+				throw new Error("Parent prompt aborted")
+			}
+
+			const text = body.parts?.[0]?.text || ""
+			state.notificationTexts.push(text)
+			await options.onParentPrompt?.(text)
+			return { data: { parts: [] } }
+		}
+
+		if (options.childPromptMode === "pending") {
+			return await new Promise<never>(() => {})
+		}
+
+		await options.onChildPrompt?.(id, body.parts?.[0]?.text || "")
+
+		return { data: { parts: [] } }
 	}
 
 	const client = {
@@ -103,28 +134,8 @@ function createMockClient(options: MockClientOptions): {
 				state.createdChildSessions.push(childID)
 				return { data: { id: childID } }
 			},
-			prompt: async ({
-				path: { id },
-				body,
-			}: {
-				path: { id: string }
-				body: PromptCall["body"]
-			}) => {
-				state.promptCalls.push({ sessionID: id, body })
-
-				if (id === options.rootSessionID) {
-					const text = body.parts?.[0]?.text || ""
-					state.notificationTexts.push(text)
-					await options.onParentPrompt?.(text)
-					return { data: { parts: [] } }
-				}
-
-				if (options.childPromptMode === "pending") {
-					return await new Promise<never>(() => {})
-				}
-
-				return { data: { parts: [] } }
-			},
+			prompt: handlePrompt,
+			promptAsync: handlePrompt,
 			messages: async ({ path: { id } }: { path: { id: string } }) => {
 				const text = state.messagesBySession.get(id)
 				if (!text) return { data: [] }
@@ -247,6 +258,53 @@ describe("background-agents lifecycle refactor", () => {
 			text.includes("<task-id>stable-lifecycle-id</task-id>"),
 		)
 		expect(terminalNotifications).toHaveLength(1)
+	})
+
+	it("queues parent notifications when direct delivery fails and injects them into the next chat message", async () => {
+		const rootSessionID = "root-session"
+		const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), "background-agents-queue-"))
+		testDirs.push(baseDir)
+
+		const { client, state } = createMockClient({
+			rootSessionID,
+			childPromptMode: "pending",
+			parentPromptMode: "reject",
+		})
+
+		const manager = new DelegationManager(client as never, baseDir, createNoopLogger(), {
+			idGenerator: () => "queued-notification-id",
+			allCompleteQuietPeriodMs: 5,
+			metadataGenerator: async () => ({
+				title: "Queued Result",
+				description: "Direct delivery failed.",
+			}),
+		})
+
+		const delegation = await manager.delegate({
+			parentSessionID: rootSessionID,
+			parentMessageID: "msg-1",
+			parentAgent: "plan",
+			prompt: "Finish while parent is unavailable",
+			agent: "researcher",
+		})
+
+		state.messagesBySession.set(delegation.sessionID, "Queued completion payload")
+		await manager.handleSessionIdle(delegation.sessionID)
+		await sleep(20)
+
+		expect(state.notificationTexts).toHaveLength(0)
+		expect(state.promptCalls.some((call) => call.sessionID === rootSessionID)).toBe(true)
+
+		const output = { parts: [{ type: "text", text: "continue" }] }
+		manager.injectPendingNotificationsIntoChatMessage(output, rootSessionID)
+
+		expect(output.parts[0]?.text).toContain("<task-id>queued-notification-id</task-id>")
+		expect(output.parts[0]?.text).toContain("<summary>All delegations complete.</summary>")
+		expect(output.parts[0]?.text).toContain("continue")
+
+		const secondOutput = { parts: [{ type: "text", text: "next" }] }
+		manager.injectPendingNotificationsIntoChatMessage(secondOutput, rootSessionID)
+		expect(secondOutput.parts[0]?.text).toBe("next")
 	})
 
 	it("delegation_read blocks until terminal and resolves deterministic timeout path", async () => {
@@ -398,6 +456,72 @@ describe("background-agents lifecycle refactor", () => {
 			getPromptText(call).includes("<summary>All delegations complete.</summary>"),
 		)
 		expect(allCompletePromptIndex).toBeGreaterThan(Math.max(...terminalPromptIndices))
+	})
+
+	it("finalizes completed child prompts even when session.idle is not delivered", async () => {
+		const rootSessionID = "root-session"
+		const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), "background-agents-prompt-complete-"))
+		testDirs.push(baseDir)
+
+		const { client, state } = createMockClient({
+			rootSessionID,
+			childPromptMode: "resolve",
+			onChildPrompt: (sessionID, prompt) => {
+				state.messagesBySession.set(sessionID, `Resolved output for ${prompt}`)
+			},
+		})
+
+		const manager = new DelegationManager(client as never, baseDir, createNoopLogger(), {
+			idGenerator: (() => {
+				const ids = ["prompt-complete-a", "prompt-complete-b"]
+				return () => {
+					const next = ids.shift()
+					if (!next) throw new Error("No IDs left")
+					return next
+				}
+			})(),
+			allCompleteQuietPeriodMs: 5,
+			metadataGenerator: async () => ({
+				title: "Prompt Complete",
+				description: "Prompt resolution finalized the delegation.",
+			}),
+		})
+
+		const first = await manager.delegate({
+			parentSessionID: rootSessionID,
+			parentMessageID: "msg-1",
+			parentAgent: "plan",
+			prompt: "first child",
+			agent: "researcher",
+		})
+
+		const second = await manager.delegate({
+			parentSessionID: rootSessionID,
+			parentMessageID: "msg-2",
+			parentAgent: "plan",
+			prompt: "second child",
+			agent: "researcher",
+		})
+
+		await sleep(40)
+
+		expect(manager.getPendingCount(rootSessionID)).toBe(0)
+
+		const completedList = await manager.listDelegations(rootSessionID)
+		expect(completedList.find((item) => item.id === first.id)?.status).toBe("complete")
+		expect(completedList.find((item) => item.id === second.id)?.status).toBe("complete")
+
+		const terminalNotifications = state.notificationTexts.filter((text) =>
+			text.includes("<task-id>"),
+		)
+		expect(terminalNotifications).toHaveLength(2)
+		expect(terminalNotifications.some((text) => text.includes(first.id))).toBe(true)
+		expect(terminalNotifications.some((text) => text.includes(second.id))).toBe(true)
+
+		const allCompleteNotifications = state.notificationTexts.filter((text) =>
+			text.includes("<summary>All delegations complete.</summary>"),
+		)
+		expect(allCompleteNotifications).toHaveLength(1)
 	})
 
 	it("allows batch B registration while cycle A all-complete is pending and suppresses stale cycle A before dispatch", async () => {
